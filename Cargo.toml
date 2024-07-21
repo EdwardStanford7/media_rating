@@ -1,10 +1,11 @@
 [package]
-name = "media_rating"
+name = "media_rating_gui"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 calamine = "0.25.0"
 console = "0.15.8"
+image = "0.25.1"
 rand = "0.8.5"
 xlsxwriter = "0.6.1"
