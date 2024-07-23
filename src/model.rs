@@ -114,8 +114,8 @@ impl Model {
         let mut entry2;
 
         if ranking_new_entry {
-            entry1 = rng.gen_range(0..length - 1);
-            entry2 = length - 1;
+            entry1 = length - 1;
+            entry2 = rng.gen_range(0..length - 1);
         } else {
             entry1 = rng.gen_range(0..length);
 
@@ -148,22 +148,27 @@ impl Model {
     pub fn calculate_current_match(&mut self, winner: usize) {
         let (category, entry1_index, entry2_index) = self.current_match.clone().unwrap();
 
-        // The things I do for the borrow checker.
         let entry1_rating = self.categories.get(&category).unwrap()[entry1_index].rating;
         let entry2_rating = self.categories.get(&category).unwrap()[entry2_index].rating;
 
         let (s_a, s_b) = if winner == 1 { (1.0, 0.0) } else { (0.0, 1.0) };
 
         // Expected score for each player
-        let e_a = 1.0 / (1.0 + f64::powf(10.0, (entry2_rating - entry1_rating) / 400.0));
+        let e_a = 1.0 / (1.0 + f64::powf(10.0, (entry1_rating - entry2_rating) / 400.0));
         let e_b = 1.0 - e_a;
 
         // Sensitivity factor.
         let k = 32.0;
 
         // Update ratings
-        self.categories.get_mut(&category).unwrap()[entry1_index].rating += k * (s_a - e_a);
-        self.categories.get_mut(&category).unwrap()[entry2_index].rating += k * (s_b - e_b);
+        let new_rating1 = (entry1_rating + k * (s_a - e_a)).round();
+        let new_rating2 = (entry2_rating + k * (s_b - e_b)).round();
+
+        // Clamp the new ratings between 50 and 750
+        self.categories.get_mut(&category).unwrap()[entry1_index].rating =
+            new_rating1.clamp(50.0, 750.0);
+        self.categories.get_mut(&category).unwrap()[entry2_index].rating =
+            new_rating2.clamp(50.0, 750.0);
     }
 
     // Reset all the rankings in a category.

@@ -1,13 +1,14 @@
 use eframe::egui;
 use egui::{Image, ImageButton};
 use native_dialog::FileDialog;
-use std::sync::Arc;
+use std::{process::exit, sync::Arc};
 mod model;
 use model::{Entry, Model};
 
 struct MyApp {
     model: Arc<Model>,
     ranking_category: Option<String>,
+    new_entry_category: Option<String>,
     text_entry_box: String,
     ranking_new_entry: bool,
     matches_left: usize,
@@ -17,26 +18,25 @@ struct MyApp {
 impl Default for MyApp {
     fn default() -> Self {
         let mut model = Model::new();
-        loop {
-            let xlsx_path = FileDialog::new()
-                .add_filter("Excel file", &["xlsx"])
-                .show_open_single_file()
-                .ok()
-                .flatten()
-                .map(|path| path.to_string_lossy().to_string());
+        let xlsx_path = FileDialog::new()
+            .add_filter("Excel file", &["xlsx"])
+            .show_open_single_file()
+            .ok()
+            .flatten()
+            .map(|path| path.to_string_lossy().to_string());
 
-            if let Some(ref path) = xlsx_path {
-                if model.open_spreadsheet(path) {
-                    break;
-                } else {
-                    println!("Provided spreadsheet didn't work")
-                }
+        if let Some(ref path) = xlsx_path {
+            if !model.open_spreadsheet(path) {
+                exit(1);
             }
+        } else {
+            exit(1);
         }
 
         Self {
             model: Arc::new(model),
             ranking_category: None,
+            new_entry_category: None,
             text_entry_box: String::new(),
             ranking_new_entry: false,
             matches_left: 0,
@@ -102,21 +102,21 @@ impl eframe::App for MyApp {
                         ui.label("Add a new entry to a category:");
                         egui::ComboBox::from_label("Select a category to add an entry to")
                             .selected_text(
-                                self.ranking_category
+                                self.new_entry_category
                                     .clone()
                                     .unwrap_or_else(|| "Choose...".to_string()),
                             )
                             .show_ui(ui, |ui| {
                                 for category in self.model.get_categories() {
                                     ui.selectable_value(
-                                        &mut self.ranking_category,
+                                        &mut self.new_entry_category,
                                         Some(category.clone()),
                                         category,
                                     );
                                 }
                             });
                         // Add new entry button
-                        if let Some(ref _category) = self.ranking_category {
+                        if let Some(ref _category) = self.new_entry_category {
                             ui.text_edit_singleline(&mut self.text_entry_box);
 
                             if ui.button("Add Entry").clicked() {
@@ -131,7 +131,9 @@ impl eframe::App for MyApp {
 
                                 Arc::get_mut(&mut self.model)
                                     .unwrap()
-                                    .add_entry(new_entry, self.ranking_category.clone().unwrap());
+                                    .add_entry(new_entry, self.new_entry_category.clone().unwrap());
+
+                                println!("Here");
 
                                 self.matches_left = 15; // However many are needed to get an accurate rating for a new entry.
                                 self.ranking_new_entry = true;
@@ -144,12 +146,18 @@ impl eframe::App for MyApp {
         });
 
         if self.waiting_for_match {
-            if let Some(category) = &self.ranking_category {
-                Arc::get_mut(&mut self.model)
-                    .unwrap()
-                    .set_current_match(category.to_string(), self.ranking_new_entry);
-                self.matches_left -= 1;
-                self.waiting_for_match = false;
+            let category = if self.ranking_new_entry {
+                self.new_entry_category.as_ref()
+            } else {
+                self.ranking_category.as_ref()
+            };
+
+            if let Some(category) = category {
+                if let Some(model) = Arc::get_mut(&mut self.model) {
+                    model.set_current_match(category.to_string(), self.ranking_new_entry);
+                    self.matches_left -= 1;
+                    self.waiting_for_match = false;
+                }
             }
         }
 
