@@ -1,7 +1,9 @@
 {
     "cSpell.words": [
+        "Catmull",
         "eframe",
         "egui",
+        "imageops",
         "Nlog",
         "powf",
         "reqwest",
