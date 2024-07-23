@@ -6,6 +6,7 @@ use image::{self};
 use image_search::{blocking::urls, Arguments};
 use rand::Rng;
 use std::collections::HashMap;
+use std::path::Path;
 use xlsxwriter::{Format, Workbook};
 
 #[derive(Debug)]
@@ -230,8 +231,7 @@ impl Model {
 }
 
 pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
-    println!("Loading image...");
-
+    println!("\nSearching for image...");
     // Remove plural from category for better googling.
     if category.ends_with('s') {
         category.pop();
@@ -243,16 +243,33 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
     }
     title = title.trim().to_string();
 
-    // Build query request.
-    let args =
-        Arguments::new(&format!("{} {}", title, category), 1).ratio(image_search::Ratio::Square);
-    let url_result = urls(args);
-
     // Default to placeholder image.
     let mut img_bytes = vec![0u8; 350 * 350 * 4]; // 350x350 RGBA placeholder, all black
 
-    if let Ok(mut urls) = url_result {
-        if let Some(url) = urls.pop() {
+    // Construct the local file path.
+    let file_name = format!("./images/{} {}.png", title, category);
+    let file_path = Path::new(&file_name);
+
+    // Check local files first for saved image.
+    if file_path.exists() {
+        println!("Image found locally: {}", file_name);
+        if let Ok(image) = image::open(file_path) {
+            img_bytes = image.to_rgba8().to_vec();
+            return ColorImage::from_rgba_unmultiplied([350, 350], &img_bytes);
+        } else {
+            eprintln!("Error loading local image");
+        }
+    }
+
+    // Image was not cached locally, build query request.
+    let args =
+        Arguments::new(&format!("{} {}", title, category), 4).ratio(image_search::Ratio::Square);
+    let url_result = urls(args);
+
+    // Attempt to download image from urls.
+    if let Ok(urls) = url_result {
+        for url in urls {
+            println!("Attempting url...");
             match reqwest::blocking::get(url) {
                 Ok(response) => match response.bytes() {
                     Ok(bytes) => {
@@ -264,6 +281,12 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
                                 image::imageops::FilterType::CatmullRom,
                             );
                             img_bytes = resized_image.to_rgba8().to_vec();
+
+                            // Cache the resized image locally.
+                            if let Err(e) = resized_image.save(file_path) {
+                                eprintln!("Error saving image locally: {:?}", e);
+                            }
+                            break;
                         } else {
                             eprintln!("Error decoding image data");
                         }

@@ -1,5 +1,5 @@
 [package]
-name = "media_rating_gui"
+name = "Media_Rating"
 version = "0.1.0"
 edition = "2021"
 

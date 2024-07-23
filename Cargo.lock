@@ -3,6 +3,22 @@
 version = 3
 
 [[package]]
+name = "Media_Rating"
+version = "0.1.0"
+dependencies = [
+ "calamine",
+ "console",
+ "eframe",
+ "egui",
+ "image",
+ "image_search",
+ "native-dialog",
+ "rand 0.8.5",
+ "reqwest",
+ "xlsxwriter",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2926,22 +2942,6 @@ checksum = "8ea1f30cedd69f0a2954655f7188c6a834246d2bcf1e315e2ac40c4b24dc9519"
 dependencies = [
  "cfg-if 1.0.0",
  "rayon",
-]
-
-[[package]]
-name = "media_rating_gui"
-version = "0.1.0"
-dependencies = [
- "calamine",
- "console",
- "eframe",
- "egui",
- "image",
- "image_search",
- "native-dialog",
- "rand 0.8.5",
- "reqwest",
- "xlsxwriter",
 ]
 
 [[package]]
