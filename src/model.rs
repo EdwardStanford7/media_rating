@@ -1,36 +1,46 @@
 use calamine::{open_workbook, DataType, Reader, Xlsx};
-use image::RgbaImage;
+use egui::{Color32, ColorImage};
 use rand::Rng;
 use std::collections::HashMap;
 use xlsxwriter::{Format, Workbook};
 
 #[derive(Debug)]
 pub struct Model {
+    filepath: String,
     // Name of category mapped to vector of all entries in it.
     categories: HashMap<String, Vec<Entry>>,
+    // Category and the indexes of the two entries in the match.
+    current_match: Option<(String, usize, usize)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Entry {
-    title: String,
-    rating: f64,
-    icon: RgbaImage,
+    pub title: String,
+    pub rating: f64,
+    pub icon: ColorImage,
 }
 
 impl Model {
     // Create a new Model object.
-    pub fn new(path: &str) -> Model {
-        let mut model = Model {
+    pub fn new() -> Model {
+        Model {
+            filepath: String::new(),
             categories: HashMap::new(),
-        };
+            current_match: None,
+        }
+    }
 
+    // Read data from a spreadsheet.
+    pub fn open_spreadsheet(&mut self, path: &str) -> bool {
         // Open a new workbook.
-        let mut workbook: Xlsx<_> = open_workbook(path).expect("Cannot open file");
+        let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
 
-        let sheet = workbook
-            .worksheet_range_at(0)
-            .expect("xlsx file has no sheets in it.")
-            .unwrap(); // Instead of printing error, probably want to send message to view that spreadsheet was invalid and to try again.
+        let sheet;
+        if let Some(result) = workbook.worksheet_range_at(0) {
+            sheet = result.unwrap();
+        } else {
+            return false;
+        }
 
         let (height, width) = sheet.get_size();
 
@@ -42,8 +52,7 @@ impl Model {
             match sheet.get_value((0, column as u32)).unwrap().get_string() {
                 Some(category_name) => {
                     current_category = category_name.to_string();
-                    model
-                        .categories
+                    self.categories
                         .insert(category_name.to_string(), Vec::new());
                 }
                 None => continue,
@@ -63,8 +72,7 @@ impl Model {
                             .get_float()
                         {
                             Some(rating) => {
-                                model
-                                    .categories
+                                self.categories
                                     .get_mut(&current_category)
                                     .unwrap()
                                     .push(Entry {
@@ -81,7 +89,9 @@ impl Model {
             }
         }
 
-        model
+        self.filepath = path.to_string();
+
+        true
     }
 
     // Return all categories that are currently in the Model.
@@ -89,27 +99,25 @@ impl Model {
         self.categories.keys().cloned().collect()
     }
 
-    // Reset and rank all categories.
-    pub fn rerank_all_categories(&mut self) {
-        // Collect the keys into a separate vector
-        let categories: Vec<String> = self.categories.keys().cloned().collect();
-        for category in categories {
-            self.rerank_category(category);
-        }
+    // Get how many entries there are in a category.
+    pub fn get_num_entries(&self, category: String) -> usize {
+        self.categories.get(&category).unwrap().len()
     }
 
-    // Reset the ranking of all entries in a category and perform matches to rank them all.
-    pub fn rerank_category(&mut self, category: String) {
+    // Set the current match that is being displayed. Choose 1 or 2 random entries depending on whether a new entry is being ranked or not.
+    pub fn set_current_match(&mut self, category: String, ranking_new_entry: bool) {
         let mut rng = rand::thread_rng();
         let entries = self.categories.get_mut(&category).unwrap();
         let length = entries.len();
 
-        // Average number of matches required to get accurate rankings is nlogn so do a bit more than that.
-        let num_matches: usize = length * ((f64::log2(length as f64) * 1.5) as usize);
+        let entry1;
+        let mut entry2;
 
-        for _i in 0..num_matches {
-            let entry1 = rng.gen_range(0..length);
-            let mut entry2;
+        if ranking_new_entry {
+            entry1 = rng.gen_range(0..length - 1);
+            entry2 = length - 1;
+        } else {
+            entry1 = rng.gen_range(0..length);
 
             // Make sure we don't match something against itself.
             loop {
@@ -118,41 +126,68 @@ impl Model {
                     break;
                 }
             }
+        }
 
-            let (left, right) = entries.split_at_mut(std::cmp::max(entry1, entry2));
-            let entry1_ref = &mut left[std::cmp::min(entry1, entry2)];
-            let entry2_ref = &mut right[0];
+        self.current_match = Some((category, entry1, entry2));
+    }
 
-            perform_match(entry1_ref, entry2_ref);
+    // Get the current match.
+    pub fn get_current_match(&self) -> Option<(Entry, Entry)> {
+        match &self.current_match {
+            Some((category, entry1_index, entry2_index)) => {
+                return Some((
+                    self.categories.get(category).unwrap()[*entry1_index].clone(),
+                    self.categories.get(category).unwrap()[*entry2_index].clone(),
+                ));
+            }
+            None => None,
         }
     }
 
-    // Add and rank a new entry.
-    pub fn add_new_entry(&mut self, title_: String, category: String) {
-        let mut entry = Entry {
-            title: title_.clone(),
-            rating: 400.0,
-            icon: get_icon(category.clone(), title_),
-        };
+    // Update the elo of the current match entries based on the winner.
+    pub fn calculate_current_match(&mut self, winner: usize) {
+        let (category, entry1_index, entry2_index) = self.current_match.clone().unwrap();
 
-        let mut rng = rand::thread_rng();
-        let entries = self.categories.get_mut(&category).unwrap();
-        let length = entries.len();
+        // The things I do for the borrow checker.
+        let entry1_rating = self.categories.get(&category).unwrap()[entry1_index].rating;
+        let entry2_rating = self.categories.get(&category).unwrap()[entry2_index].rating;
 
-        // Perform 15 random matches to place the new item.
-        for _i in 0..15 {
-            let random_opponent = &mut entries[rng.gen_range(0..length)];
+        let (s_a, s_b) = if winner == 1 { (1.0, 0.0) } else { (0.0, 1.0) };
 
-            perform_match(&mut entry, random_opponent);
+        // Expected score for each player
+        let e_a = 1.0 / (1.0 + f64::powf(10.0, (entry2_rating - entry1_rating) / 400.0));
+        let e_b = 1.0 - e_a;
+
+        // Sensitivity factor.
+        let k = 32.0;
+
+        // Update ratings
+        self.categories.get_mut(&category).unwrap()[entry1_index].rating += k * (s_a - e_a);
+        self.categories.get_mut(&category).unwrap()[entry2_index].rating += k * (s_b - e_b);
+    }
+
+    // Reset all the rankings in a category.
+    pub fn reset_category_rankings(&mut self, category: String) {
+        for entry in self.categories.get_mut(&category).unwrap() {
+            entry.rating = 400.0;
         }
+    }
 
+    // Reset current match to empty.
+    pub fn reset_current_match(&mut self) {
+        self.current_match = None;
+    }
+
+    // Add a new entry to a category.
+    pub fn add_entry(&mut self, entry: Entry, category: String) {
         self.categories.get_mut(&category).unwrap().push(entry);
     }
 
     // Write the contents of the model to a spreadsheet.
-    pub fn save_to_spreadsheet(self, path: &str) {
+    pub fn save_to_spreadsheet(&self) {
         // Open the workbook for writing
-        let workbook = Workbook::new(path).expect("Could not open spreadsheet for saving."); // Again send to GUI not print.
+        let workbook =
+            Workbook::new(&self.filepath).expect("Could not open spreadsheet for saving."); // Again send to GUI not print.
 
         // Create a new worksheet
         let mut sheet = workbook
@@ -166,9 +201,9 @@ impl Model {
         let mut column: u16 = 0;
 
         // Write the data
-        for (name, entries) in self.categories {
+        for (name, entries) in &self.categories {
             // Write Header
-            let _ = sheet.write_string(0, column, &name, Some(&format));
+            let _ = sheet.write_string(0, column, name, Some(&format));
 
             let mut row: u32 = 1;
             for entry in entries {
@@ -185,26 +220,7 @@ impl Model {
     }
 }
 
-// Perform one random match. Not sure yet how this will interact with GUI.
-fn perform_match(entry1: &mut Entry, entry2: &mut Entry) {
-    // Tell GUI what the match is and get the response back what the winner is.
-    // Which item wins the matchup.
-    let s_a: f64 = 0.0;
-    let s_b: f64 = 0.0;
-
-    // Expected gained/lost rating from the matchup.
-    let e_a = 1.0 / (1.0 + f64::powf(10.0, (entry2.rating - entry1.rating) / 400.0));
-    let e_b = 1.0 / (1.0 + f64::powf(10.0, (entry1.rating - entry2.rating) / 400.0));
-
-    // Sensitivity factor.
-    let k = 64.0;
-
-    // Gain/lose elo.
-    entry1.rating += k * (s_a - e_a);
-    entry2.rating += k * (s_b - e_b);
-}
-
-fn get_icon(mut category: String, mut title: String) -> RgbaImage {
+pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
     // Remove plural from category for better googling.
     if category.ends_with('s') {
         category.pop();
@@ -217,5 +233,7 @@ fn get_icon(mut category: String, mut title: String) -> RgbaImage {
     }
     title = title.trim().to_string();
 
-    RgbaImage::default()
+    // Create a temp image
+    let pixels = vec![Color32::BLACK.to_array(); 122500];
+    ColorImage::from_rgba_unmultiplied([350, 350], &pixels.concat())
 }

@@ -1,7 +1,11 @@
 {
     "cSpell.words": [
+        "eframe",
+        "egui",
         "Nlog",
         "powf",
+        "slint",
+        "unmultiplied",
         "xlsxwriter"
     ]
 }
