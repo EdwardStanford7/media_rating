@@ -1,5 +1,9 @@
+extern crate image_search;
+
 use calamine::{open_workbook, DataType, Reader, Xlsx};
-use egui::{Color32, ColorImage};
+use egui::ColorImage;
+use image::{self};
+use image_search::{blocking::urls, Arguments};
 use rand::Rng;
 use std::collections::HashMap;
 use xlsxwriter::{Format, Workbook};
@@ -226,19 +230,52 @@ impl Model {
 }
 
 pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
+    println!("Loading image...");
+
     // Remove plural from category for better googling.
     if category.ends_with('s') {
         category.pop();
     }
 
     // Remove any extra information from the title stored in the spreadsheet.
-    // let mut title_ = title.to_string();
     if let Some(index) = title.find('(') {
         title.truncate(index);
     }
     title = title.trim().to_string();
 
-    // Create a temp image
-    let pixels = vec![Color32::BLACK.to_array(); 122500];
-    ColorImage::from_rgba_unmultiplied([350, 350], &pixels.concat())
+    // Build query request.
+    let args =
+        Arguments::new(&format!("{} {}", title, category), 1).ratio(image_search::Ratio::Square);
+    let url_result = urls(args);
+
+    // Default to placeholder image.
+    let mut img_bytes = vec![0u8; 350 * 350 * 4]; // 350x350 RGBA placeholder, all black
+
+    if let Ok(mut urls) = url_result {
+        if let Some(url) = urls.pop() {
+            match reqwest::blocking::get(url) {
+                Ok(response) => match response.bytes() {
+                    Ok(bytes) => {
+                        // Decode image and resize to 350x350
+                        if let Ok(image) = image::load_from_memory(&bytes) {
+                            let resized_image = image.resize_exact(
+                                350,
+                                350,
+                                image::imageops::FilterType::CatmullRom,
+                            );
+                            img_bytes = resized_image.to_rgba8().to_vec();
+                        } else {
+                            eprintln!("Error decoding image data");
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading bytes from response: {:?}", e),
+                },
+                Err(e) => eprintln!("Error fetching URL: {:?}", e),
+            }
+        }
+    } else {
+        eprintln!("Error fetching URLs: {:?}", url_result.err());
+    }
+
+    ColorImage::from_rgba_unmultiplied([350, 350], &img_bytes)
 }

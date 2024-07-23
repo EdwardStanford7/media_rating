@@ -4,6 +4,7 @@
         "egui",
         "Nlog",
         "powf",
+        "reqwest",
         "slint",
         "unmultiplied",
         "xlsxwriter"
