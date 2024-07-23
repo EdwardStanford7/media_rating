@@ -1,12 +1,12 @@
 use eframe::egui;
 use egui::{Image, ImageButton};
 use native_dialog::FileDialog;
-use std::{process::exit, sync::Arc};
+use std::process::exit;
 mod model;
 use model::{Entry, Model};
 
 struct MyApp {
-    model: Arc<Model>,
+    model: Model,
     ranking_category: Option<String>,
     new_entry_category: Option<String>,
     text_entry_box: String,
@@ -34,7 +34,7 @@ impl Default for MyApp {
         }
 
         Self {
-            model: Arc::new(model),
+            model,
             ranking_category: None,
             new_entry_category: None,
             text_entry_box: String::new(),
@@ -53,13 +53,14 @@ impl eframe::App for MyApp {
                     ui.heading("Media Rating App");
 
                     if ui.button("Save").clicked() {
-                        Arc::get_mut(&mut self.model).unwrap().save_to_spreadsheet();
+                        self.model.save_to_spreadsheet();
+                        self.model.save_to_spreadsheet();
                     }
                 });
 
                 if self.matches_left == 0 {
                     self.ranking_new_entry = false;
-                    Arc::get_mut(&mut self.model).unwrap().reset_current_match();
+                    self.model.reset_current_match();
 
                     // Rerank category dropdown.
                     ui.vertical(|ui| {
@@ -82,12 +83,8 @@ impl eframe::App for MyApp {
                         // Rerank category button.
                         if ui.button("Rerank").clicked() {
                             if let Some(ref category) = self.ranking_category {
-                                let num_entries = Arc::get_mut(&mut self.model)
-                                    .unwrap()
-                                    .get_num_entries(category.to_string());
-                                Arc::get_mut(&mut self.model)
-                                    .unwrap()
-                                    .reset_category_rankings(category.to_string());
+                                let num_entries = self.model.get_num_entries(category.to_string());
+                                self.model.reset_category_rankings(category.to_string());
 
                                 self.matches_left =
                                     2 * num_entries * f64::log2(num_entries as f64) as usize;
@@ -129,8 +126,7 @@ impl eframe::App for MyApp {
                                     ),
                                 };
 
-                                Arc::get_mut(&mut self.model)
-                                    .unwrap()
+                                self.model
                                     .add_entry(new_entry, self.new_entry_category.clone().unwrap());
 
                                 println!("Here");
@@ -153,19 +149,19 @@ impl eframe::App for MyApp {
             };
 
             if let Some(category) = category {
-                if let Some(model) = Arc::get_mut(&mut self.model) {
-                    model.set_current_match(category.to_string(), self.ranking_new_entry);
-                    self.matches_left -= 1;
-                    self.waiting_for_match = false;
-                }
+                // if let Some(model) = Arc::get_mut(&mut self.model) {
+                self.model
+                    .set_current_match(category.to_string(), self.ranking_new_entry);
+                self.matches_left -= 1;
+                self.waiting_for_match = false;
+                // }
             }
         }
 
         // Current match display.
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                let model = Arc::get_mut(&mut self.model).unwrap();
-                if let Some((entry1, entry2)) = model.get_current_match() {
+                if let Some((entry1, entry2)) = self.model.get_current_match() {
                     let texture1 = ctx.load_texture(
                         entry1.title.clone(),
                         entry1.icon.clone(),
@@ -180,7 +176,7 @@ impl eframe::App for MyApp {
                     ui.vertical(|ui| {
                         let image1 = Image::new(&texture1);
                         if ui.add(ImageButton::new(image1)).clicked() {
-                            model.calculate_current_match(1);
+                            self.model.calculate_current_match(1);
                             self.waiting_for_match = true;
                         }
                         ui.label(entry1.title.clone());
@@ -188,7 +184,7 @@ impl eframe::App for MyApp {
                     ui.vertical(|ui| {
                         let image2 = Image::new(&texture2);
                         if ui.add(ImageButton::new(image2)).clicked() {
-                            model.calculate_current_match(2);
+                            self.model.calculate_current_match(2);
                             self.waiting_for_match = true;
                         }
                         ui.label(entry2.title.clone());
