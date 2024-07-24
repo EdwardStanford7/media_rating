@@ -5,9 +5,10 @@ use egui::ColorImage;
 use image::{self};
 use image_search::{blocking::urls, Arguments};
 use rand::Rng;
+use rust_xlsxwriter::{Format, Workbook};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::Path;
-use xlsxwriter::{Format, Workbook};
 
 #[derive(Debug)]
 pub struct Model {
@@ -23,6 +24,30 @@ pub struct Entry {
     pub title: String,
     pub rating: f64,
     pub icon: ColorImage,
+}
+
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        self.rating == other.rating && self.title == other.title
+    }
+}
+
+impl Eq for Entry {}
+
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .rating
+            .partial_cmp(&self.rating)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| self.title.cmp(&other.title))
+    }
 }
 
 impl Model {
@@ -171,9 +196,9 @@ impl Model {
 
         // Clamp the new ratings between 50 and 750
         self.categories.get_mut(&category).unwrap()[entry1_index].rating =
-            new_rating1.clamp(50.0, 750.0);
+            new_rating1.clamp(50.0, 749.0);
         self.categories.get_mut(&category).unwrap()[entry2_index].rating =
-            new_rating2.clamp(50.0, 750.0);
+            new_rating2.clamp(50.0, 749.0);
     }
 
     // Reset all the rankings in a category.
@@ -195,30 +220,67 @@ impl Model {
 
     // Write the contents of the model to a spreadsheet.
     pub fn save_to_spreadsheet(&self) {
-        // Open the workbook for writing
-        let workbook =
-            Workbook::new(&self.filepath).expect("Could not open spreadsheet for saving."); // Again send to GUI not print.
+        // Open a new workbook.
+        let mut workbook = Workbook::new();
 
         // Create a new worksheet
-        let mut sheet = workbook
-            .add_worksheet(Some("Ranked"))
-            .expect("Could not add a new worksheet to save results in."); // Same thing with GUI as above.
+        let sheet = workbook.add_worksheet();
+        let _ = sheet.set_name("Sorted".to_string());
 
-        let mut format = Format::new(); // Expand on this to really format everything the way I like it.
-        format.set_font_size(24.0);
-        format.set_bold();
+        // If the spreadsheet has more than 7 categories, too bad.
+        let binding = [
+            rust_xlsxwriter::Color::Cyan,
+            rust_xlsxwriter::Color::Lime,
+            rust_xlsxwriter::Color::Magenta,
+            rust_xlsxwriter::Color::Orange,
+            rust_xlsxwriter::Color::Pink,
+            rust_xlsxwriter::Color::Silver,
+            rust_xlsxwriter::Color::Yellow,
+        ];
+        let mut colors = (binding).iter();
+
+        let separator_format = Format::new().set_background_color(rust_xlsxwriter::Color::Black);
+
+        let _ = sheet.set_row_height(0, 30);
 
         let mut column: u16 = 0;
-
-        // Write the data
+        // Write the data.
         for (name, entries) in &self.categories {
-            // Write Header
-            let _ = sheet.write_string(0, column, name, Some(&format));
+            let current_color = *colors.next().unwrap_or(&rust_xlsxwriter::Color::White);
 
+            // Make entire category columns be one color with black column separator.
+            let category_format = Format::new()
+                .set_font_size(12.0)
+                .set_background_color(current_color);
+            let _ = sheet.set_column_format(column, &category_format);
+            let _ = sheet.set_column_format(column + 1, &category_format);
+            let _ = sheet.set_column_format(column + 2, &separator_format);
+            let _ = sheet.set_column_width(column, 40.0);
+            let _ = sheet.set_column_width(column + 1, 1.5);
+            let _ = sheet.set_column_width(column + 2, 7.0);
+
+            // Write Header
+            let header_format = Format::new()
+                .set_font_size(25.0)
+                .set_bold()
+                .set_background_color(current_color);
+            let _ = sheet.write_string_with_format(0, column, name, &header_format);
+
+            // Write the category from best to worst.
+            let mut entries_sorted = entries.clone();
+            entries_sorted.sort();
+
+            // Write category entries.
             let mut row: u32 = 1;
-            for entry in entries {
-                let _ = sheet.write_string(row, column, &entry.title, None);
-                let _ = sheet.write_number(row, column + 1, (entry.rating / 100.0).round(), None);
+            for entry in entries_sorted {
+                let _ = sheet.write_string_with_format(row, column, &entry.title, &category_format);
+                let _ = sheet.write_number_with_format(
+                    row,
+                    column + 1,
+                    (entry.rating / 100.0).round(),
+                    &category_format,
+                );
+
                 row += 1;
             }
 
@@ -226,7 +288,7 @@ impl Model {
         }
 
         // Save the workbook
-        let _ = workbook.close();
+        let _ = workbook.save(Path::new(&self.filepath));
     }
 }
 
@@ -263,7 +325,7 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
 
     // Image was not cached locally, build query request.
     let args =
-        Arguments::new(&format!("{} {}", title, category), 4).ratio(image_search::Ratio::Square);
+        Arguments::new(&format!("{} {}", title, category), 4).ratio(image_search::Ratio::Tall);
     let url_result = urls(args);
 
     // Attempt to download image from urls.
