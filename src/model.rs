@@ -338,20 +338,20 @@ pub fn get_icon(category: String, mut title: String) -> ColorImage {
 
                             // Cache the resized image locally.
                             if let Err(e) = resized_image.save(file_path) {
-                                eprintln!("Error saving image locally: {:?}", e);
+                                eprintln!("Error saving image locally: {}", e);
                             }
                             break;
                         } else {
                             eprintln!("Error decoding image data");
                         }
                     }
-                    Err(e) => eprintln!("Error reading bytes from response: {:?}", e),
+                    Err(e) => eprintln!("Error reading bytes from response: {}", e),
                 },
-                Err(e) => eprintln!("Error fetching URL: {:?}", e),
+                Err(e) => eprintln!("Error fetching URL: {}", e),
             }
         }
     } else {
-        eprintln!("Error fetching URLs: {:?}", url_result.err());
+        eprintln!("Error fetching URLs: {}", url_result.err().unwrap());
     }
 
     ColorImage::from_rgba_unmultiplied([380, 400], &img_bytes)
