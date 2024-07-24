@@ -227,15 +227,13 @@ impl Model {
         let sheet = workbook.add_worksheet();
         let _ = sheet.set_name("Sorted".to_string());
 
-        // If the spreadsheet has more than 7 categories, too bad.
+        // If the spreadsheet has more than 5 categories, too bad.
         let binding = [
-            rust_xlsxwriter::Color::Cyan,
-            rust_xlsxwriter::Color::Lime,
-            rust_xlsxwriter::Color::Magenta,
-            rust_xlsxwriter::Color::Orange,
-            rust_xlsxwriter::Color::Pink,
-            rust_xlsxwriter::Color::Silver,
-            rust_xlsxwriter::Color::Yellow,
+            rust_xlsxwriter::Color::RGB(0xd8bfd8),
+            rust_xlsxwriter::Color::RGB(0x93ccea),
+            rust_xlsxwriter::Color::RGB(0x90ee90),
+            rust_xlsxwriter::Color::RGB(0xfed8b1),
+            rust_xlsxwriter::Color::RGB(0xab0b23),
         ];
         let mut colors = (binding).iter();
 
@@ -292,13 +290,7 @@ impl Model {
     }
 }
 
-pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
-    println!("\nSearching for image...");
-    // Remove plural from category for better googling.
-    if category.ends_with('s') {
-        category.pop();
-    }
-
+pub fn get_icon(category: String, mut title: String) -> ColorImage {
     // Remove any extra information from the title stored in the spreadsheet.
     if let Some(index) = title.find('(') {
         title.truncate(index);
@@ -306,7 +298,7 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
     title = title.trim().to_string();
 
     // Default to placeholder image.
-    let mut img_bytes = vec![0u8; 350 * 350 * 4]; // 350x350 RGBA placeholder, all black
+    let mut img_bytes = vec![0u8; 380 * 400 * 4]; //     380x400, RGBA placeholder, all black
 
     // Construct the local file path.
     let file_name = format!("./images/{} {}.png", title, category);
@@ -317,7 +309,7 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
         println!("Image found locally: {}", file_name);
         if let Ok(image) = image::open(file_path) {
             img_bytes = image.to_rgba8().to_vec();
-            return ColorImage::from_rgba_unmultiplied([350, 350], &img_bytes);
+            return ColorImage::from_rgba_unmultiplied([380, 400], &img_bytes);
         } else {
             eprintln!("Error loading local image");
         }
@@ -335,11 +327,11 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
             match reqwest::blocking::get(url) {
                 Ok(response) => match response.bytes() {
                     Ok(bytes) => {
-                        // Decode image and resize to 350x350
+                        // Decode image and resize to 380x400
                         if let Ok(image) = image::load_from_memory(&bytes) {
                             let resized_image = image.resize_exact(
-                                350,
-                                350,
+                                380,
+                                400,
                                 image::imageops::FilterType::CatmullRom,
                             );
                             img_bytes = resized_image.to_rgba8().to_vec();
@@ -362,5 +354,5 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
         eprintln!("Error fetching URLs: {:?}", url_result.err());
     }
 
-    ColorImage::from_rgba_unmultiplied([350, 350], &img_bytes)
+    ColorImage::from_rgba_unmultiplied([380, 400], &img_bytes)
 }

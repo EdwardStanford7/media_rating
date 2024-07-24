@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{Image, ImageButton};
+use egui::{FontId, Image, ImageButton, RichText};
 use native_dialog::FileDialog;
 use std::process::exit;
 mod model;
@@ -179,7 +179,9 @@ impl eframe::App for MyApp {
                             self.model.calculate_current_match(1);
                             self.waiting_for_match = true;
                         }
-                        ui.label(entry1.title.clone());
+                        ui.label(
+                            RichText::new(entry1.title.clone()).font(FontId::proportional(25.0)),
+                        );
                     });
                     ui.vertical(|ui| {
                         let image2 = Image::new(&texture2);
@@ -187,7 +189,9 @@ impl eframe::App for MyApp {
                             self.model.calculate_current_match(2);
                             self.waiting_for_match = true;
                         }
-                        ui.label(entry2.title.clone());
+                        ui.label(
+                            RichText::new(entry2.title.clone()).font(FontId::proportional(25.0)),
+                        );
                     });
                 }
             });
