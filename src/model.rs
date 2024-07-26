@@ -17,6 +17,8 @@ pub struct Model {
     categories: HashMap<String, Vec<Entry>>,
     // Category and the indexes of the two entries in the match.
     current_match: Option<(String, usize, usize)>,
+    // Current new entry being ranked.
+    new_entry: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +59,7 @@ impl Model {
             filepath: String::new(),
             categories: HashMap::new(),
             current_match: None,
+            new_entry: None,
         }
     }
 
@@ -107,7 +110,7 @@ impl Model {
                                     .unwrap()
                                     .push(Entry {
                                         title: title.to_owned(),
-                                        rating: rating * 100.0,
+                                        rating: (rating * 100.0) + 300.0, // Some extra leeway so that the elo system works properly.
                                         icon: get_icon(current_category.clone(), title.to_owned()),
                                     });
                             }
@@ -130,35 +133,38 @@ impl Model {
     }
 
     // Get how many entries there are in a category.
-    pub fn get_num_entries(&self, category: String) -> usize {
-        self.categories.get(&category).unwrap().len()
+    pub fn get_num_entries(&self, category: &String) -> usize {
+        self.categories.get(category).unwrap().len()
     }
 
     // Set the current match that is being displayed. Choose 1 or 2 random entries depending on whether a new entry is being ranked or not.
-    pub fn set_current_match(&mut self, category: String, ranking_new_entry: bool) {
+    pub fn set_current_match(&mut self, category: &String) {
         let mut rng = rand::thread_rng();
-        let entries = self.categories.get_mut(&category).unwrap();
+        let entries = self.categories.get_mut(category).unwrap();
         let length = entries.len();
 
         let entry1;
         let mut entry2;
 
-        if ranking_new_entry {
-            entry1 = length - 1;
-            entry2 = rng.gen_range(0..length - 1);
+        if let Some(new_entry) = self.new_entry {
+            entry1 = new_entry;
         } else {
             entry1 = rng.gen_range(0..length);
+        }
 
-            // Make sure we don't match something against itself.
-            loop {
-                entry2 = rng.gen_range(0..length);
-                if entry2 != entry1 {
-                    break;
-                }
+        // Make sure we don't match something against itself.
+        let num_entries = self.get_num_entries(category);
+        loop {
+            let range = (num_entries / 10) + 1;
+            let lower = (entry1 as i32 - range as i32).max(0) as usize; // Prevent unsigned underflow here.
+            let upper = (entry1 + range + 1).min(length);
+            entry2 = rng.gen_range(lower..upper);
+            if entry2 != entry1 {
+                break;
             }
         }
 
-        self.current_match = Some((category, entry1, entry2));
+        self.current_match = Some((category.to_string(), entry1, entry2));
     }
 
     // Get the current match.
@@ -176,10 +182,11 @@ impl Model {
 
     // Update the elo of the current match entries based on the winner.
     pub fn calculate_current_match(&mut self, winner: usize) {
-        let (category, entry1_index, entry2_index) = self.current_match.clone().unwrap();
+        let (category_name, entry1_index, entry2_index) = self.current_match.clone().unwrap();
+        let category = self.categories.get_mut(&category_name).unwrap();
 
-        let entry1_rating = self.categories.get(&category).unwrap()[entry1_index].rating;
-        let entry2_rating = self.categories.get(&category).unwrap()[entry2_index].rating;
+        let entry1_rating = category[entry1_index].rating;
+        let entry2_rating = category[entry2_index].rating;
 
         let (s_a, s_b) = if winner == 1 { (1.0, 0.0) } else { (0.0, 1.0) };
 
@@ -191,20 +198,22 @@ impl Model {
         let k = 64.0;
 
         // Update ratings
-        let new_rating1 = (entry1_rating + k * (s_a - e_a)).round();
-        let new_rating2 = (entry2_rating + k * (s_b - e_b)).round();
+        category[entry1_index].rating = (entry1_rating + k * (s_a - e_a)).round();
+        category[entry2_index].rating = (entry2_rating + k * (s_b - e_b)).round();
 
-        // Clamp the new ratings between 50 and 750
-        self.categories.get_mut(&category).unwrap()[entry1_index].rating =
-            new_rating1.clamp(50.0, 749.0);
-        self.categories.get_mut(&category).unwrap()[entry2_index].rating =
-            new_rating2.clamp(50.0, 749.0);
+        if let Some(original_position) = self.new_entry {
+            let value = category[original_position].clone();
+            category.sort();
+            self.new_entry = Some(category.binary_search(&value).ok().unwrap());
+        } else {
+            category.sort();
+        }
     }
 
     // Reset all the rankings in a category.
-    pub fn reset_category_rankings(&mut self, category: String) {
-        for entry in self.categories.get_mut(&category).unwrap() {
-            entry.rating = 400.0;
+    pub fn reset_category_rankings(&mut self, category: &String) {
+        for entry in self.categories.get_mut(category).unwrap() {
+            entry.rating = 700.0;
         }
     }
 
@@ -215,7 +224,24 @@ impl Model {
 
     // Add a new entry to a category.
     pub fn add_entry(&mut self, entry: Entry, category: String) {
-        self.categories.get_mut(&category).unwrap().push(entry);
+        let category = self.categories.get_mut(&category).unwrap();
+        let position = match category.binary_search(&entry) {
+            Ok(index) => index, // This case won't occur since the entry isn't already present.
+            Err(index) => index, // `index` is the insertion point
+        };
+
+        category.insert(position, entry);
+        self.new_entry = Some(position);
+    }
+
+    // Reset the index of the new entry being ranked to None.
+    pub fn reset_new_entry(&mut self) {
+        self.new_entry = None;
+    }
+
+    // Check if a new entry is being ranked.
+    pub fn ranking_new_entry(&self) -> bool {
+        self.new_entry.is_some()
     }
 
     // Write the contents of the model to a spreadsheet.
@@ -253,7 +279,7 @@ impl Model {
             let _ = sheet.set_column_format(column, &category_format);
             let _ = sheet.set_column_format(column + 1, &category_format);
             let _ = sheet.set_column_format(column + 2, &separator_format);
-            let _ = sheet.set_column_width(column, 40.0);
+            let _ = sheet.set_column_width(column, 50.0);
             let _ = sheet.set_column_width(column + 1, 1.5);
             let _ = sheet.set_column_width(column + 2, 7.0);
 
@@ -275,7 +301,8 @@ impl Model {
                 let _ = sheet.write_number_with_format(
                     row,
                     column + 1,
-                    (entry.rating / 100.0).round(),
+                    // Normalize ratings back to the numbers 1-7 from the spreadsheet.
+                    ((entry.rating - 300.0).clamp(50.0, 749.0) / 100.0).round(),
                     &category_format,
                 );
 
@@ -298,7 +325,7 @@ pub fn get_icon(category: String, mut title: String) -> ColorImage {
     title = title.trim().to_string();
 
     // Default to placeholder image.
-    let mut img_bytes = vec![0u8; 380 * 400 * 4]; //     380x400, RGBA placeholder, all black
+    let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
 
     // Construct the local file path.
     let file_name = format!("./images/{} {}.png", title, category);
@@ -306,10 +333,9 @@ pub fn get_icon(category: String, mut title: String) -> ColorImage {
 
     // Check local files first for saved image.
     if file_path.exists() {
-        println!("Image found locally: {}", file_name);
         if let Ok(image) = image::open(file_path) {
             img_bytes = image.to_rgba8().to_vec();
-            return ColorImage::from_rgba_unmultiplied([380, 400], &img_bytes);
+            return ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes);
         } else {
             eprintln!("Error loading local image");
         }
@@ -323,15 +349,14 @@ pub fn get_icon(category: String, mut title: String) -> ColorImage {
     // Attempt to download image from urls.
     if let Ok(urls) = url_result {
         for url in urls {
-            println!("Attempting url...");
             match reqwest::blocking::get(url) {
                 Ok(response) => match response.bytes() {
                     Ok(bytes) => {
-                        // Decode image and resize to 380x400
+                        // Decode image and resize to 380x475
                         if let Ok(image) = image::load_from_memory(&bytes) {
                             let resized_image = image.resize_exact(
                                 380,
-                                400,
+                                475,
                                 image::imageops::FilterType::CatmullRom,
                             );
                             img_bytes = resized_image.to_rgba8().to_vec();
@@ -354,5 +379,5 @@ pub fn get_icon(category: String, mut title: String) -> ColorImage {
         eprintln!("Error fetching URLs: {}", url_result.err().unwrap());
     }
 
-    ColorImage::from_rgba_unmultiplied([380, 400], &img_bytes)
+    ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes)
 }

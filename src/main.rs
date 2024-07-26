@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{FontId, Image, ImageButton, RichText};
+use egui::{FontId, Image, ImageButton};
 use native_dialog::FileDialog;
 use std::process::exit;
 mod model;
@@ -10,7 +10,7 @@ struct MyApp {
     ranking_category: Option<String>,
     new_entry_category: Option<String>,
     text_entry_box: String,
-    ranking_new_entry: bool,
+    // ranking_new_entry: bool,
     matches_left: usize,
     waiting_for_match: bool,
 }
@@ -38,7 +38,7 @@ impl Default for MyApp {
             ranking_category: None,
             new_entry_category: None,
             text_entry_box: String::new(),
-            ranking_new_entry: false,
+            // ranking_new_entry: false,
             matches_left: 0,
             waiting_for_match: false,
         }
@@ -59,7 +59,8 @@ impl eframe::App for MyApp {
                 });
 
                 if self.matches_left == 0 {
-                    self.ranking_new_entry = false;
+                    self.model.reset_new_entry();
+                    // self.ranking_new_entry = false;
                     self.model.reset_current_match();
 
                     // Rerank category dropdown.
@@ -83,12 +84,13 @@ impl eframe::App for MyApp {
                         // Rerank category button.
                         if ui.button("Rerank").clicked() {
                             if let Some(ref category) = self.ranking_category {
-                                let num_entries = self.model.get_num_entries(category.to_string());
-                                self.model.reset_category_rankings(category.to_string());
+                                let num_entries = self.model.get_num_entries(category);
+                                self.model.reset_category_rankings(category);
 
                                 self.matches_left =
                                     2 * num_entries * f64::log2(num_entries as f64) as usize;
-                                self.ranking_new_entry = false;
+                                // self.ranking_new_entry = false;
+                                self.model.reset_new_entry();
                                 self.waiting_for_match = true;
                             }
                         }
@@ -119,7 +121,7 @@ impl eframe::App for MyApp {
                             if ui.button("Add Entry").clicked() {
                                 let new_entry = Entry {
                                     title: self.text_entry_box.clone(),
-                                    rating: 400.0,
+                                    rating: 700.0,
                                     icon: model::get_icon(
                                         _category.to_string(),
                                         self.text_entry_box.clone(),
@@ -128,11 +130,7 @@ impl eframe::App for MyApp {
 
                                 self.model
                                     .add_entry(new_entry, self.new_entry_category.clone().unwrap());
-
-                                println!("Here");
-
-                                self.matches_left = 15; // However many are needed to get an accurate rating for a new entry.
-                                self.ranking_new_entry = true;
+                                self.matches_left = 15;
                                 self.waiting_for_match = true;
                             }
                         }
@@ -142,7 +140,7 @@ impl eframe::App for MyApp {
         });
 
         if self.waiting_for_match {
-            let category = if self.ranking_new_entry {
+            let category = if self.model.ranking_new_entry() {
                 self.new_entry_category.as_ref()
             } else {
                 self.ranking_category.as_ref()
@@ -150,8 +148,7 @@ impl eframe::App for MyApp {
 
             if let Some(category) = category {
                 // if let Some(model) = Arc::get_mut(&mut self.model) {
-                self.model
-                    .set_current_match(category.to_string(), self.ranking_new_entry);
+                self.model.set_current_match(category);
                 self.matches_left -= 1;
                 self.waiting_for_match = false;
                 // }
@@ -175,22 +172,44 @@ impl eframe::App for MyApp {
 
                     ui.vertical(|ui| {
                         let image1 = Image::new(&texture1);
+                        let width1: f32 = image1.size().unwrap().x;
+
                         if ui.add(ImageButton::new(image1)).clicked() {
                             self.model.calculate_current_match(1);
                             self.waiting_for_match = true;
                         }
-                        ui.label(
-                            RichText::new(entry1.title.clone()).font(FontId::proportional(25.0)),
+
+                        // Set the maximum width for the label to enable wrapping
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(width1, 0.0),
+                            egui::Layout::top_down(egui::Align::LEFT),
+                            |ui| {
+                                ui.label(
+                                    egui::RichText::new(entry1.title.clone())
+                                        .font(FontId::proportional(25.0)),
+                                );
+                            },
                         );
                     });
                     ui.vertical(|ui| {
                         let image2 = Image::new(&texture2);
+                        let width2: f32 = image2.size().unwrap().x;
+
                         if ui.add(ImageButton::new(image2)).clicked() {
                             self.model.calculate_current_match(2);
                             self.waiting_for_match = true;
                         }
-                        ui.label(
-                            RichText::new(entry2.title.clone()).font(FontId::proportional(25.0)),
+
+                        // Set the maximum width for the label to enable wrapping
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(width2, 0.0),
+                            egui::Layout::top_down(egui::Align::LEFT),
+                            |ui| {
+                                ui.label(
+                                    egui::RichText::new(entry2.title.clone())
+                                        .font(FontId::proportional(25.0)),
+                                );
+                            },
                         );
                     });
                 }
