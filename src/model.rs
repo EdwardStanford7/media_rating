@@ -8,12 +8,13 @@ use rand::Rng;
 use rust_xlsxwriter::{Format, Workbook};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::env;
 use std::path::Path;
 
 #[derive(Debug)]
 pub struct Model {
-    filepath: String,
+    file_directory: String,
+    file_name: String,
+
     // Name of category mapped to vector of all entries in it.
     categories: HashMap<String, Vec<Entry>>,
     // Category and the indexes of the two entries in the match.
@@ -57,7 +58,8 @@ impl Model {
     // Create a new Model object.
     pub fn new() -> Model {
         Model {
-            filepath: String::new(),
+            file_directory: String::new(),
+            file_name: String::new(),
             categories: HashMap::new(),
             current_match: None,
             new_entry: None,
@@ -65,9 +67,9 @@ impl Model {
     }
 
     // Read data from a spreadsheet.
-    pub fn open_spreadsheet(&mut self, path: &str) -> bool {
+    pub fn open_spreadsheet(&mut self, file_directory: String, file_name: String) -> bool {
         // Open a new workbook.
-        let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
+        let mut workbook: Xlsx<_> = open_workbook(file_directory.clone() + &file_name).unwrap();
 
         let sheet;
         if let Some(result) = workbook.worksheet_range_at(0) {
@@ -112,7 +114,11 @@ impl Model {
                                     .push(Entry {
                                         title: title.to_owned(),
                                         rating: (rating * 100.0) + 300.0, // Some extra leeway so that the elo system works properly.
-                                        icon: get_icon(current_category.clone(), title.to_owned()),
+                                        icon: get_icon(
+                                            current_category.clone(),
+                                            title.to_owned(),
+                                            file_directory.clone(),
+                                        ),
                                     });
                             }
                             None => continue,
@@ -123,7 +129,8 @@ impl Model {
             }
         }
 
-        self.filepath = path.to_string();
+        self.file_directory = file_directory;
+        self.file_name = file_name;
 
         true
     }
@@ -314,11 +321,11 @@ impl Model {
         }
 
         // Save the workbook
-        let _ = workbook.save(Path::new(&self.filepath));
+        let _ = workbook.save(Path::new(&(self.file_directory.clone() + &self.file_name)));
     }
 }
 
-pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
+pub fn get_icon(mut category: String, mut title: String, file_directory: String) -> ColorImage {
     // Remove any extra information from the title and category stored in the spreadsheet.
     if let Some(index) = title.find('(') {
         title.truncate(index);
@@ -330,25 +337,13 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
     let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
 
     // Construct the relative file path.
-    let file_name = format!("/images/{} {}.png", title, category);
-    let binding = env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string()
-        + &file_name;
-    let file_path = Path::new(&binding);
+    let binding = format!("{}images/{} {}.png", file_directory, title, category);
+    let full_path = Path::new(&binding);
 
     // Check local files first for saved image.
-    if file_path.exists() {
-        if let Ok(image) = image::open(file_path) {
-            img_bytes = image.to_rgba8().to_vec();
-            return ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes);
-        } else {
-            eprintln!("Error loading local image");
-        }
+    if let Ok(image) = image::open(full_path) {
+        img_bytes = image.to_rgba8().to_vec();
+        return ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes);
     }
 
     // Image was not cached locally, build query request.
@@ -372,7 +367,7 @@ pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
                             img_bytes = resized_image.to_rgba8().to_vec();
 
                             // Cache the resized image locally.
-                            if let Err(e) = resized_image.save(file_path) {
+                            if let Err(e) = resized_image.save(full_path) {
                                 eprintln!("Error saving image locally: {}", e);
                             }
                             break;
