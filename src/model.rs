@@ -8,6 +8,7 @@ use rand::Rng;
 use rust_xlsxwriter::{Format, Workbook};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::env;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -318,20 +319,27 @@ impl Model {
 }
 
 pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
-    // Remove any extra information from the title stored in the spreadsheet.
+    // Remove any extra information from the title and category stored in the spreadsheet.
     if let Some(index) = title.find('(') {
         title.truncate(index);
     }
     title = title.trim().to_string();
-
     category.pop();
 
     // Default to placeholder image.
     let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
 
-    // Construct the local file path.
-    let file_name = format!("./images/{} {}.png", title, category);
-    let file_path = Path::new(&file_name);
+    // Construct the relative file path.
+    let file_name = format!("/images/{} {}.png", title, category);
+    let binding = env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string()
+        + &file_name;
+    let file_path = Path::new(&binding);
 
     // Check local files first for saved image.
     if file_path.exists() {
