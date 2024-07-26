@@ -317,12 +317,14 @@ impl Model {
     }
 }
 
-pub fn get_icon(category: String, mut title: String) -> ColorImage {
+pub fn get_icon(mut category: String, mut title: String) -> ColorImage {
     // Remove any extra information from the title stored in the spreadsheet.
     if let Some(index) = title.find('(') {
         title.truncate(index);
     }
     title = title.trim().to_string();
+
+    category.pop();
 
     // Default to placeholder image.
     let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
