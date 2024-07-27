@@ -88,6 +88,7 @@ impl eframe::App for MyApp {
                 if self.matches_left == 0 {
                     self.model.reset_new_entry();
                     self.model.reset_current_match();
+                    self.waiting_for_match = false;
 
                     ui.add_space(10.0);
 
@@ -148,7 +149,7 @@ impl eframe::App for MyApp {
                             if ui.button("Add Entry").clicked() {
                                 let new_entry = Entry {
                                     title: self.text_entry_box.clone(),
-                                    rating: 700.0,
+                                    rating: 400.0,
                                     icon: model::get_icon(
                                         _category.to_string(),
                                         self.text_entry_box.clone(),
@@ -158,8 +159,9 @@ impl eframe::App for MyApp {
 
                                 self.model
                                     .add_entry(new_entry, self.new_entry_category.clone().unwrap());
-                                self.matches_left = 15;
+                                self.matches_left = 20;
                                 self.waiting_for_match = true;
+                                self.text_entry_box.clear();
                             }
                         }
                     });

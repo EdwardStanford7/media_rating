@@ -113,7 +113,7 @@ impl Model {
                                     .unwrap()
                                     .push(Entry {
                                         title: title.to_owned(),
-                                        rating: (rating * 100.0) + 300.0, // Some extra leeway so that the elo system works properly.
+                                        rating: rating * 100.0,
                                         icon: get_icon(
                                             current_category.clone(),
                                             title.to_owned(),
@@ -303,7 +303,7 @@ impl Model {
                     row,
                     column + 1,
                     // Normalize ratings back to the numbers 1-7 from the spreadsheet.
-                    ((entry.rating - 300.0).clamp(50.0, 749.0) / 100.0).round(),
+                    (entry.rating.clamp(50.0, 749.0) / 100.0).round(),
                     &category_format,
                 );
 
