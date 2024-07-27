@@ -79,9 +79,7 @@ impl eframe::App for MyApp {
                 // App name and save button.
                 ui.vertical(|ui| {
                     ui.heading("Media Rating App");
-
                     if ui.button("Save").clicked() {
-                        self.model.save_to_spreadsheet();
                         self.model.save_to_spreadsheet();
                     }
                 });
@@ -90,6 +88,8 @@ impl eframe::App for MyApp {
                 if self.matches_left == 0 {
                     self.model.reset_new_entry();
                     self.model.reset_current_match();
+
+                    ui.add_space(10.0);
 
                     // Rerank category dropdown.
                     ui.vertical(|ui| {
@@ -113,16 +113,15 @@ impl eframe::App for MyApp {
                         if ui.button("Rerank").clicked() {
                             if let Some(ref category) = self.ranking_category {
                                 let num_entries = self.model.get_num_entries(category);
-                                self.model.reset_category_rankings(category);
-
                                 self.matches_left =
-                                    2 * num_entries * f64::log2(num_entries as f64) as usize;
-                                // self.ranking_new_entry = false;
+                                    num_entries * f64::log2(num_entries as f64) as usize;
                                 self.model.reset_new_entry();
                                 self.waiting_for_match = true;
                             }
                         }
                     });
+
+                    ui.add_space(10.0);
 
                     // Add new entry dropdown
                     ui.vertical(|ui| {
@@ -164,6 +163,22 @@ impl eframe::App for MyApp {
                             }
                         }
                     });
+                } else {
+                    // Display ranking menu.
+                    ui.add_space(50.0);
+
+                    // Tell the user how many matches there are left.
+                    ui.label(format!("matches left: {}", self.matches_left));
+
+                    ui.add_space(20.0);
+
+                    // Let the user cancel ranking whenever.
+                    if ui.button("Cancel Ranking").clicked() {
+                        self.matches_left = 0;
+                        self.waiting_for_match = false;
+                        self.model.reset_current_match();
+                        self.model.reset_new_entry();
+                    }
                 }
             });
         });
@@ -215,8 +230,11 @@ impl eframe::App for MyApp {
                             egui::Layout::top_down(egui::Align::LEFT),
                             |ui| {
                                 ui.label(
-                                    egui::RichText::new(entry1.title.clone())
-                                        .font(FontId::proportional(25.0)),
+                                    egui::RichText::new(format!(
+                                        "{} ({})",
+                                        entry1.title, entry1.rating
+                                    ))
+                                    .font(FontId::proportional(25.0)),
                                 );
                             },
                         );
@@ -238,8 +256,11 @@ impl eframe::App for MyApp {
                             egui::Layout::top_down(egui::Align::LEFT),
                             |ui| {
                                 ui.label(
-                                    egui::RichText::new(entry2.title.clone())
-                                        .font(FontId::proportional(25.0)),
+                                    egui::RichText::new(format!(
+                                        "{} ({})",
+                                        entry2.title, entry2.rating
+                                    ))
+                                    .font(FontId::proportional(25.0)),
                                 );
                             },
                         );

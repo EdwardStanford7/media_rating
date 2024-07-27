@@ -203,7 +203,7 @@ impl Model {
         let e_b = 1.0 - e_a;
 
         // Sensitivity factor.
-        let k = 64.0;
+        let k = 32.0;
 
         // Update ratings
         category[entry1_index].rating = (entry1_rating + k * (s_a - e_a)).round();
@@ -215,13 +215,6 @@ impl Model {
             self.new_entry = Some(category.binary_search(&value).ok().unwrap());
         } else {
             category.sort();
-        }
-    }
-
-    // Reset all the rankings in a category.
-    pub fn reset_category_rankings(&mut self, category: &String) {
-        for entry in self.categories.get_mut(category).unwrap() {
-            entry.rating = 700.0;
         }
     }
 
