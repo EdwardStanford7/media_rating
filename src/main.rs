@@ -92,6 +92,7 @@ impl eframe::App for MyApp {
                                 self.free_rank = false;
                                 self.model.clear_current_match();
                                 self.model.clear_new_entry();
+                                self.model.save_to_spreadsheet();
                             }
                         } else if ui.button("Free Rank").clicked() {
                             {
