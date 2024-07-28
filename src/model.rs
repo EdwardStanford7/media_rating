@@ -113,7 +113,7 @@ impl Model {
                                     .unwrap()
                                     .push(Entry {
                                         title: title.to_owned(),
-                                        rating: rating * 100.0,
+                                        rating,
                                         icon: get_icon(
                                             current_category.clone(),
                                             title.to_owned(),
@@ -140,6 +140,12 @@ impl Model {
         self.categories.keys().cloned().collect()
     }
 
+    pub fn get_rand_category(&mut self) -> String {
+        let categories = self.get_categories();
+        let mut rng = rand::thread_rng();
+        categories[rng.gen_range(0..categories.len())].clone()
+    }
+
     // Get how many entries there are in a category.
     pub fn get_num_entries(&self, category: &String) -> usize {
         self.categories.get(category).unwrap().len()
@@ -160,7 +166,7 @@ impl Model {
             entry1 = rng.gen_range(0..length);
         }
 
-        // Make sure we don't match something against itself.
+        // Match entries against others with similar elo.
         let num_entries = self.get_num_entries(category);
         loop {
             let range = (num_entries / 10) + 1;
@@ -219,7 +225,7 @@ impl Model {
     }
 
     // Reset current match to empty.
-    pub fn reset_current_match(&mut self) {
+    pub fn clear_current_match(&mut self) {
         self.current_match = None;
     }
 
@@ -236,7 +242,7 @@ impl Model {
     }
 
     // Reset the index of the new entry being ranked to None.
-    pub fn reset_new_entry(&mut self) {
+    pub fn clear_new_entry(&mut self) {
         self.new_entry = None;
     }
 
@@ -281,7 +287,7 @@ impl Model {
             let _ = sheet.set_column_format(column + 1, &category_format);
             let _ = sheet.set_column_format(column + 2, &separator_format);
             let _ = sheet.set_column_width(column, 50.0);
-            let _ = sheet.set_column_width(column + 1, 1.5);
+            let _ = sheet.set_column_width(column + 1, 4);
             let _ = sheet.set_column_width(column + 2, 7.0);
 
             // Write Header
@@ -299,13 +305,8 @@ impl Model {
             let mut row: u32 = 1;
             for entry in entries_sorted {
                 let _ = sheet.write_string_with_format(row, column, &entry.title, &category_format);
-                let _ = sheet.write_number_with_format(
-                    row,
-                    column + 1,
-                    // Normalize ratings back to the numbers 1-7 from the spreadsheet.
-                    (entry.rating.clamp(50.0, 749.0) / 100.0).round(),
-                    &category_format,
-                );
+                let _ =
+                    sheet.write_number_with_format(row, column + 1, entry.rating, &category_format);
 
                 row += 1;
             }

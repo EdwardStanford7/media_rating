@@ -1,4 +1,4 @@
-I like to rate media I consume based on a ranking system of 1-7. This is an app to make the ratings more accurate by using an elo system and then splitting into ratings based on elo rankings.
+This is basically an elo everything clone for specific categories of media. 
 
 How to use:
 - Spreadsheet needs to have category headings in the first row and ratings in the column directly next to the entries.

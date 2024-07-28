@@ -12,7 +12,8 @@ struct MyApp {
     ranking_category: Option<String>,
     new_entry_category: Option<String>,
     text_entry_box: String,
-    matches_left: usize,
+    ranking: bool,
+    free_rank: bool,
     waiting_for_match: bool,
 }
 
@@ -64,7 +65,8 @@ impl Default for MyApp {
             ranking_category: None,
             new_entry_category: None,
             text_entry_box: String::new(),
-            matches_left: 0,
+            ranking: false,
+            free_rank: false,
             waiting_for_match: false,
         }
     }
@@ -76,20 +78,33 @@ impl eframe::App for MyApp {
         egui::TopBottomPanel::top("Menu").show(ctx, |ui| {
             // Menu is horizontal at top of app.
             ui.horizontal(|ui| {
-                // App name and save button.
+                // App name, save, menu buttons.
                 ui.vertical(|ui| {
                     ui.heading("Media Rating App");
-                    if ui.button("Save").clicked() {
-                        self.model.save_to_spreadsheet();
-                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            self.model.save_to_spreadsheet();
+                        }
+                        // Only display back to menu button if ranking is happening.
+                        if self.ranking {
+                            if ui.button("Menu").clicked() {
+                                self.ranking = false;
+                                self.free_rank = false;
+                                self.model.clear_current_match();
+                                self.model.clear_new_entry();
+                            }
+                        } else if ui.button("Free Rank").clicked() {
+                            {
+                                self.ranking = true;
+                                self.free_rank = true;
+                                self.waiting_for_match = true;
+                            }
+                        }
+                    });
                 });
 
                 // Should app display menu items or not (if ranking is happening).
-                if self.matches_left == 0 {
-                    self.model.reset_new_entry();
-                    self.model.reset_current_match();
-                    self.waiting_for_match = false;
-
+                if !self.ranking {
                     ui.add_space(10.0);
 
                     // Rerank category dropdown.
@@ -111,14 +126,9 @@ impl eframe::App for MyApp {
                                 }
                             });
                         // Rerank category button.
-                        if ui.button("Rerank").clicked() {
-                            if let Some(ref category) = self.ranking_category {
-                                let num_entries = self.model.get_num_entries(category);
-                                self.matches_left =
-                                    num_entries * f64::log2(num_entries as f64) as usize;
-                                self.model.reset_new_entry();
-                                self.waiting_for_match = true;
-                            }
+                        if ui.button("Rank").clicked() && self.ranking_category.is_some() {
+                            self.ranking = true;
+                            self.waiting_for_match = true;
                         }
                     });
 
@@ -143,7 +153,7 @@ impl eframe::App for MyApp {
                                 }
                             });
                         // Add new entry button
-                        if let Some(ref _category) = self.new_entry_category {
+                        if let Some(ref category) = self.new_entry_category {
                             ui.text_edit_singleline(&mut self.text_entry_box);
 
                             if ui.button("Add Entry").clicked() {
@@ -151,7 +161,7 @@ impl eframe::App for MyApp {
                                     title: self.text_entry_box.clone(),
                                     rating: 400.0,
                                     icon: model::get_icon(
-                                        _category.to_string(),
+                                        category.to_string(),
                                         self.text_entry_box.clone(),
                                         self.directory.clone(),
                                     ),
@@ -159,45 +169,30 @@ impl eframe::App for MyApp {
 
                                 self.model
                                     .add_entry(new_entry, self.new_entry_category.clone().unwrap());
-                                self.matches_left = 20;
+                                self.ranking = true;
                                 self.waiting_for_match = true;
                                 self.text_entry_box.clear();
                             }
                         }
                     });
-                } else {
-                    // Display ranking menu.
-                    ui.add_space(50.0);
-
-                    // Tell the user how many matches there are left.
-                    ui.label(format!("matches left: {}", self.matches_left));
-
-                    ui.add_space(20.0);
-
-                    // Let the user cancel ranking whenever.
-                    if ui.button("Cancel Ranking").clicked() {
-                        self.matches_left = 0;
-                        self.waiting_for_match = false;
-                        self.model.reset_current_match();
-                        self.model.reset_new_entry();
-                    }
                 }
             });
         });
 
-        // Does model need to send a new matchup.
-        if self.waiting_for_match {
-            let category = if self.model.ranking_new_entry() {
-                self.new_entry_category.as_ref()
+        // Does model need to choose a new match.
+        if self.ranking && self.waiting_for_match {
+            let category = if self.free_rank {
+                self.model.get_rand_category()
+            } else if self.model.ranking_new_entry() {
+                self.new_entry_category.as_ref().unwrap().to_owned()
             } else {
-                self.ranking_category.as_ref()
+                self.ranking_category.as_ref().unwrap().to_owned()
             };
 
-            if let Some(category) = category {
-                self.model.set_current_match(category);
-                self.matches_left -= 1;
-                self.waiting_for_match = false;
-            }
+            // if let Some(category) = category {
+            self.model.set_current_match(&category);
+            self.waiting_for_match = false;
+            // }
         }
 
         // Current match display.
@@ -236,7 +231,7 @@ impl eframe::App for MyApp {
                                         "{} ({})",
                                         entry1.title, entry1.rating
                                     ))
-                                    .font(FontId::proportional(25.0)),
+                                    .font(FontId::proportional(23.0)),
                                 );
                             },
                         );
@@ -262,7 +257,7 @@ impl eframe::App for MyApp {
                                         "{} ({})",
                                         entry2.title, entry2.rating
                                     ))
-                                    .font(FontId::proportional(25.0)),
+                                    .font(FontId::proportional(23.0)),
                                 );
                             },
                         );
