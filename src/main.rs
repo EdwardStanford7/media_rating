@@ -1,5 +1,7 @@
 use eframe::egui;
-use egui::{CentralPanel, FontId, Image, ImageButton, ScrollArea, TopBottomPanel};
+use egui::{
+    pos2, vec2, Align, CentralPanel, FontId, Image, ImageButton, Rect, ScrollArea, TopBottomPanel,
+};
 use native_dialog::FileDialog;
 use std::{path::Path, process::exit};
 mod model;
@@ -218,7 +220,10 @@ impl eframe::App for MyApp {
             // If app is in ranking mode, display the current match.
             if self.ranking || self.free_rank {
                 ui.horizontal(|ui| {
-                    if let Some((entry1, entry2)) = self.model.get_current_match() {
+                    if let Some((entry1, entry2, category)) = self.model.get_current_match() {
+                        let title1 = entry1.title.clone();
+                        let title2 = entry2.title.clone();
+
                         // Images for the two entries.
                         let texture1 = ctx.load_texture(
                             entry1.title.clone(),
@@ -231,21 +236,27 @@ impl eframe::App for MyApp {
                             egui::TextureOptions::LINEAR,
                         );
 
+                        // This again cuz mutable references nested in ui elements are annoying.
+                        let mut entry1_won = false;
+                        let mut entry2_won = false;
+                        let mut entry1_replace_image = false;
+                        let mut entry2_replace_image = false;
+
                         // Entry 1.
                         ui.vertical(|ui| {
                             let image1 = Image::new(&texture1);
                             let width1: f32 = image1.size().unwrap().x;
 
                             if ui.add(ImageButton::new(image1)).clicked() {
-                                self.model.calculate_current_match(1);
-                                self.waiting_for_match = true;
+                                entry1_won = true;
                             }
 
-                            // Set the maximum width for the label to enable wrapping
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(width1, 0.0),
-                                egui::Layout::top_down(egui::Align::LEFT),
-                                |ui| {
+                            // Define the rectangle for the label area
+                            let rect1 = ui.allocate_space(vec2(width1, 55.0)).1;
+
+                            // Create a top-down layout for the label
+                            ui.allocate_ui_at_rect(rect1, |ui| {
+                                ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                                     ui.label(
                                         egui::RichText::new(format!(
                                             "{} ({})",
@@ -253,6 +264,23 @@ impl eframe::App for MyApp {
                                         ))
                                         .font(FontId::proportional(23.0)),
                                     );
+                                });
+                            });
+
+                            // Define the position for the button in the lower right corner
+                            let button_size = vec2(100.0, 10.0);
+                            let button_pos = pos2(
+                                rect1.right() - button_size.x + 15.0,
+                                rect1.bottom() - button_size.y - 10.0,
+                            );
+
+                            // Create the button at the specified position
+                            ui.allocate_ui_at_rect(
+                                Rect::from_min_size(button_pos, button_size),
+                                |ui| {
+                                    if ui.button("Get New Image").clicked() {
+                                        entry1_replace_image = true;
+                                    }
                                 },
                             );
                         });
@@ -263,15 +291,15 @@ impl eframe::App for MyApp {
                             let width2: f32 = image2.size().unwrap().x;
 
                             if ui.add(ImageButton::new(image2)).clicked() {
-                                self.model.calculate_current_match(2);
-                                self.waiting_for_match = true;
+                                entry2_won = true;
                             }
 
-                            // Set the maximum width for the label to enable wrapping
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(width2, 0.0),
-                                egui::Layout::top_down(egui::Align::LEFT),
-                                |ui| {
+                            // Define the rectangle for the label area
+                            let rect2 = ui.allocate_space(vec2(width2, 55.0)).1;
+
+                            // Create a top-down layout for the label
+                            ui.allocate_ui_at_rect(rect2, |ui| {
+                                ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                                     ui.label(
                                         egui::RichText::new(format!(
                                             "{} ({})",
@@ -279,9 +307,55 @@ impl eframe::App for MyApp {
                                         ))
                                         .font(FontId::proportional(23.0)),
                                     );
+                                });
+                            });
+
+                            // Define the position for the button in the lower right corner
+                            let button_size = vec2(100.0, 10.0);
+                            let button_pos = pos2(
+                                rect2.right() - button_size.x + 15.0,
+                                rect2.bottom() - button_size.y - 10.0,
+                            );
+
+                            // Create the button at the specified position
+                            ui.allocate_ui_at_rect(
+                                Rect::from_min_size(button_pos, button_size),
+                                |ui| {
+                                    if ui.button("Get New Image").clicked() {
+                                        entry2_replace_image = true;
+                                    }
                                 },
                             );
                         });
+
+                        // Update images if user requested.
+                        if entry1_replace_image {
+                            delete_image(
+                                category.to_string(),
+                                title1.clone(),
+                                self.directory.clone(),
+                            );
+                            entry1.image =
+                                get_image(category.to_string(), title1, self.directory.clone());
+                        }
+                        if entry2_replace_image {
+                            delete_image(
+                                category.to_string(),
+                                title2.clone(),
+                                self.directory.clone(),
+                            );
+                            entry2.image =
+                                get_image(category.to_string(), title2, self.directory.clone());
+                        }
+
+                        // Calculate match outcome if user selected.
+                        if entry1_won && !entry2_won {
+                            self.model.calculate_current_match(1);
+                            self.waiting_for_match = true;
+                        } else if !entry1_won && entry2_won {
+                            self.model.calculate_current_match(2);
+                            self.waiting_for_match = true;
+                        }
                     }
                 });
             }
@@ -312,7 +386,7 @@ impl eframe::App for MyApp {
                                     // Check if the entry was clicked.
                                     if label.clicked() {
                                         self.selected_entry = Some(index);
-                                        self.new_name_box.clear();
+                                        self.new_name_box.clone_from(&entry.title);
                                     }
                                 }
                             });
@@ -322,7 +396,6 @@ impl eframe::App for MyApp {
                     columns[1].vertical(|ui| {
                         // Image of currently selected entry.
                         if let Some(entry_index) = &self.selected_entry {
-                            // let mut getting_new_image = false;
                             let mut ranking_entry = false;
                             let mut delete_entry = false;
 
@@ -341,7 +414,6 @@ impl eframe::App for MyApp {
                                 }
 
                                 if ui.button("Get New Icon").clicked() {
-                                    // getting_new_image = true;
                                     delete_image(
                                         category.to_string(),
                                         entry.title.clone(),
@@ -363,19 +435,6 @@ impl eframe::App for MyApp {
                                 }
                             });
 
-                            // Sometimes I hate the borrow checker.
-                            // if getting_new_image {
-                            //     delete_image(
-                            //         category.to_string(),
-                            //         entry.title.clone(),
-                            //         self.directory.clone(),
-                            //     );
-                            //     entry.image = get_image(
-                            //         category.to_string(),
-                            //         entry.title.clone(),
-                            //         self.directory.clone(),
-                            //     );
-                            // }
                             if ranking_entry {
                                 self.model.set_ranking_entry(*entry_index);
                                 self.ranking = true;

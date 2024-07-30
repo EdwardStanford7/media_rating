@@ -20,7 +20,7 @@ pub struct Model {
     categories: HashMap<String, Vec<Entry>>,
     // Category and the indexes of the two entries in the match.
     current_match: Option<(String, usize, usize)>,
-    // Current new entry being ranked.
+    // Current new entry being ranked. Used when you want one entry to be in all matches.
     ranking_entry: Option<usize>,
 }
 
@@ -189,13 +189,21 @@ impl Model {
     }
 
     // Get the current match.
-    pub fn get_current_match(&self) -> Option<(Entry, Entry)> {
+    pub fn get_current_match(&mut self) -> Option<(&mut Entry, &mut Entry, &String)> {
         match &self.current_match {
             Some((category, entry1_index, entry2_index)) => {
-                return Some((
-                    self.categories.get(category).unwrap()[*entry1_index].clone(),
-                    self.categories.get(category).unwrap()[*entry2_index].clone(),
-                ));
+                let category_entries = self.categories.get_mut(category)?;
+
+                // Get 2 mutable references at once.
+                let (entry1, entry2) = if entry1_index < entry2_index {
+                    let (left, right) = category_entries.split_at_mut(*entry2_index);
+                    (&mut left[*entry1_index], &mut right[0])
+                } else {
+                    let (left, right) = category_entries.split_at_mut(*entry1_index);
+                    (&mut right[0], &mut left[*entry2_index])
+                };
+
+                Some((entry1, entry2, category))
             }
             None => None,
         }
@@ -268,6 +276,7 @@ impl Model {
         self.categories.get_mut(category).unwrap().remove(index);
     }
 
+    // Set what the current entry being ranked is.
     pub fn set_ranking_entry(&mut self, index: usize) {
         self.ranking_entry = Some(index);
     }
