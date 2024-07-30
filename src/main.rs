@@ -3,7 +3,7 @@ use egui::{CentralPanel, FontId, Image, ImageButton, ScrollArea, TopBottomPanel}
 use native_dialog::FileDialog;
 use std::{path::Path, process::exit};
 mod model;
-use model::{Entry, Model};
+use model::{delete_image, get_image, Entry, Model};
 use std::fs;
 
 struct MyApp {
@@ -181,7 +181,7 @@ impl eframe::App for MyApp {
                                 let new_entry = Entry {
                                     title: self.text_entry_box.clone(),
                                     rating: 500.0,
-                                    icon: model::get_icon(
+                                    image: model::get_image(
                                         category.to_string(),
                                         self.text_entry_box.clone(),
                                         self.directory.clone(),
@@ -222,12 +222,12 @@ impl eframe::App for MyApp {
                         // Images for the two entries.
                         let texture1 = ctx.load_texture(
                             entry1.title.clone(),
-                            entry1.icon.clone(),
+                            entry1.image.clone(),
                             egui::TextureOptions::LINEAR,
                         );
                         let texture2 = ctx.load_texture(
                             entry2.title.clone(),
-                            entry2.icon.clone(),
+                            entry2.image.clone(),
                             egui::TextureOptions::LINEAR,
                         );
 
@@ -322,13 +322,14 @@ impl eframe::App for MyApp {
                     columns[1].vertical(|ui| {
                         // Image of currently selected entry.
                         if let Some(entry_index) = &self.selected_entry {
-                            let mut delete_entry = false;
+                            // let mut getting_new_image = false;
                             let mut ranking_entry = false;
+                            let mut delete_entry = false;
 
                             let entry = self.model.get_entry(category, *entry_index);
                             let texture = ctx.load_texture(
                                 entry.title.clone(),
-                                entry.icon.clone(),
+                                entry.image.clone(),
                                 egui::TextureOptions::LINEAR,
                             );
                             ui.image(&texture);
@@ -340,7 +341,17 @@ impl eframe::App for MyApp {
                                 }
 
                                 if ui.button("Get New Icon").clicked() {
-                                    // stuff
+                                    // getting_new_image = true;
+                                    delete_image(
+                                        category.to_string(),
+                                        entry.title.clone(),
+                                        self.directory.clone(),
+                                    );
+                                    entry.image = get_image(
+                                        category.to_string(),
+                                        entry.title.clone(),
+                                        self.directory.clone(),
+                                    );
                                 }
 
                                 if ui.button("Rank This Entry").clicked() {
@@ -353,6 +364,18 @@ impl eframe::App for MyApp {
                             });
 
                             // Sometimes I hate the borrow checker.
+                            // if getting_new_image {
+                            //     delete_image(
+                            //         category.to_string(),
+                            //         entry.title.clone(),
+                            //         self.directory.clone(),
+                            //     );
+                            //     entry.image = get_image(
+                            //         category.to_string(),
+                            //         entry.title.clone(),
+                            //         self.directory.clone(),
+                            //     );
+                            // }
                             if ranking_entry {
                                 self.model.set_ranking_entry(*entry_index);
                                 self.ranking = true;

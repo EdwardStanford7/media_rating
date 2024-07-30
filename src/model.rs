@@ -8,6 +8,7 @@ use rand::Rng;
 use rust_xlsxwriter::{Format, Workbook};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -27,7 +28,7 @@ pub struct Model {
 pub struct Entry {
     pub title: String,
     pub rating: f64,
-    pub icon: ColorImage,
+    pub image: ColorImage,
 }
 
 impl PartialEq for Entry {
@@ -114,7 +115,7 @@ impl Model {
                                     .push(Entry {
                                         title: title.to_owned(),
                                         rating,
-                                        icon: get_icon(
+                                        image: get_image(
                                             current_category.clone(),
                                             title.to_owned(),
                                             file_directory.clone(),
@@ -344,7 +345,7 @@ impl Model {
     }
 }
 
-pub fn get_icon(mut category: String, mut title: String, file_directory: String) -> ColorImage {
+pub fn get_image(mut category: String, mut title: String, file_directory: String) -> ColorImage {
     // Remove any extra information from the title and category stored in the spreadsheet.
     if let Some(index) = title.find('(') {
         title.truncate(index);
@@ -355,7 +356,7 @@ pub fn get_icon(mut category: String, mut title: String, file_directory: String)
     // Default to placeholder image.
     let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
 
-    // Construct the relative file path.
+    // Construct the file path.
     let binding = format!("{}images/{} {}.png", file_directory, title, category);
     let full_path = Path::new(&binding);
 
@@ -404,4 +405,22 @@ pub fn get_icon(mut category: String, mut title: String, file_directory: String)
     }
 
     ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes)
+}
+
+pub fn delete_image(mut category: String, mut title: String, file_directory: String) {
+    // Remove any extra information from the title and category stored in the spreadsheet.
+    if let Some(index) = title.find('(') {
+        title.truncate(index);
+    }
+    title = title.trim().to_string();
+    category.pop();
+
+    // Construct the file path.
+    let binding = format!("{}images/{} {}.png", file_directory, title, category);
+    let full_path = Path::new(&binding);
+
+    match fs::remove_file(full_path) {
+        Ok(_) => eprintln!("Image deleted successfully."),
+        Err(e) => eprintln!("Error deleting image: {}", e),
+    }
 }

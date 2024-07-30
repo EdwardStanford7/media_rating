@@ -4,6 +4,7 @@
         "eframe",
         "egui",
         "imageops",
+        "leaderboard",
         "Nlog",
         "powf",
         "reqwest",
