@@ -20,7 +20,7 @@ pub struct Model {
     // Category and the indexes of the two entries in the match.
     current_match: Option<(String, usize, usize)>,
     // Current new entry being ranked.
-    new_entry: Option<usize>,
+    ranking_entry: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,7 +62,7 @@ impl Model {
             file_name: String::new(),
             categories: HashMap::new(),
             current_match: None,
-            new_entry: None,
+            ranking_entry: None,
         }
     }
 
@@ -140,10 +140,16 @@ impl Model {
         self.categories.keys().cloned().collect()
     }
 
+    // Get the title of a random category from all the categories.
     pub fn get_rand_category(&mut self) -> String {
         let categories = self.get_categories();
         let mut rng = rand::thread_rng();
         categories[rng.gen_range(0..categories.len())].clone()
+    }
+
+    // Get a vector of all entries in a particular category.
+    pub fn get_category_entries(&self, category: &String) -> &Vec<Entry> {
+        self.categories.get(category).unwrap()
     }
 
     // Get how many entries there are in a category.
@@ -160,7 +166,7 @@ impl Model {
         let entry1;
         let mut entry2;
 
-        if let Some(new_entry) = self.new_entry {
+        if let Some(new_entry) = self.ranking_entry {
             entry1 = new_entry;
         } else {
             entry1 = rng.gen_range(0..length);
@@ -215,10 +221,10 @@ impl Model {
         category[entry1_index].rating = (entry1_rating + k * (s_a - e_a)).round();
         category[entry2_index].rating = (entry2_rating + k * (s_b - e_b)).round();
 
-        if let Some(original_position) = self.new_entry {
+        if let Some(original_position) = self.ranking_entry {
             let value = category[original_position].clone();
             category.sort();
-            self.new_entry = Some(category.binary_search(&value).ok().unwrap());
+            self.ranking_entry = Some(category.binary_search(&value).ok().unwrap());
         } else {
             category.sort();
         }
@@ -230,25 +236,44 @@ impl Model {
     }
 
     // Add a new entry to a category.
-    pub fn add_entry(&mut self, entry: Entry, category: String) {
+    pub fn add_entry(&mut self, entry: Entry, category: String) -> usize {
         let category = self.categories.get_mut(&category).unwrap();
-        let position = match category.binary_search(&entry) {
-            Ok(index) => index, // This case won't occur since the entry isn't already present.
-            Err(index) => index, // `index` is the insertion point
-        };
+
+        let mut position = 0;
+
+        // Find the position to insert the entry at.
+        for (index, existing_entry) in category.iter().enumerate() {
+            if entry.rating <= existing_entry.rating {
+                position = index + 1;
+            }
+
+            // Don't allow duplicates.
+            if entry.title == existing_entry.title {
+                return index;
+            }
+        }
 
         category.insert(position, entry);
-        self.new_entry = Some(position);
+        position
+    }
+
+    // Get an entry from a category.
+    pub fn get_entry(&mut self, category: &String, index: usize) -> &mut Entry {
+        &mut self.categories.get_mut(category).unwrap()[index]
+    }
+
+    // Delete an entry from a category.
+    pub fn delete_entry(&mut self, category: &String, index: usize) {
+        self.categories.get_mut(category).unwrap().remove(index);
+    }
+
+    pub fn set_ranking_entry(&mut self, index: usize) {
+        self.ranking_entry = Some(index);
     }
 
     // Reset the index of the new entry being ranked to None.
     pub fn clear_new_entry(&mut self) {
-        self.new_entry = None;
-    }
-
-    // Check if a new entry is being ranked.
-    pub fn ranking_new_entry(&self) -> bool {
-        self.new_entry.is_some()
+        self.ranking_entry = None;
     }
 
     // Write the contents of the model to a spreadsheet.

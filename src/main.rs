@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{FontId, Image, ImageButton};
+use egui::{CentralPanel, FontId, Image, ImageButton, ScrollArea, TopBottomPanel};
 use native_dialog::FileDialog;
 use std::{path::Path, process::exit};
 mod model;
@@ -7,13 +7,35 @@ use model::{Entry, Model};
 use std::fs;
 
 struct MyApp {
+    // State of the rankings.
     model: Model,
+
+    // What file directory are the spreadsheet and images stored in.
     directory: String,
+
+    // What category is currently selected in the rank a category dropdown.
     ranking_category: Option<String>,
-    new_entry_category: Option<String>,
+
+    // What was the previous category selected. Used for checking when the category changes.
+    previous_ranking_category: Option<String>,
+
+    // What is the current contents of the new entry text box.
     text_entry_box: String,
+
+    // What entry is currently selected in the homepage rankings display.
+    selected_entry: Option<usize>,
+
+    // Current contents of the new name text entry box.
+    new_name_box: String,
+
+    // What element is in focus in the leaderboard scroll.
+    focus_index: Option<usize>,
+
+    // put this in an enum maybe. What mode the app is in, is it category ranking, free ranking, or homepage if both false.
     ranking: bool,
     free_rank: bool,
+
+    // Used for while ranking to tell the model to get a new match.
     waiting_for_match: bool,
 }
 
@@ -63,8 +85,11 @@ impl Default for MyApp {
             model,
             directory,
             ranking_category: None,
-            new_entry_category: None,
+            previous_ranking_category: None,
             text_entry_box: String::new(),
+            selected_entry: None,
+            new_name_box: String::new(),
+            focus_index: None,
             ranking: false,
             free_rank: false,
             waiting_for_match: false,
@@ -75,7 +100,7 @@ impl Default for MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Menu bar.
-        egui::TopBottomPanel::top("Menu").show(ctx, |ui| {
+        TopBottomPanel::top("Menu").show(ctx, |ui| {
             // Menu is horizontal at top of app.
             ui.horizontal(|ui| {
                 // App name, save, menu buttons.
@@ -126,6 +151,15 @@ impl eframe::App for MyApp {
                                     );
                                 }
                             });
+
+                        // Check if category has changed.
+                        if self.ranking_category != self.previous_ranking_category {
+                            self.selected_entry = None;
+                            // Update the previous ranking category
+                            self.previous_ranking_category
+                                .clone_from(&self.ranking_category);
+                        }
+
                         // Rerank category button.
                         if ui.button("Rank").clicked() && self.ranking_category.is_some() {
                             self.ranking = true;
@@ -137,41 +171,28 @@ impl eframe::App for MyApp {
 
                     // Add new entry dropdown
                     ui.vertical(|ui| {
-                        ui.label("Add a new entry to a category:");
-                        egui::ComboBox::from_label("Select a category to add an entry to")
-                            .selected_text(
-                                self.new_entry_category
-                                    .clone()
-                                    .unwrap_or_else(|| "Choose...".to_string()),
-                            )
-                            .show_ui(ui, |ui| {
-                                for category in self.model.get_categories() {
-                                    ui.selectable_value(
-                                        &mut self.new_entry_category,
-                                        Some(category.clone()),
-                                        category,
-                                    );
-                                }
-                            });
+                        ui.label("Add a new entry to this category:");
+
                         // Add new entry button
-                        if let Some(ref category) = self.new_entry_category {
+                        if let Some(ref category) = self.ranking_category {
                             ui.text_edit_singleline(&mut self.text_entry_box);
 
-                            if ui.button("Add Entry").clicked() {
+                            if ui.button("Add Entry").clicked() && !self.text_entry_box.is_empty() {
                                 let new_entry = Entry {
                                     title: self.text_entry_box.clone(),
-                                    rating: 400.0,
+                                    rating: 500.0,
                                     icon: model::get_icon(
                                         category.to_string(),
                                         self.text_entry_box.clone(),
                                         self.directory.clone(),
                                     ),
                                 };
-
-                                self.model
-                                    .add_entry(new_entry, self.new_entry_category.clone().unwrap());
-                                self.ranking = true;
-                                self.waiting_for_match = true;
+                                self.selected_entry =
+                                    Some(self.model.add_entry(
+                                        new_entry,
+                                        self.ranking_category.clone().unwrap(),
+                                    ));
+                                self.focus_index = self.selected_entry;
                                 self.text_entry_box.clear();
                             }
                         }
@@ -184,87 +205,169 @@ impl eframe::App for MyApp {
         if self.ranking && self.waiting_for_match {
             let category = if self.free_rank {
                 self.model.get_rand_category()
-            } else if self.model.ranking_new_entry() {
-                self.new_entry_category.as_ref().unwrap().to_owned()
             } else {
                 self.ranking_category.as_ref().unwrap().to_owned()
             };
 
-            // if let Some(category) = category {
             self.model.set_current_match(&category);
             self.waiting_for_match = false;
-            // }
         }
 
-        // Current match display.
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if let Some((entry1, entry2)) = self.model.get_current_match() {
-                    // Images for the two entries.
-                    let texture1 = ctx.load_texture(
-                        entry1.title.clone(),
-                        entry1.icon.clone(),
-                        egui::TextureOptions::LINEAR,
-                    );
-                    let texture2 = ctx.load_texture(
-                        entry2.title.clone(),
-                        entry2.icon.clone(),
-                        egui::TextureOptions::LINEAR,
-                    );
-
-                    // Entry 1.
-                    ui.vertical(|ui| {
-                        let image1 = Image::new(&texture1);
-                        let width1: f32 = image1.size().unwrap().x;
-
-                        if ui.add(ImageButton::new(image1)).clicked() {
-                            self.model.calculate_current_match(1);
-                            self.waiting_for_match = true;
-                        }
-
-                        // Set the maximum width for the label to enable wrapping
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(width1, 0.0),
-                            egui::Layout::top_down(egui::Align::LEFT),
-                            |ui| {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "{} ({})",
-                                        entry1.title, entry1.rating
-                                    ))
-                                    .font(FontId::proportional(23.0)),
-                                );
-                            },
+        // Central panel.
+        CentralPanel::default().show(ctx, |ui| {
+            // If app is in ranking mode, display the current match.
+            if self.ranking || self.free_rank {
+                ui.horizontal(|ui| {
+                    if let Some((entry1, entry2)) = self.model.get_current_match() {
+                        // Images for the two entries.
+                        let texture1 = ctx.load_texture(
+                            entry1.title.clone(),
+                            entry1.icon.clone(),
+                            egui::TextureOptions::LINEAR,
                         );
+                        let texture2 = ctx.load_texture(
+                            entry2.title.clone(),
+                            entry2.icon.clone(),
+                            egui::TextureOptions::LINEAR,
+                        );
+
+                        // Entry 1.
+                        ui.vertical(|ui| {
+                            let image1 = Image::new(&texture1);
+                            let width1: f32 = image1.size().unwrap().x;
+
+                            if ui.add(ImageButton::new(image1)).clicked() {
+                                self.model.calculate_current_match(1);
+                                self.waiting_for_match = true;
+                            }
+
+                            // Set the maximum width for the label to enable wrapping
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(width1, 0.0),
+                                egui::Layout::top_down(egui::Align::LEFT),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} ({})",
+                                            entry1.title, entry1.rating
+                                        ))
+                                        .font(FontId::proportional(23.0)),
+                                    );
+                                },
+                            );
+                        });
+
+                        // Entry 2.
+                        ui.vertical(|ui| {
+                            let image2 = Image::new(&texture2);
+                            let width2: f32 = image2.size().unwrap().x;
+
+                            if ui.add(ImageButton::new(image2)).clicked() {
+                                self.model.calculate_current_match(2);
+                                self.waiting_for_match = true;
+                            }
+
+                            // Set the maximum width for the label to enable wrapping
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(width2, 0.0),
+                                egui::Layout::top_down(egui::Align::LEFT),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} ({})",
+                                            entry2.title, entry2.rating
+                                        ))
+                                        .font(FontId::proportional(23.0)),
+                                    );
+                                },
+                            );
+                        });
+                    }
+                });
+            }
+            // If app is in home menu, display a list of all entries in the selected category.
+            else if let Some(category) = &self.ranking_category {
+                ui.columns(2, |columns| {
+                    // Category list.
+                    columns[0].set_width(370.0);
+                    columns[0].vertical(|ui| {
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                            ScrollArea::vertical().show(ui, |ui| {
+                                for (index, entry) in
+                                    self.model.get_category_entries(category).iter().enumerate()
+                                {
+                                    // Display the entry as a clickable label.
+                                    let label = ui.selectable_label(
+                                        false,
+                                        format!("{:04}\t\t{}", entry.rating, entry.title),
+                                    );
+
+                                    // Check if scroll area is focused on something.
+                                    if Some(index) == self.focus_index {
+                                        let rect = label.rect;
+                                        ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                                        self.focus_index = None; // Reset focus after scrolling
+                                    }
+
+                                    // Check if the entry was clicked.
+                                    if label.clicked() {
+                                        self.selected_entry = Some(index);
+                                        self.new_name_box.clear();
+                                    }
+                                }
+                            });
+                        });
                     });
 
-                    // Entry 2.
-                    ui.vertical(|ui| {
-                        let image2 = Image::new(&texture2);
-                        let width2: f32 = image2.size().unwrap().x;
+                    columns[1].vertical(|ui| {
+                        // Image of currently selected entry.
+                        if let Some(entry_index) = &self.selected_entry {
+                            let mut delete_entry = false;
+                            let mut ranking_entry = false;
 
-                        if ui.add(ImageButton::new(image2)).clicked() {
-                            self.model.calculate_current_match(2);
-                            self.waiting_for_match = true;
+                            let entry = self.model.get_entry(category, *entry_index);
+                            let texture = ctx.load_texture(
+                                entry.title.clone(),
+                                entry.icon.clone(),
+                                egui::TextureOptions::LINEAR,
+                            );
+                            ui.image(&texture);
+
+                            ui.horizontal(|ui| {
+                                if ui.button("Update Name").clicked() {
+                                    entry.title.clone_from(&self.new_name_box);
+                                    self.new_name_box.clear();
+                                }
+
+                                if ui.button("Get New Icon").clicked() {
+                                    // stuff
+                                }
+
+                                if ui.button("Rank This Entry").clicked() {
+                                    ranking_entry = true;
+                                }
+
+                                if (ui.button("Delete Entry")).clicked() {
+                                    delete_entry = true;
+                                }
+                            });
+
+                            // Sometimes I hate the borrow checker.
+                            if ranking_entry {
+                                self.model.set_ranking_entry(*entry_index);
+                                self.ranking = true;
+                                self.waiting_for_match = true;
+                            }
+                            if delete_entry {
+                                self.model.delete_entry(category, *entry_index);
+                                self.selected_entry = None;
+                            }
+
+                            ui.text_edit_singleline(&mut self.new_name_box);
                         }
-
-                        // Set the maximum width for the label to enable wrapping
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(width2, 0.0),
-                            egui::Layout::top_down(egui::Align::LEFT),
-                            |ui| {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "{} ({})",
-                                        entry2.title, entry2.rating
-                                    ))
-                                    .font(FontId::proportional(23.0)),
-                                );
-                            },
-                        );
                     });
-                }
-            });
+                });
+            }
         });
     }
 }
