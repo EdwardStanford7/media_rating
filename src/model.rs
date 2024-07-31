@@ -234,7 +234,7 @@ impl Model {
         let e_b = 1.0 - e_a;
 
         // Sensitivity factor.
-        let k = 48.0;
+        let k = 20.0;
 
         // Update ratings
         category[entry1_index].rating = (entry1_rating + k * (s_a - e_a)).round();
