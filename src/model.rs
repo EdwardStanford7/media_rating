@@ -136,6 +136,16 @@ impl Model {
         true
     }
 
+    // Make a new category.
+    pub fn create_category(&mut self, category: String) {
+        self.categories.insert(category, Vec::new());
+    }
+
+    // Delete a category.
+    pub fn delete_category(&mut self, category: &String) {
+        self.categories.remove(category);
+    }
+
     // Return all categories that are currently in the Model.
     pub fn get_categories(&self) -> Vec<String> {
         self.categories.keys().cloned().collect()
@@ -220,7 +230,7 @@ impl Model {
         let (s_a, s_b) = if winner == 1 { (1.0, 0.0) } else { (0.0, 1.0) };
 
         // Expected score for each player
-        let e_a = 1.0 / (1.0 + f64::powf(10.0, (entry1_rating - entry2_rating) / 400.0));
+        let e_a = 1.0 / (1.0 + f64::powf(10.0, (entry2_rating - entry1_rating) / 400.0));
         let e_b = 1.0 - e_a;
 
         // Sensitivity factor.
@@ -350,7 +360,10 @@ impl Model {
         }
 
         // Save the workbook
-        let _ = workbook.save(Path::new(&(self.file_directory.clone() + &self.file_name)));
+        match workbook.save(Path::new(&(self.file_directory.clone() + &self.file_name))) {
+            Ok(_result) => {}
+            Err(e) => eprintln!("Could not save to spreadsheet: {}", e),
+        }
     }
 }
 

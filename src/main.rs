@@ -1,8 +1,10 @@
 use eframe::egui;
 use egui::{
-    pos2, vec2, Align, CentralPanel, FontId, Image, ImageButton, Rect, ScrollArea, TopBottomPanel,
+    pos2, vec2, Align, CentralPanel, FontId, Id, Image, ImageButton, Rect, ScrollArea,
+    TopBottomPanel,
 };
 use native_dialog::FileDialog;
+use rust_xlsxwriter::Workbook;
 use std::{path::Path, process::exit};
 mod model;
 use model::{delete_image, get_image, Entry, Model};
@@ -11,6 +13,9 @@ use std::fs;
 struct MyApp {
     // State of the rankings.
     model: Model,
+
+    // Is the model initialized. App starts with model uninitialized.
+    model_initialized: bool,
 
     // What file directory are the spreadsheet and images stored in.
     directory: String,
@@ -33,59 +38,27 @@ struct MyApp {
     // What element is in focus in the leaderboard scroll.
     focus_index: Option<usize>,
 
-    // put this in an enum maybe. What mode the app is in, is it category ranking, free ranking, or homepage if both false.
+    // What mode the app is in, is it category ranking, free ranking, or leaderboard menu if both false.
     ranking: bool,
     free_rank: bool,
 
     // Used for while ranking to tell the model to get a new match.
     waiting_for_match: bool,
+
+    // Warning to the user when they try to delete a category.
+    show_delete_warning: bool,
+
+    // What category is the user trying to delete.
+    deleting_category: String,
 }
 
 impl Default for MyApp {
     fn default() -> Self {
-        // Get what xlsx file to read from the user.
-        let mut model = Model::new();
-        let xlsx_path = FileDialog::new()
-            .add_filter("Excel file", &["xlsx"])
-            .show_open_single_file()
-            .ok()
-            .flatten()
-            .map(|path| path.to_string_lossy().to_string());
-
-        let file_path;
-        let directory;
-        if let Some(ref path) = xlsx_path {
-            file_path = Path::new(path);
-            directory = file_path.parent().unwrap().to_str().unwrap().to_string() + "/";
-
-            // Create a directory to store all the images in.
-            let binding = directory.clone() + "images";
-            let image_directory = Path::new(&binding);
-            if !image_directory.exists() {
-                match fs::create_dir(image_directory) {
-                    Ok(_result) => {}
-                    Err(e) => {
-                        eprintln!("Could not create image directory: {}", e);
-                        exit(1)
-                    }
-                }
-            }
-
-            // Open the xlsx file and create the model.
-            if !model.open_spreadsheet(
-                directory.clone(),
-                file_path.file_name().unwrap().to_str().unwrap().to_string(),
-            ) {
-                exit(1);
-            }
-        } else {
-            exit(1);
-        }
-
         // Return new app state struct.
         Self {
-            model,
-            directory,
+            model: Model::new(),
+            model_initialized: false,
+            directory: String::new(),
             ranking_category: None,
             previous_ranking_category: None,
             text_entry_box: String::new(),
@@ -95,12 +68,94 @@ impl Default for MyApp {
             ranking: false,
             free_rank: false,
             waiting_for_match: false,
+            show_delete_warning: false,
+            deleting_category: String::new(),
         }
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Home menu on startup.
+        if !self.model_initialized {
+            // Display home menu.
+            CentralPanel::default().show(ctx, |ui| {
+                // Center the buttons in the middle of the window.
+                ui.vertical_centered(|ui| {
+                    ui.add_space(200.0);
+
+                    let mut xlsx_path = None;
+
+                    // Create a new model from scratch.
+                    if ui.button("Create New Spreadsheet").clicked() {
+                        xlsx_path = FileDialog::new()
+                            .add_filter("Excel file", &["xlsx"])
+                            .set_filename("Media Ratings.xlsx") // Optional: Suggests a default file name
+                            .show_save_single_file()
+                            .ok()
+                            .flatten()
+                            .map(|path| path.to_string_lossy().to_string());
+
+                        // Create empty spreadsheet.
+                        let mut workbook = Workbook::new();
+
+                        match workbook.save(Path::new(&xlsx_path.clone().unwrap())) {
+                            Ok(_result) => {}
+                            Err(e) => {
+                                eprintln!("Could not create new spreadsheet: {}", e);
+                                exit(1)
+                            }
+                        }
+                    }
+
+                    ui.add_space(50.0);
+
+                    // Load a model from an existing spreadsheet.
+                    if ui.button("Open Spreadsheet").clicked() {
+                        // Get what xlsx file to read from the user.
+                        xlsx_path = FileDialog::new()
+                            .add_filter("Excel file", &["xlsx"])
+                            .show_open_single_file()
+                            .ok()
+                            .flatten()
+                            .map(|path| path.to_string_lossy().to_string());
+                    }
+
+                    if xlsx_path.is_some() {
+                        let file_path;
+                        if let Some(ref path) = xlsx_path {
+                            file_path = Path::new(path);
+                            self.directory =
+                                file_path.parent().unwrap().to_str().unwrap().to_string() + "/";
+
+                            // Create a directory to store all the images in.
+                            let binding = self.directory.clone() + "images";
+                            let image_directory = Path::new(&binding);
+                            if !image_directory.exists() {
+                                match fs::create_dir(image_directory) {
+                                    Ok(_result) => {}
+                                    Err(e) => {
+                                        eprintln!("Could not create image directory: {}", e);
+                                        exit(1)
+                                    }
+                                }
+                            }
+
+                            // Open the xlsx file and initialize the model.
+                            if self.model.open_spreadsheet(
+                                self.directory.clone(),
+                                file_path.file_name().unwrap().to_str().unwrap().to_string(),
+                            ) {
+                                self.model_initialized = true;
+                            }
+                        }
+                    }
+                });
+            });
+
+            return;
+        }
+
         // Menu bar.
         TopBottomPanel::top("Menu").show(ctx, |ui| {
             // Menu is horizontal at top of app.
@@ -121,7 +176,15 @@ impl eframe::App for MyApp {
                                 self.model.clear_new_entry();
                                 self.model.save_to_spreadsheet();
                             }
-                        } else if ui.button("Free Rank").clicked() {
+                        } else if ui.button("Rank All Categories").clicked()
+                            && !self.model.get_categories().is_empty()
+                        {
+                            // Only allow ranking if there are actually entries to rank.
+                            if self
+                                .model
+                                .get_categories()
+                                .iter()
+                                .all(|category| self.model.get_num_entries(category) >= 2)
                             {
                                 self.ranking = true;
                                 self.free_rank = true;
@@ -135,9 +198,9 @@ impl eframe::App for MyApp {
                 if !self.ranking {
                     ui.add_space(10.0);
 
-                    // Rerank category dropdown.
+                    // Select category dropdown.
                     ui.vertical(|ui| {
-                        ui.label("Rerank a category:");
+                        ui.label("Select a category:");
                         egui::ComboBox::from_label("Select a category to rerank")
                             .selected_text(
                                 self.ranking_category
@@ -163,28 +226,44 @@ impl eframe::App for MyApp {
                         }
 
                         // Rerank category button.
-                        if ui.button("Rank").clicked() && self.ranking_category.is_some() {
-                            self.ranking = true;
-                            self.waiting_for_match = true;
-                        }
+                        ui.horizontal(|ui| {
+                            if ui.button("Rank Selected Cateogory").clicked()
+                                && self.ranking_category.is_some()
+                                && self
+                                    .model
+                                    .get_num_entries(&(self.ranking_category.clone().unwrap()))
+                                    >= 2
+                            {
+                                self.ranking = true;
+                                self.waiting_for_match = true;
+                            }
+
+                            if ui.button("Delete Category").clicked()
+                                && self.ranking_category.is_some()
+                            {
+                                self.deleting_category = self.ranking_category.clone().unwrap();
+                                self.show_delete_warning = true;
+                            }
+                        });
                     });
 
                     ui.add_space(10.0);
 
-                    // Add new entry dropdown
+                    // Add entries or categories.
                     ui.vertical(|ui| {
-                        ui.label("Add a new entry to this category:");
+                        ui.text_edit_singleline(&mut self.text_entry_box);
 
-                        // Add new entry button
-                        if let Some(ref category) = self.ranking_category {
-                            ui.text_edit_singleline(&mut self.text_entry_box);
-
-                            if ui.button("Add Entry").clicked() && !self.text_entry_box.is_empty() {
+                        ui.horizontal(|ui| {
+                            // Add new entry button
+                            if ui.button("Add Entry To Current Category").clicked()
+                                && self.ranking_category.is_some()
+                                && !self.text_entry_box.is_empty()
+                            {
                                 let new_entry = Entry {
                                     title: self.text_entry_box.clone(),
                                     rating: 500.0,
                                     image: model::get_image(
-                                        category.to_string(),
+                                        self.ranking_category.clone().unwrap().to_string(),
                                         self.text_entry_box.clone(),
                                         self.directory.clone(),
                                     ),
@@ -197,11 +276,63 @@ impl eframe::App for MyApp {
                                 self.focus_index = self.selected_entry;
                                 self.text_entry_box.clear();
                             }
-                        }
+
+                            // Create new category button.
+                            if ui.button("Create New Category").clicked()
+                                && !self.text_entry_box.is_empty()
+                            {
+                                self.model.create_category(self.text_entry_box.to_string());
+                                self.text_entry_box.clear();
+                            }
+                        });
                     });
                 }
             });
         });
+
+        if self.show_delete_warning {
+            // Create a dimming overlay that blocks interactions
+            egui::Area::new(Id::new("Blocking Overlay"))
+                .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
+                .fixed_pos(egui::pos2(0.0, 0.0))
+                .order(egui::Order::Background)
+                .show(ctx, |ui| {
+                    // Fill the entire screen
+                    let screen_rect = ctx.screen_rect();
+                    ui.painter()
+                        .rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(75));
+
+                    // Block interactions by creating a full-screen interactive element
+                    ui.allocate_rect(screen_rect, egui::Sense::click());
+                });
+
+            // Show the warning popup in a separate Area
+            egui::Area::new(Id::new("Warning Popup"))
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    egui::Window::new("Warning")
+                        .collapsible(false)
+                        .resizable(false)
+                        .movable(false)
+                        .show(ui.ctx(), |ui| {
+                            ui.label("This will delete every entry in the category, are you sure?");
+                            ui.horizontal(|ui| {
+                                if ui.button("Yes").clicked() {
+                                    self.model.delete_category(&self.deleting_category);
+                                    self.ranking_category = None;
+                                    self.show_delete_warning = false;
+                                }
+
+                                ui.add_space(50.0);
+
+                                if ui.button("Cancel").clicked() {
+                                    self.show_delete_warning = false;
+                                }
+                            });
+                        });
+                });
+        }
 
         // Does model need to choose a new match.
         if self.ranking && self.waiting_for_match {
@@ -455,7 +586,9 @@ impl eframe::App for MyApp {
 }
 
 fn main() {
-    let options = eframe::NativeOptions::default();
+    let mut options = eframe::NativeOptions::default();
+    options.viewport.resizable = Some(false);
+
     let _ = eframe::run_native(
         "Media Rating",
         options,
