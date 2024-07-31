@@ -172,6 +172,8 @@ impl eframe::App for MyApp {
                             if ui.button("Menu").clicked() {
                                 self.ranking = false;
                                 self.free_rank = false;
+                                self.selected_entry = None;
+                                self.new_name_box.clear();
                                 self.model.clear_current_match();
                                 self.model.clear_new_entry();
                                 self.model.save_to_spreadsheet();
