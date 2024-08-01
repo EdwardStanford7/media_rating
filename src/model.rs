@@ -234,7 +234,7 @@ impl Model {
         let e_b = 1.0 - e_a;
 
         // Sensitivity factor.
-        let k = 20.0;
+        let k = 12.0;
 
         // Update ratings
         category[entry1_index].rating = (entry1_rating + k * (s_a - e_a)).round();
@@ -444,5 +444,37 @@ pub fn delete_image(mut category: String, mut title: String, file_directory: Str
     match fs::remove_file(full_path) {
         Ok(_) => eprintln!("Image deleted successfully."),
         Err(e) => eprintln!("Error deleting image: {}", e),
+    }
+}
+
+pub fn rename_image(
+    mut category: String,
+    mut old_title: String,
+    mut new_title: String,
+    file_directory: String,
+) {
+    // Remove any extra information from the title and category stored in the spreadsheet.
+    if let Some(index) = old_title.find('(') {
+        old_title.truncate(index);
+    }
+    old_title = old_title.trim().to_string();
+
+    if let Some(index) = new_title.find('(') {
+        new_title.truncate(index);
+    }
+    new_title = new_title.trim().to_string();
+
+    category.pop();
+
+    // Construct the file paths.
+    let binding = format!("{}images/{} {}.png", file_directory, old_title, category);
+    let old_path = Path::new(&binding);
+
+    let binding = format!("{}images/{} {}.png", file_directory, new_title, category);
+    let new_path = Path::new(&binding);
+
+    match fs::rename(old_path, new_path) {
+        Ok(_) => {}
+        Err(e) => eprintln!("Error renaming image: {}", e),
     }
 }

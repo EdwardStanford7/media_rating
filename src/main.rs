@@ -7,7 +7,7 @@ use native_dialog::FileDialog;
 use rust_xlsxwriter::Workbook;
 use std::{path::Path, process::exit};
 mod model;
-use model::{delete_image, get_image, Entry, Model};
+use model::{delete_image, get_image, rename_image, Entry, Model};
 use std::fs;
 
 struct MyApp {
@@ -542,6 +542,13 @@ impl eframe::App for MyApp {
 
                             ui.horizontal(|ui| {
                                 if ui.button("Update Name").clicked() {
+                                    rename_image(
+                                        category.to_string(),
+                                        entry.title.clone(),
+                                        self.new_name_box.clone(),
+                                        self.directory.clone(),
+                                    );
+
                                     entry.title.clone_from(&self.new_name_box);
                                     self.new_name_box.clear();
                                 }
