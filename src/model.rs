@@ -283,7 +283,12 @@ impl Model {
 
     // Delete an entry from a category.
     pub fn delete_entry(&mut self, category: &String, index: usize) {
-        self.categories.get_mut(category).unwrap().remove(index);
+        let entry = self.categories.get_mut(category).unwrap().remove(index);
+        delete_image(
+            category.to_string(),
+            entry.title,
+            self.file_directory.clone(),
+        );
     }
 
     // Set what the current entry being ranked is.
