@@ -237,8 +237,10 @@ impl Model {
         let k = 12.0;
 
         // Update ratings
-        category[entry1_index].rating = (entry1_rating + k * (s_a - e_a)).round();
-        category[entry2_index].rating = (entry2_rating + k * (s_b - e_b)).round();
+        category[entry1_index].rating =
+            (entry1_rating + k * (s_a - e_a)).round().clamp(0.0, 1000.0);
+        category[entry2_index].rating =
+            (entry2_rating + k * (s_b - e_b)).round().clamp(0.0, 1000.0);
 
         if let Some(original_position) = self.ranking_entry {
             let value = category[original_position].clone();

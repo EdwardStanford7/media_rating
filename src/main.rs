@@ -32,6 +32,9 @@ struct MyApp {
     // What entry is currently selected in the homepage rankings display.
     selected_entry: Option<usize>,
 
+    // Elo list search filter text entry.
+    search_entry_box: String,
+
     // Current contents of the new name text entry box.
     new_name_box: String,
 
@@ -63,6 +66,7 @@ impl Default for MyApp {
             previous_ranking_category: None,
             text_entry_box: String::new(),
             selected_entry: None,
+            search_entry_box: String::new(),
             new_name_box: String::new(),
             focus_index: None,
             ranking: false,
@@ -174,6 +178,7 @@ impl eframe::App for MyApp {
                                 self.free_rank = false;
                                 self.selected_entry = None;
                                 self.new_name_box.clear();
+                                self.search_entry_box.clear();
                                 self.model.clear_current_match();
                                 self.model.clear_new_entry();
                                 self.model.save_to_spreadsheet();
@@ -498,28 +503,36 @@ impl eframe::App for MyApp {
                     // Category list.
                     columns[0].set_width(370.0);
                     columns[0].vertical(|ui| {
+                        ui.text_edit_singleline(&mut self.search_entry_box);
+
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                             ScrollArea::vertical().show(ui, |ui| {
                                 for (index, entry) in
                                     self.model.get_category_entries(category).iter().enumerate()
                                 {
-                                    // Display the entry as a clickable label.
-                                    let label = ui.selectable_label(
-                                        false,
-                                        format!("{:04}\t\t{}", entry.rating, entry.title),
-                                    );
+                                    if entry
+                                        .title
+                                        .to_lowercase()
+                                        .starts_with(&self.search_entry_box.to_lowercase())
+                                    {
+                                        // Display the entry as a clickable label.
+                                        let label = ui.selectable_label(
+                                            false,
+                                            format!("{:04}\t\t{}", entry.rating, entry.title),
+                                        );
 
-                                    // Check if scroll area is focused on something.
-                                    if Some(index) == self.focus_index {
-                                        let rect = label.rect;
-                                        ui.scroll_to_rect(rect, Some(egui::Align::Center));
-                                        self.focus_index = None; // Reset focus after scrolling
-                                    }
+                                        // Check if scroll area is focused on something.
+                                        if Some(index) == self.focus_index {
+                                            let rect = label.rect;
+                                            ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                                            self.focus_index = None; // Reset focus after scrolling
+                                        }
 
-                                    // Check if the entry was clicked.
-                                    if label.clicked() {
-                                        self.selected_entry = Some(index);
-                                        self.new_name_box.clone_from(&entry.title);
+                                        // Check if the entry was clicked.
+                                        if label.clicked() {
+                                            self.selected_entry = Some(index);
+                                            self.new_name_box.clone_from(&entry.title);
+                                        }
                                     }
                                 }
                             });
@@ -550,7 +563,7 @@ impl eframe::App for MyApp {
                                     );
 
                                     entry.title.clone_from(&self.new_name_box);
-                                    self.new_name_box.clear();
+                                    self.focus_index = self.selected_entry;
                                 }
 
                                 if ui.button("Get New Icon").clicked() {
