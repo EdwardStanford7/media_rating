@@ -275,6 +275,8 @@ impl eframe::App for MyApp {
                                         self.directory.clone(),
                                     ),
                                 };
+
+                                self.new_name_box.clone_from(&self.text_entry_box);
                                 self.selected_entry =
                                     Some(self.model.add_entry(
                                         new_entry,
@@ -577,6 +579,7 @@ impl eframe::App for MyApp {
                                         entry.title.clone(),
                                         self.directory.clone(),
                                     );
+                                    self.focus_index = self.selected_entry;
                                 }
 
                                 if ui.button("Rank This Entry").clicked() {
