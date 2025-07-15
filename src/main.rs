@@ -234,7 +234,7 @@ impl eframe::App for MyApp {
 
                         // Rerank category button.
                         ui.horizontal(|ui| {
-                            if ui.button("Rank Selected Cateogory").clicked()
+                            if ui.button("Rank Selected Category").clicked()
                                 && self.ranking_category.is_some()
                                 && self
                                     .model
@@ -268,7 +268,8 @@ impl eframe::App for MyApp {
                             {
                                 let new_entry = Entry {
                                     title: self.text_entry_box.clone(),
-                                    rating: 500.0,
+                                    wins: 0,
+                                    losses: 0,
                                     image: model::get_image(
                                         self.ranking_category.clone().unwrap().to_string(),
                                         self.text_entry_box.clone(),
@@ -398,10 +399,7 @@ impl eframe::App for MyApp {
                             ui.allocate_ui_at_rect(rect1, |ui| {
                                 ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                                     ui.label(
-                                        egui::RichText::new(format!(
-                                            "{} ({})",
-                                            entry1.title, entry1.rating
-                                        ))
+                                        egui::RichText::new(entry1.title.to_string())
                                         .font(FontId::proportional(23.0)),
                                     );
                                 });
@@ -441,10 +439,7 @@ impl eframe::App for MyApp {
                             ui.allocate_ui_at_rect(rect2, |ui| {
                                 ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                                     ui.label(
-                                        egui::RichText::new(format!(
-                                            "{} ({})",
-                                            entry2.title, entry2.rating
-                                        ))
+                                        egui::RichText::new(entry2.title.to_string())
                                         .font(FontId::proportional(23.0)),
                                     );
                                 });
@@ -515,12 +510,12 @@ impl eframe::App for MyApp {
                                     if entry
                                         .title
                                         .to_lowercase()
-                                        .starts_with(&self.search_entry_box.to_lowercase())
+                                        .contains(&self.search_entry_box.to_lowercase())
                                     {
                                         // Display the entry as a clickable label.
                                         let label = ui.selectable_label(
                                             false,
-                                            format!("{:04}\t\t{}", entry.rating, entry.title),
+                                            format!("{:.2}\t\t{}", entry.wins as f64 / (entry.wins + entry.losses) as f64, entry.title),
                                         );
 
                                         // Check if scroll area is focused on something.

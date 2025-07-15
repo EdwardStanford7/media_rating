@@ -27,13 +27,14 @@ pub struct Model {
 #[derive(Debug, Clone)]
 pub struct Entry {
     pub title: String,
-    pub rating: f64,
+    pub wins: usize,
+    pub losses: usize,
     pub image: ColorImage,
 }
 
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
-        self.rating == other.rating && self.title == other.title
+        self.wins == other.wins && self.losses == other.losses && self.title == other.title
     }
 }
 
@@ -47,13 +48,27 @@ impl PartialOrd for Entry {
 
 impl Ord for Entry {
     fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .rating
-            .partial_cmp(&self.rating)
+        let self_total = self.wins + self.losses;
+        let other_total = other.wins + other.losses;
+
+        // Handle unrated entries (0/0) - they should come at the end
+        match (self_total == 0, other_total == 0) {
+            (true, true) => return self.title.cmp(&other.title),   // Both unrated, sort by title
+            (true, false) => return Ordering::Greater,            // Self is unrated, comes after
+            (false, true) => return Ordering::Less,               // Other is unrated, self comes first
+            (false, false) => {}                                  // Both rated, continue to win rate comparison
+        }
+
+        let win_rate = self.wins as f64 / self_total as f64;
+        let other_win_rate = other.wins as f64 / other_total as f64;
+
+        win_rate
+            .partial_cmp(&other_win_rate)
             .unwrap_or(Ordering::Equal)
             .then_with(|| self.title.cmp(&other.title))
     }
 }
+         
 
 impl Model {
     // Create a new Model object.
@@ -108,19 +123,27 @@ impl Model {
                             .unwrap()
                             .get_float()
                         {
-                            Some(rating) => {
-                                self.categories
-                                    .get_mut(&current_category)
+                            Some(wins) => {
+                                match sheet
+                                    .get_value((row as u32, (column + 2) as u32))
                                     .unwrap()
-                                    .push(Entry {
-                                        title: title.to_owned(),
-                                        rating,
-                                        image: get_image(
-                                            current_category.clone(),
-                                            title.to_owned(),
-                                            file_directory.clone(),
-                                        ),
-                                    });
+                                    .get_float()
+                                {
+                                    Some(losses) => {
+                                        let entry = Entry {
+                                            title: title.to_string(),
+                                            wins: wins as usize,
+                                            losses: losses as usize,
+                                            image: get_image(
+                                                current_category.clone(),
+                                                title.to_string(),
+                                                file_directory.clone(),
+                                            ),
+                                        };
+                                        self.add_entry(entry, current_category.clone());
+                                    }
+                                    None => continue,
+                                }
                             }
                             None => continue,
                         }
@@ -183,15 +206,11 @@ impl Model {
             entry1 = rng.gen_range(0..length);
         }
 
-        // Match entries against others with similar elo.
-        let num_entries = self.get_num_entries(category);
+        // Pick a random second entry
         loop {
-            let range = (num_entries / 10) + 1;
-            let lower = (entry1 as i32 - range as i32).max(0) as usize; // Prevent unsigned underflow here.
-            let upper = (entry1 + range + 1).min(length);
-            entry2 = rng.gen_range(lower..upper);
+            entry2 = rng.gen_range(0..length);
             if entry2 != entry1 {
-                break;
+            break;
             }
         }
 
@@ -223,32 +242,13 @@ impl Model {
     pub fn calculate_current_match(&mut self, winner: usize) {
         let (category_name, entry1_index, entry2_index) = self.current_match.clone().unwrap();
         let category = self.categories.get_mut(&category_name).unwrap();
-
-        let entry1_rating = category[entry1_index].rating;
-        let entry2_rating = category[entry2_index].rating;
-
-        let (s_a, s_b) = if winner == 1 { (1.0, 0.0) } else { (0.0, 1.0) };
-
-        // Expected score for each player
-        let e_a = 1.0 / (1.0 + f64::powf(10.0, (entry2_rating - entry1_rating) / 400.0));
-        let e_b = 1.0 - e_a;
-
-        // Sensitivity factor.
-        let k = 12.0;
-
-        // Update ratings
-        category[entry1_index].rating =
-            (entry1_rating + k * (s_a - e_a)).round().clamp(0.0, 1000.0);
-        category[entry2_index].rating =
-            (entry2_rating + k * (s_b - e_b)).round().clamp(0.0, 1000.0);
-
-        if let Some(original_position) = self.ranking_entry {
-            let value = category[original_position].clone();
-            category.sort();
-            self.ranking_entry = Some(category.binary_search(&value).ok().unwrap());
-        } else {
-            category.sort();
-        }
+        
+        // Update the wins and losses of the entries based on the winner.
+        category[entry1_index].wins += if winner == 1 { 1 } else { 0 };
+        category[entry1_index].losses += if winner == 2 { 1 } else { 0 };
+        category[entry2_index].wins += if winner == 2 { 1 } else { 0 };
+        category[entry2_index].losses += if winner == 1 { 1 } else { 0 };
+        category.sort();
     }
 
     // Reset current match to empty.
@@ -264,7 +264,7 @@ impl Model {
 
         // Find the position to insert the entry at.
         for (index, existing_entry) in category.iter().enumerate() {
-            if entry.rating <= existing_entry.rating {
+            if entry <= *existing_entry {
                 position = index + 1;
             }
 
@@ -337,10 +337,12 @@ impl Model {
                 .set_background_color(current_color);
             let _ = sheet.set_column_format(column, &category_format);
             let _ = sheet.set_column_format(column + 1, &category_format);
-            let _ = sheet.set_column_format(column + 2, &separator_format);
+            let _ = sheet.set_column_format(column + 2, &category_format);
+            let _ = sheet.set_column_format(column + 3, &separator_format);
             let _ = sheet.set_column_width(column, 50.0);
-            let _ = sheet.set_column_width(column + 1, 4);
-            let _ = sheet.set_column_width(column + 2, 7.0);
+            let _ = sheet.set_column_width(column + 1, 2.0);
+            let _ = sheet.set_column_width(column + 2, 2.0);
+            let _ = sheet.set_column_width(column + 3, 7.0);
 
             // Write Header
             let header_format = Format::new()
@@ -357,13 +359,13 @@ impl Model {
             let mut row: u32 = 1;
             for entry in entries_sorted {
                 let _ = sheet.write_string_with_format(row, column, &entry.title, &category_format);
-                let _ =
-                    sheet.write_number_with_format(row, column + 1, entry.rating, &category_format);
+                let _ = sheet.write_number_with_format(row, column + 1, entry.wins as f64, &category_format);
+                let _ = sheet.write_number_with_format(row, column + 2, entry.losses as f64, &category_format);
 
                 row += 1;
             }
 
-            column += 3;
+            column += 4; // Move to the next category column.
         }
 
         // Save the workbook
