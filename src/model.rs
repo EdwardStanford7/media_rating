@@ -53,22 +53,21 @@ impl Ord for Entry {
 
         // Handle unrated entries (0/0) - they should come at the end
         match (self_total == 0, other_total == 0) {
-            (true, true) => return self.title.cmp(&other.title),   // Both unrated, sort by title
-            (true, false) => return Ordering::Greater,            // Self is unrated, comes after
-            (false, true) => return Ordering::Less,               // Other is unrated, self comes first
-            (false, false) => {}                                  // Both rated, continue to win rate comparison
+            (true, true) => return self.title.cmp(&other.title), // Both unrated, sort by title
+            (true, false) => return Ordering::Greater,           // Self is unrated, comes after
+            (false, true) => return Ordering::Less, // Other is unrated, self comes first
+            (false, false) => {}                    // Both rated, continue to win rate comparison
         }
 
         let win_rate = self.wins as f64 / self_total as f64;
         let other_win_rate = other.wins as f64 / other_total as f64;
 
-        win_rate
-            .partial_cmp(&other_win_rate)
+        other_win_rate
+            .partial_cmp(&win_rate)
             .unwrap_or(Ordering::Equal)
             .then_with(|| self.title.cmp(&other.title))
     }
 }
-         
 
 impl Model {
     // Create a new Model object.
@@ -210,7 +209,7 @@ impl Model {
         loop {
             entry2 = rng.gen_range(0..length);
             if entry2 != entry1 {
-            break;
+                break;
             }
         }
 
@@ -242,7 +241,7 @@ impl Model {
     pub fn calculate_current_match(&mut self, winner: usize) {
         let (category_name, entry1_index, entry2_index) = self.current_match.clone().unwrap();
         let category = self.categories.get_mut(&category_name).unwrap();
-        
+
         // Update the wins and losses of the entries based on the winner.
         category[entry1_index].wins += if winner == 1 { 1 } else { 0 };
         category[entry1_index].losses += if winner == 2 { 1 } else { 0 };
@@ -258,24 +257,21 @@ impl Model {
 
     // Add a new entry to a category.
     pub fn add_entry(&mut self, entry: Entry, category: String) -> usize {
-        let category = self.categories.get_mut(&category).unwrap();
+        let category_entries = self.categories.get_mut(&category).unwrap();
 
-        let mut position = 0;
-
-        // Find the position to insert the entry at.
-        for (index, existing_entry) in category.iter().enumerate() {
-            if entry <= *existing_entry {
-                position = index + 1;
-            }
-
-            // Don't allow duplicates.
-            if entry.title == existing_entry.title {
-                return index;
-            }
+        // Check for duplicates.
+        if let Some(pos) = category_entries.iter().position(|e| e.title == entry.title) {
+            return pos;
         }
 
-        category.insert(position, entry);
-        position
+        let title = entry.title.clone();
+        category_entries.push(entry);
+        category_entries.sort();
+
+        category_entries
+            .iter()
+            .position(|e| e.title == title)
+            .unwrap()
     }
 
     // Get an entry from a category.
@@ -359,8 +355,18 @@ impl Model {
             let mut row: u32 = 1;
             for entry in entries_sorted {
                 let _ = sheet.write_string_with_format(row, column, &entry.title, &category_format);
-                let _ = sheet.write_number_with_format(row, column + 1, entry.wins as f64, &category_format);
-                let _ = sheet.write_number_with_format(row, column + 2, entry.losses as f64, &category_format);
+                let _ = sheet.write_number_with_format(
+                    row,
+                    column + 1,
+                    entry.wins as f64,
+                    &category_format,
+                );
+                let _ = sheet.write_number_with_format(
+                    row,
+                    column + 2,
+                    entry.losses as f64,
+                    &category_format,
+                );
 
                 row += 1;
             }

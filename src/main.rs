@@ -400,7 +400,7 @@ impl eframe::App for MyApp {
                                 ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                                     ui.label(
                                         egui::RichText::new(entry1.title.to_string())
-                                        .font(FontId::proportional(23.0)),
+                                            .font(FontId::proportional(23.0)),
                                     );
                                 });
                             });
@@ -440,7 +440,7 @@ impl eframe::App for MyApp {
                                 ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                                     ui.label(
                                         egui::RichText::new(entry2.title.to_string())
-                                        .font(FontId::proportional(23.0)),
+                                            .font(FontId::proportional(23.0)),
                                     );
                                 });
                             });
@@ -515,7 +515,12 @@ impl eframe::App for MyApp {
                                         // Display the entry as a clickable label.
                                         let label = ui.selectable_label(
                                             false,
-                                            format!("{:.2}\t\t{}", entry.wins as f64 / (entry.wins + entry.losses) as f64, entry.title),
+                                            format!(
+                                                "{:.2}\t\t{}",
+                                                entry.wins as f64
+                                                    / (entry.wins + entry.losses) as f64,
+                                                entry.title
+                                            ),
                                         );
 
                                         // Check if scroll area is focused on something.
