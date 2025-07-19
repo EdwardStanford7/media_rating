@@ -544,7 +544,6 @@ impl eframe::App for MyApp {
                     columns[1].vertical(|ui| {
                         // Image of currently selected entry.
                         if let Some(entry_index) = &self.selected_entry {
-                            let mut ranking_entry = false;
                             let mut delete_entry = false;
 
                             let entry = self.model.get_entry(category, *entry_index);
@@ -582,20 +581,11 @@ impl eframe::App for MyApp {
                                     self.focus_index = self.selected_entry;
                                 }
 
-                                if ui.button("Rank This Entry").clicked() {
-                                    ranking_entry = true;
-                                }
-
                                 if (ui.button("Delete Entry")).clicked() {
                                     delete_entry = true;
                                 }
                             });
 
-                            if ranking_entry {
-                                self.model.set_ranking_entry(*entry_index);
-                                self.ranking = true;
-                                self.waiting_for_match = true;
-                            }
                             if delete_entry {
                                 self.model.delete_entry(category, *entry_index);
                                 self.selected_entry = None;

@@ -176,8 +176,26 @@ impl Model {
     // Get the title of a random category from all the categories.
     pub fn get_rand_category(&mut self) -> String {
         let categories = self.get_categories();
+
+        let weights: Vec<usize> = categories.iter().map(|c| self.get_num_entries(c)).collect();
+
+        let total_weight: usize = weights.iter().sum();
+
         let mut rng = rand::thread_rng();
-        categories[rng.gen_range(0..categories.len())].clone()
+
+        if total_weight == 0 {
+            categories[rng.gen_range(0..categories.len())].clone()
+        } else {
+            let mut choice = rng.gen_range(0..total_weight);
+            for (category, weight) in categories.iter().zip(weights.iter()) {
+                if choice < *weight {
+                    return category.clone();
+                }
+                choice -= *weight;
+            }
+            // Fallback, shouldn't reach here
+            categories[0].clone()
+        }
     }
 
     // Get a vector of all entries in a particular category.
@@ -192,7 +210,7 @@ impl Model {
 
     // Set the current match that is being displayed. Choose 1 or 2 random entries depending on whether a new entry is being ranked or not.
     pub fn set_current_match(&mut self, category: &String) {
-        let mut rng = rand::thread_rng();
+        // let mut rng = rand::thread_rng().gen_range(0..(min(10, length)));
         let entries = self.categories.get_mut(category).unwrap();
         let length = entries.len();
 
@@ -202,12 +220,18 @@ impl Model {
         if let Some(new_entry) = self.ranking_entry {
             entry1 = new_entry;
         } else {
-            entry1 = rng.gen_range(0..length);
+            // Pick the entry with fewest matchups.
+            entry1 = entries
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, entry)| entry.wins + entry.losses)
+                .map(|(index, _)| index)
+                .unwrap_or(0);
         }
 
         // Pick a random second entry
         loop {
-            entry2 = rng.gen_range(0..length);
+            entry2 = rand::thread_rng().gen_range(0..length);
             if entry2 != entry1 {
                 break;
             }
@@ -287,11 +311,6 @@ impl Model {
             entry.title,
             self.file_directory.clone(),
         );
-    }
-
-    // Set what the current entry being ranked is.
-    pub fn set_ranking_entry(&mut self, index: usize) {
-        self.ranking_entry = Some(index);
     }
 
     // Reset the index of the new entry being ranked to None.
