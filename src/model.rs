@@ -65,6 +65,7 @@ impl Ord for Entry {
         other_win_rate
             .partial_cmp(&win_rate)
             .unwrap_or(Ordering::Equal)
+            .then_with(|| (other.wins + other.losses).cmp(&(self.wins + self.losses)))
             .then_with(|| self.title.cmp(&other.title))
     }
 }
@@ -355,8 +356,8 @@ impl Model {
             let _ = sheet.set_column_format(column + 2, &category_format);
             let _ = sheet.set_column_format(column + 3, &separator_format);
             let _ = sheet.set_column_width(column, 50.0);
-            let _ = sheet.set_column_width(column + 1, 2.0);
-            let _ = sheet.set_column_width(column + 2, 2.0);
+            let _ = sheet.set_column_width(column + 1, 3.0);
+            let _ = sheet.set_column_width(column + 2, 3.0);
             let _ = sheet.set_column_width(column + 3, 7.0);
 
             // Write Header

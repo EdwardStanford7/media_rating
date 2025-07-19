@@ -516,7 +516,9 @@ impl eframe::App for MyApp {
                                         let label = ui.selectable_label(
                                             false,
                                             format!(
-                                                "{:.2}\t\t{}",
+                                                "{}/{} ({:.2}%)\t\t{}",
+                                                entry.wins,
+                                                entry.wins + entry.losses,
                                                 entry.wins as f64
                                                     / (entry.wins + entry.losses) as f64,
                                                 entry.title
