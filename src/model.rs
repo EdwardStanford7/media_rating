@@ -14,8 +14,8 @@ pub struct Model {
     categories: HashMap<String, Vec<String>>,
 
     // Categories can be re-ranked as needed. This happens by iterating through the category and doing pairwise comparisons.
-    // If this is Some then it is the category that is being ranked and the index of the entry in the category.
-    ranking_category: Option<(String, usize)>,
+    // If this is Some then it is the category that is being ranked, the index of the entry in the category, and a boolean indicating if it is ascending or descending.
+    ranking_category: Option<(String, usize, bool)>,
 
     // New entries are ranked by binary searching the sorted category and inserting the new entry in the correct position.
     // If this is Some then it is the category name, the new entry, and the current bounds of the binary search.
@@ -181,13 +181,13 @@ impl Model {
     }
 
     // UI calls this function to get the current match for ranking.
-    pub fn get_current_match(&self) -> Option<(&str, &str)> {
-        if let Some((category, index)) = &self.ranking_category {
+    pub fn get_current_match(&self) -> Option<(&str, usize, &str, usize)> {
+        if let Some((category, index, _)) = &self.ranking_category {
             let entries = self.categories.get(category)?;
             if *index < entries.len() + 1 {
                 let left_entry = &entries[*index];
                 let right_entry = &entries[*index + 1];
-                Some((left_entry, right_entry))
+                Some((left_entry, *index, right_entry, *index + 1))
             } else {
                 None
             }
@@ -196,7 +196,7 @@ impl Model {
             if lower < upper {
                 let index = (lower + upper) / 2;
                 let right_entry = &entries[index];
-                Some((entry, right_entry))
+                Some((entry, index, right_entry, index + 1))
             } else {
                 None
             }
@@ -208,15 +208,17 @@ impl Model {
     // UI calls this function to report the winner of a match.
     pub fn report_match_winner(&mut self, left_won: bool) {
         // If ranking within a category, adjust the index of the current match.
-        if let Some((category, index)) = &self.ranking_category {
-            if left_won {
-                self.ranking_category = Some((category.clone(), index + 1));
-            } else {
+        if let Some((category, index, is_ascending)) = &self.ranking_category {
+            if !left_won {
+                // Swap the two entries
                 let entries = self.categories.get_mut(category).unwrap();
-                if *index < entries.len() - 1 {
-                    entries.swap(*index, *index + 1);
-                    self.ranking_category = Some((category.clone(), index + 1));
-                }
+                entries.swap(*index, *index + 1);
+            }
+
+            if *is_ascending && *index < self.get_num_entries(category) - 1 {
+                self.ranking_category = Some((category.clone(), index + 1, *is_ascending));
+            } else if !*is_ascending && *index > 0 {
+                self.ranking_category = Some((category.clone(), index - 1, *is_ascending));
             }
         }
         // If ranking a new entry, adjust the bounds of the binary search. If the binary search is complete, add the new entry to the category and set ranking_new_entry to None.
@@ -270,8 +272,16 @@ impl Model {
     }
 
     // Rank a category.
-    pub fn rank_category(&mut self, category: String) {
-        self.ranking_category = Some((category.clone(), 0));
+    pub fn rank_category(&mut self, category: String, is_ascending: bool) {
+        self.ranking_category = Some((
+            category.clone(),
+            if is_ascending {
+                0
+            } else {
+                self.get_num_entries(&category) - 2
+            },
+            is_ascending,
+        ));
         self.ranking_new_entry = None; // Safety.
     }
 }

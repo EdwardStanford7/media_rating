@@ -26,6 +26,9 @@ struct MyApp {
     // What was the previous category selected. Used for checking when the category changes.
     previous_selected_category: Option<String>,
 
+    // Is the current ranking ascending or descending?
+    rank_ascending: bool,
+
     // What is the current contents of the new entry text box.
     new_entry_box: String,
 
@@ -60,6 +63,7 @@ impl Default for MyApp {
             directory: String::new(),
             selected_category: None,
             previous_selected_category: None,
+            rank_ascending: true,
             new_entry_box: String::new(),
             selected_entry: None,
             search_entry_box: String::new(),
@@ -286,16 +290,13 @@ impl MyApp {
                                     .get_num_entries(&(self.selected_category.clone().unwrap()))
                                     >= 2
                             {
-                                self.model
-                                    .rank_category(self.selected_category.clone().unwrap());
+                                self.model.rank_category(
+                                    self.selected_category.clone().unwrap(),
+                                    self.rank_ascending,
+                                );
                             }
 
-                            if ui.button("Delete Category").clicked()
-                                && self.selected_category.is_some()
-                            {
-                                self.deleting_category = self.selected_category.clone().unwrap();
-                                self.show_delete_warning = true;
-                            }
+                            ui.toggle_value(&mut self.rank_ascending, "Rank descending");
                         });
                     });
 
@@ -305,27 +306,35 @@ impl MyApp {
                     ui.vertical(|ui| {
                         ui.text_edit_singleline(&mut self.new_entry_box);
 
-                        ui.horizontal(|ui| {
-                            // Add new entry button
-                            if ui.button("Add Entry To Current Category").clicked()
-                                && self.selected_category.is_some()
-                                && !self.new_entry_box.is_empty()
-                            {
-                                self.model.add_entry(
-                                    self.new_entry_box.clone(),
-                                    self.selected_category.clone().unwrap(),
-                                );
-                                self.new_entry_box.clear();
-                            }
+                        // Add new entry button
+                        if ui.button("Add Entry To Current Category").clicked()
+                            && self.selected_category.is_some()
+                            && !self.new_entry_box.is_empty()
+                        {
+                            self.model.add_entry(
+                                self.new_entry_box.clone(),
+                                self.selected_category.clone().unwrap(),
+                            );
+                            self.new_entry_box.clear();
+                        }
+                    });
 
-                            // Create new category button.
-                            if ui.button("Create New Category").clicked()
-                                && !self.new_entry_box.is_empty()
-                            {
-                                self.model.create_category(self.new_entry_box.to_string());
-                                self.new_entry_box.clear();
-                            }
-                        });
+                    ui.vertical(|ui| {
+                        // Delete selected category button.
+                        if ui.button("Delete Selected Category").clicked()
+                            && self.selected_category.is_some()
+                        {
+                            self.deleting_category = self.selected_category.clone().unwrap();
+                            self.show_delete_warning = true;
+                        }
+
+                        // Create new category button.
+                        if ui.button("Create New Category").clicked()
+                            && !self.new_entry_box.is_empty()
+                        {
+                            self.model.create_category(self.new_entry_box.to_string());
+                            self.new_entry_box.clear();
+                        }
                     });
                 }
             });
@@ -337,7 +346,7 @@ impl MyApp {
 
     fn ranking_screen(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if let Some((entry1, entry2)) = self.model.get_current_match() {
+            if let Some((entry1, index1, entry2, index2)) = self.model.get_current_match() {
                 // This again cuz mutable references nested in ui elements are annoying.
                 let mut entry1_won = false;
                 let mut entry2_won = false;
@@ -361,7 +370,10 @@ impl MyApp {
                     // Create a top-down layout for the label
                     ui.allocate_ui_at_rect(rect1, |ui| {
                         ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
-                            ui.label(egui::RichText::new(entry1).font(FontId::proportional(23.0)));
+                            ui.label(
+                                egui::RichText::new(format!("{}, (#{})", entry1, index1 + 1))
+                                    .font(FontId::proportional(23.0)),
+                            );
                         });
                     });
                 });
@@ -385,7 +397,10 @@ impl MyApp {
                     // Create a top-down layout for the label
                     ui.allocate_ui_at_rect(rect2, |ui| {
                         ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
-                            ui.label(egui::RichText::new(entry2).font(FontId::proportional(23.0)));
+                            ui.label(
+                                egui::RichText::new(format!("{}, (#{})", entry2, index2 + 1))
+                                    .font(FontId::proportional(23.0)),
+                            );
                         });
                     });
                 });
