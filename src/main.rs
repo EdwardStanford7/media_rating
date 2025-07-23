@@ -1,13 +1,13 @@
 use eframe::egui;
-use egui::{
-    pos2, vec2, Align, CentralPanel, FontId, Id, Image, ImageButton, Rect, ScrollArea,
-    TopBottomPanel,
-};
+use egui::{vec2, Align, CentralPanel, FontId, Id, Image, ImageButton, ScrollArea, TopBottomPanel};
 use native_dialog::FileDialog;
 use rust_xlsxwriter::Workbook;
-use std::{path::Path, process::exit};
+use std::{cell::RefCell, collections::HashMap, ops::ControlFlow, path::Path, process::exit};
 mod model;
-use model::{delete_image, get_image, rename_image, Entry, Model};
+use egui::ColorImage;
+use image::{self};
+use image_search::{blocking::urls, Arguments};
+use model::Model;
 use std::fs;
 
 struct MyApp {
@@ -21,13 +21,13 @@ struct MyApp {
     directory: String,
 
     // What category is currently selected in the rank a category dropdown.
-    ranking_category: Option<String>,
+    selected_category: Option<String>,
 
     // What was the previous category selected. Used for checking when the category changes.
-    previous_ranking_category: Option<String>,
+    previous_selected_category: Option<String>,
 
     // What is the current contents of the new entry text box.
-    text_entry_box: String,
+    new_entry_box: String,
 
     // What entry is currently selected in the homepage rankings display.
     selected_entry: Option<usize>,
@@ -36,23 +36,19 @@ struct MyApp {
     search_entry_box: String,
 
     // Current contents of the new name text entry box.
-    new_name_box: String,
+    rename_entry_box: String,
 
     // What element is in focus in the leaderboard scroll.
     focus_index: Option<usize>,
-
-    // What mode the app is in, is it category ranking, free ranking, or leaderboard menu if both false.
-    ranking: bool,
-    free_rank: bool,
-
-    // Used for while ranking to tell the model to get a new match.
-    waiting_for_match: bool,
 
     // Warning to the user when they try to delete a category.
     show_delete_warning: bool,
 
     // What category is the user trying to delete.
     deleting_category: String,
+
+    // Texture cache for images.
+    texture_cache: RefCell<HashMap<String, egui::TextureHandle>>,
 }
 
 impl Default for MyApp {
@@ -62,24 +58,93 @@ impl Default for MyApp {
             model: Model::new(),
             model_initialized: false,
             directory: String::new(),
-            ranking_category: None,
-            previous_ranking_category: None,
-            text_entry_box: String::new(),
+            selected_category: None,
+            previous_selected_category: None,
+            new_entry_box: String::new(),
             selected_entry: None,
             search_entry_box: String::new(),
-            new_name_box: String::new(),
+            rename_entry_box: String::new(),
             focus_index: None,
-            ranking: false,
-            free_rank: false,
-            waiting_for_match: false,
             show_delete_warning: false,
             deleting_category: String::new(),
+            texture_cache: RefCell::new(HashMap::new()),
         }
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let ControlFlow::Break(_) = self.startup_screen(ctx) {
+            return;
+        }
+
+        self.menu_bar(ctx);
+
+        self.check_delete_overlay(ctx);
+
+        // Central panel.
+        CentralPanel::default().show(ctx, |ui| {
+            // If app is in ranking mode, display the current match.
+            if self.model.is_ranking() {
+                self.ranking_screen(ctx, ui);
+            }
+            // If app is in home menu, display a list of all entries in the selected category.
+            else if let Some(ref category) = self.selected_category {
+                let category_clone = category.clone();
+                self.home_screen(ctx, ui, &category_clone);
+            }
+        });
+    }
+}
+
+impl MyApp {
+    fn check_delete_overlay(&mut self, ctx: &egui::Context) {
+        if self.show_delete_warning {
+            // Create a dimming overlay that blocks interactions
+            egui::Area::new(Id::new("Blocking Overlay"))
+                .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
+                .fixed_pos(egui::pos2(0.0, 0.0))
+                .order(egui::Order::Background)
+                .show(ctx, |ui| {
+                    // Fill the entire screen
+                    let screen_rect = ctx.screen_rect();
+                    ui.painter()
+                        .rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(75));
+
+                    // Block interactions by creating a full-screen interactive element
+                    ui.allocate_rect(screen_rect, egui::Sense::click());
+                });
+
+            // Show the warning popup in a separate Area
+            egui::Area::new(Id::new("Warning Popup"))
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    egui::Window::new("Warning")
+                        .collapsible(false)
+                        .resizable(false)
+                        .movable(false)
+                        .show(ui.ctx(), |ui| {
+                            ui.label("This will delete every entry in the category, are you sure?");
+                            ui.horizontal(|ui| {
+                                if ui.button("Yes").clicked() {
+                                    self.model.delete_category(&self.deleting_category);
+                                    self.selected_category = None;
+                                    self.show_delete_warning = false;
+                                }
+
+                                ui.add_space(50.0);
+
+                                if ui.button("Cancel").clicked() {
+                                    self.show_delete_warning = false;
+                                }
+                            });
+                        });
+                });
+        }
+    }
+
+    fn startup_screen(&mut self, ctx: &egui::Context) -> ControlFlow<()> {
         // Home menu on startup.
         if !self.model_initialized {
             // Display home menu.
@@ -151,73 +216,53 @@ impl eframe::App for MyApp {
                                 file_path.file_name().unwrap().to_str().unwrap().to_string(),
                             ) {
                                 self.model_initialized = true;
+                                if let Some(category) = self.model.get_categories().first().cloned()
+                                {
+                                    self.selected_category = Some(category.clone());
+                                } else {
+                                    self.selected_category = None;
+                                }
                             }
                         }
                     }
                 });
             });
 
-            return;
+            return ControlFlow::Break(());
         }
+        ControlFlow::Continue(())
+    }
 
+    fn menu_bar(&mut self, ctx: &egui::Context) {
         // Menu bar.
         TopBottomPanel::top("Menu").show(ctx, |ui| {
             // Menu is horizontal at top of app.
             ui.horizontal(|ui| {
-                // App name, save, menu buttons.
-                ui.vertical(|ui| {
-                    ui.heading("Media Rating App");
-                    ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
-                            self.model.save_to_spreadsheet();
-                        }
-                        // Only display back to menu button if ranking is happening.
-                        if self.ranking {
-                            if ui.button("Menu").clicked() {
-                                self.ranking = false;
-                                self.free_rank = false;
-                                self.selected_entry = None;
-                                self.new_name_box.clear();
-                                self.search_entry_box.clear();
-                                self.model.clear_current_match();
-                                self.model.clear_new_entry();
-                                self.model.save_to_spreadsheet();
-                            }
-                        } else if ui.button("Rank All Categories").clicked()
-                            && !self.model.get_categories().is_empty()
-                        {
-                            // Only allow ranking if there are actually entries to rank.
-                            if self
-                                .model
-                                .get_categories()
-                                .iter()
-                                .all(|category| self.model.get_num_entries(category) >= 2)
-                            {
-                                self.ranking = true;
-                                self.free_rank = true;
-                                self.waiting_for_match = true;
-                            }
-                        }
-                    });
-                });
+                // Only display back to menu button if ranking is happening.
+                if self.model.is_ranking() && ui.button("Menu").clicked() {
+                    self.selected_entry = None;
+                    self.rename_entry_box.clear();
+                    self.search_entry_box.clear();
+                    self.model.end_ranking();
+                    self.model.save_to_spreadsheet();
+                }
 
                 // Should app display menu items or not (if ranking is happening).
-                if !self.ranking {
+                if !self.model.is_ranking() {
                     ui.add_space(10.0);
 
                     // Select category dropdown.
                     ui.vertical(|ui| {
-                        ui.label("Select a category:");
-                        egui::ComboBox::from_label("Select a category to rerank")
+                        egui::ComboBox::from_label("Select a category")
                             .selected_text(
-                                self.ranking_category
+                                self.selected_category
                                     .clone()
                                     .unwrap_or_else(|| "Choose...".to_string()),
                             )
                             .show_ui(ui, |ui| {
                                 for category in self.model.get_categories() {
                                     ui.selectable_value(
-                                        &mut self.ranking_category,
+                                        &mut self.selected_category,
                                         Some(category.clone()),
                                         category,
                                     );
@@ -225,30 +270,30 @@ impl eframe::App for MyApp {
                             });
 
                         // Check if category has changed.
-                        if self.ranking_category != self.previous_ranking_category {
+                        if self.selected_category != self.previous_selected_category {
                             self.selected_entry = None;
                             // Update the previous ranking category
-                            self.previous_ranking_category
-                                .clone_from(&self.ranking_category);
+                            self.previous_selected_category
+                                .clone_from(&self.selected_category);
                         }
 
                         // Rerank category button.
                         ui.horizontal(|ui| {
                             if ui.button("Rank Selected Category").clicked()
-                                && self.ranking_category.is_some()
+                                && self.selected_category.is_some()
                                 && self
                                     .model
-                                    .get_num_entries(&(self.ranking_category.clone().unwrap()))
+                                    .get_num_entries(&(self.selected_category.clone().unwrap()))
                                     >= 2
                             {
-                                self.ranking = true;
-                                self.waiting_for_match = true;
+                                self.model
+                                    .rank_category(self.selected_category.clone().unwrap());
                             }
 
                             if ui.button("Delete Category").clicked()
-                                && self.ranking_category.is_some()
+                                && self.selected_category.is_some()
                             {
-                                self.deleting_category = self.ranking_category.clone().unwrap();
+                                self.deleting_category = self.selected_category.clone().unwrap();
                                 self.show_delete_warning = true;
                             }
                         });
@@ -258,347 +303,372 @@ impl eframe::App for MyApp {
 
                     // Add entries or categories.
                     ui.vertical(|ui| {
-                        ui.text_edit_singleline(&mut self.text_entry_box);
+                        ui.text_edit_singleline(&mut self.new_entry_box);
 
                         ui.horizontal(|ui| {
                             // Add new entry button
                             if ui.button("Add Entry To Current Category").clicked()
-                                && self.ranking_category.is_some()
-                                && !self.text_entry_box.is_empty()
+                                && self.selected_category.is_some()
+                                && !self.new_entry_box.is_empty()
                             {
-                                let new_entry = Entry {
-                                    title: self.text_entry_box.clone(),
-                                    wins: 0,
-                                    losses: 0,
-                                    image: model::get_image(
-                                        self.ranking_category.clone().unwrap().to_string(),
-                                        self.text_entry_box.clone(),
-                                        self.directory.clone(),
-                                    ),
-                                };
-
-                                self.new_name_box.clone_from(&self.text_entry_box);
-                                self.selected_entry =
-                                    Some(self.model.add_entry(
-                                        new_entry,
-                                        self.ranking_category.clone().unwrap(),
-                                    ));
-                                self.focus_index = self.selected_entry;
-                                self.text_entry_box.clear();
+                                self.model.add_entry(
+                                    self.new_entry_box.clone(),
+                                    self.selected_category.clone().unwrap(),
+                                );
+                                self.new_entry_box.clear();
                             }
 
                             // Create new category button.
                             if ui.button("Create New Category").clicked()
-                                && !self.text_entry_box.is_empty()
+                                && !self.new_entry_box.is_empty()
                             {
-                                self.model.create_category(self.text_entry_box.to_string());
-                                self.text_entry_box.clear();
+                                self.model.create_category(self.new_entry_box.to_string());
+                                self.new_entry_box.clear();
                             }
                         });
                     });
                 }
             });
+
+            // Add a space between the menu bar and the content.
+            ui.add_space(10.0);
         });
+    }
 
-        if self.show_delete_warning {
-            // Create a dimming overlay that blocks interactions
-            egui::Area::new(Id::new("Blocking Overlay"))
-                .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
-                .fixed_pos(egui::pos2(0.0, 0.0))
-                .order(egui::Order::Background)
-                .show(ctx, |ui| {
-                    // Fill the entire screen
-                    let screen_rect = ctx.screen_rect();
-                    ui.painter()
-                        .rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(75));
+    fn ranking_screen(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if let Some((entry1, entry2)) = self.model.get_current_match() {
+                // This again cuz mutable references nested in ui elements are annoying.
+                let mut entry1_won = false;
+                let mut entry2_won = false;
 
-                    // Block interactions by creating a full-screen interactive element
-                    ui.allocate_rect(screen_rect, egui::Sense::click());
+                // Entry 1.
+                ui.vertical(|ui| {
+                    let image1 = Image::new(&self.get_entry_texture(
+                        entry1,
+                        self.selected_category.as_ref().unwrap(),
+                        ctx,
+                    ));
+                    let width1: f32 = image1.size().unwrap().x;
+
+                    if ui.add(ImageButton::new(image1)).clicked() {
+                        entry1_won = true;
+                    }
+
+                    // Define the rectangle for the label area
+                    let rect1 = ui.allocate_space(vec2(width1, 55.0)).1;
+
+                    // Create a top-down layout for the label
+                    ui.allocate_ui_at_rect(rect1, |ui| {
+                        ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
+                            ui.label(egui::RichText::new(entry1).font(FontId::proportional(23.0)));
+                        });
+                    });
                 });
 
-            // Show the warning popup in a separate Area
-            egui::Area::new(Id::new("Warning Popup"))
-                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .order(egui::Order::Foreground)
-                .show(ctx, |ui| {
-                    egui::Window::new("Warning")
-                        .collapsible(false)
-                        .resizable(false)
-                        .movable(false)
-                        .show(ui.ctx(), |ui| {
-                            ui.label("This will delete every entry in the category, are you sure?");
-                            ui.horizontal(|ui| {
-                                if ui.button("Yes").clicked() {
-                                    self.model.delete_category(&self.deleting_category);
-                                    self.ranking_category = None;
-                                    self.show_delete_warning = false;
-                                }
+                // Entry 2.
+                ui.vertical(|ui| {
+                    let image2 = Image::new(&self.get_entry_texture(
+                        entry2,
+                        self.selected_category.as_ref().unwrap(),
+                        ctx,
+                    ));
+                    let width2: f32 = image2.size().unwrap().x;
 
-                                ui.add_space(50.0);
+                    if ui.add(ImageButton::new(image2)).clicked() {
+                        entry2_won = true;
+                    }
 
-                                if ui.button("Cancel").clicked() {
-                                    self.show_delete_warning = false;
-                                }
-                            });
+                    // Define the rectangle for the label area
+                    let rect2 = ui.allocate_space(vec2(width2, 55.0)).1;
+
+                    // Create a top-down layout for the label
+                    ui.allocate_ui_at_rect(rect2, |ui| {
+                        ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
+                            ui.label(egui::RichText::new(entry2).font(FontId::proportional(23.0)));
                         });
+                    });
                 });
-        }
 
-        // Does model need to choose a new match.
-        if self.ranking && self.waiting_for_match {
-            let category = if self.free_rank {
-                self.model.get_rand_category()
-            } else {
-                self.ranking_category.as_ref().unwrap().to_owned()
-            };
+                // Calculate match outcome if user selected.
+                if entry1_won && !entry2_won {
+                    self.model.report_match_winner(true);
+                } else if !entry1_won && entry2_won {
+                    self.model.report_match_winner(false);
+                }
 
-            self.model.set_current_match(&category);
-            self.waiting_for_match = false;
-        }
+                // Autosave everything.
+                self.model.save_to_spreadsheet();
+            }
+        });
+    }
 
-        // Central panel.
-        CentralPanel::default().show(ctx, |ui| {
-            // If app is in ranking mode, display the current match.
-            if self.ranking || self.free_rank {
-                ui.horizontal(|ui| {
-                    if let Some((entry1, entry2, category)) = self.model.get_current_match() {
-                        let title1 = entry1.title.clone();
-                        let title2 = entry2.title.clone();
+    fn home_screen(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, category: &String) {
+        ui.columns(2, |columns| {
+            // Category list.
+            columns[0].set_width(370.0);
+            columns[0].vertical(|ui| {
+                ui.text_edit_singleline(&mut self.search_entry_box);
 
-                        // Images for the two entries.
-                        let texture1 = ctx.load_texture(
-                            entry1.title.clone(),
-                            entry1.image.clone(),
-                            egui::TextureOptions::LINEAR,
-                        );
-                        let texture2 = ctx.load_texture(
-                            entry2.title.clone(),
-                            entry2.image.clone(),
-                            egui::TextureOptions::LINEAR,
-                        );
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                    ScrollArea::vertical().show(ui, |ui| {
+                        for (index, entry) in
+                            self.model.get_category_entries(category).iter().enumerate()
+                        {
+                            if entry
+                                .to_lowercase()
+                                .contains(&self.search_entry_box.to_lowercase())
+                            {
+                                // Display the entry as a clickable label.
+                                let label = ui.selectable_label(
+                                    false,
+                                    format!("{} \t\t{}", index + 1, entry),
+                                );
 
-                        // This again cuz mutable references nested in ui elements are annoying.
-                        let mut entry1_won = false;
-                        let mut entry2_won = false;
-                        let mut entry1_replace_image = false;
-                        let mut entry2_replace_image = false;
+                                // Check if scroll area is focused on something.
+                                if Some(index) == self.focus_index {
+                                    let rect = label.rect;
+                                    ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                                    self.focus_index = None; // Reset focus after scrolling
+                                }
 
-                        // Entry 1.
-                        ui.vertical(|ui| {
-                            let image1 = Image::new(&texture1);
-                            let width1: f32 = image1.size().unwrap().x;
-
-                            if ui.add(ImageButton::new(image1)).clicked() {
-                                entry1_won = true;
+                                // Check if the entry was clicked.
+                                if label.clicked() {
+                                    self.selected_entry = Some(index);
+                                    self.rename_entry_box.clone_from(entry);
+                                }
                             }
-
-                            // Define the rectangle for the label area
-                            let rect1 = ui.allocate_space(vec2(width1, 55.0)).1;
-
-                            // Create a top-down layout for the label
-                            ui.allocate_ui_at_rect(rect1, |ui| {
-                                ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
-                                    ui.label(
-                                        egui::RichText::new(entry1.title.to_string())
-                                            .font(FontId::proportional(23.0)),
-                                    );
-                                });
-                            });
-
-                            // Define the position for the button in the lower right corner
-                            let button_size = vec2(100.0, 10.0);
-                            let button_pos = pos2(
-                                rect1.right() - button_size.x + 15.0,
-                                rect1.bottom() - button_size.y - 10.0,
-                            );
-
-                            // Create the button at the specified position
-                            ui.allocate_ui_at_rect(
-                                Rect::from_min_size(button_pos, button_size),
-                                |ui| {
-                                    if ui.button("Get New Image").clicked() {
-                                        entry1_replace_image = true;
-                                    }
-                                },
-                            );
-                        });
-
-                        // Entry 2.
-                        ui.vertical(|ui| {
-                            let image2 = Image::new(&texture2);
-                            let width2: f32 = image2.size().unwrap().x;
-
-                            if ui.add(ImageButton::new(image2)).clicked() {
-                                entry2_won = true;
-                            }
-
-                            // Define the rectangle for the label area
-                            let rect2 = ui.allocate_space(vec2(width2, 55.0)).1;
-
-                            // Create a top-down layout for the label
-                            ui.allocate_ui_at_rect(rect2, |ui| {
-                                ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
-                                    ui.label(
-                                        egui::RichText::new(entry2.title.to_string())
-                                            .font(FontId::proportional(23.0)),
-                                    );
-                                });
-                            });
-
-                            // Define the position for the button in the lower right corner
-                            let button_size = vec2(100.0, 10.0);
-                            let button_pos = pos2(
-                                rect2.right() - button_size.x + 15.0,
-                                rect2.bottom() - button_size.y - 10.0,
-                            );
-
-                            // Create the button at the specified position
-                            ui.allocate_ui_at_rect(
-                                Rect::from_min_size(button_pos, button_size),
-                                |ui| {
-                                    if ui.button("Get New Image").clicked() {
-                                        entry2_replace_image = true;
-                                    }
-                                },
-                            );
-                        });
-
-                        // Update images if user requested.
-                        if entry1_replace_image {
-                            delete_image(
-                                category.to_string(),
-                                title1.clone(),
-                                self.directory.clone(),
-                            );
-                            entry1.image =
-                                get_image(category.to_string(), title1, self.directory.clone());
                         }
-                        if entry2_replace_image {
-                            delete_image(
-                                category.to_string(),
-                                title2.clone(),
-                                self.directory.clone(),
-                            );
-                            entry2.image =
-                                get_image(category.to_string(), title2, self.directory.clone());
+                    });
+                });
+            });
+
+            columns[1].vertical(|ui| {
+                // Image of currently selected entry.
+                if let Some(entry_index) = &self.selected_entry {
+                    let mut rename_entry = false;
+                    let mut new_icon = false;
+                    let mut delete_entry = false;
+
+                    let entry = self.model.get_entry(category, *entry_index);
+                    ui.image(&self.get_entry_texture(&entry.clone(), category, ctx));
+
+                    ui.horizontal(|ui| {
+                        if ui.button("Update Name").clicked() {
+                            rename_entry = true;
                         }
 
-                        // Calculate match outcome if user selected.
-                        if entry1_won && !entry2_won {
-                            self.model.calculate_current_match(1);
-                            self.waiting_for_match = true;
-                        } else if !entry1_won && entry2_won {
-                            self.model.calculate_current_match(2);
-                            self.waiting_for_match = true;
+                        if ui.button("Get New Icon").clicked() {
+                            new_icon = true;
+                        }
+
+                        if (ui.button("Delete Entry")).clicked() {
+                            delete_entry = true;
+                        }
+                    });
+
+                    if rename_entry {
+                        rename_image(
+                            category.to_string(),
+                            entry.clone(),
+                            self.rename_entry_box.clone(),
+                            &self.directory,
+                        );
+
+                        self.model.rename_entry(
+                            category,
+                            *entry_index,
+                            self.rename_entry_box.clone(),
+                        );
+                        self.focus_index = self.selected_entry;
+                        self.model.save_to_spreadsheet();
+                    }
+
+                    if new_icon {
+                        delete_image(category.to_string(), entry.clone(), &self.directory);
+                        self.update_entry_texture(&entry, category, ctx);
+                        self.focus_index = self.selected_entry;
+                    }
+
+                    if delete_entry {
+                        self.model.delete_entry(category, *entry_index);
+                        delete_image(category.to_string(), entry, &self.directory);
+                        self.selected_entry = None;
+                        self.model.save_to_spreadsheet();
+                    }
+
+                    ui.text_edit_singleline(&mut self.rename_entry_box);
+                }
+            });
+        });
+    }
+
+    fn get_entry_texture(
+        &self,
+        entry: &str,
+        category: &str,
+        ctx: &egui::Context,
+    ) -> egui::TextureHandle {
+        // Check if the texture is already cached.
+        if let Some(texture) = self
+            .texture_cache
+            .borrow()
+            .get(&format!("{} {}", entry, category))
+        {
+            return texture.clone();
+        }
+
+        // If not cached, get the image and create a new texture.
+        let image = get_image(
+            category.to_string(),
+            entry.to_string(),
+            self.directory.clone(),
+        );
+        let texture = ctx.load_texture(
+            format!("{} {}", entry, category),
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+
+        // Cache the texture.
+        self.texture_cache
+            .borrow_mut()
+            .insert(format!("{} {}", entry, category), texture.clone());
+
+        texture
+    }
+
+    fn update_entry_texture(&self, entry: &str, category: &str, ctx: &egui::Context) {
+        // Remove the old texture from the cache.
+        self.texture_cache
+            .borrow_mut()
+            .remove(&format!("{} {}", entry, category));
+
+        // Get the new image and create a new texture.
+        let image = get_image(
+            category.to_string(),
+            entry.to_string(),
+            self.directory.clone(),
+        );
+        let texture = ctx.load_texture(
+            format!("{} {}", entry, category),
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+
+        // Cache the new texture.
+        self.texture_cache
+            .borrow_mut()
+            .insert(format!("{} {}", entry, category), texture.clone());
+    }
+}
+
+pub fn get_image(mut category: String, mut title: String, file_directory: String) -> ColorImage {
+    // Remove any extra information from the title and category stored in the spreadsheet.
+    if let Some(index) = title.find('(') {
+        title.truncate(index);
+    }
+    title = title.trim().to_string();
+    category.pop();
+
+    // Default to placeholder image.
+    let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
+
+    // Construct the file path.
+    let binding = format!("{}images/{} {}.png", file_directory, title, category);
+    let full_path = Path::new(&binding);
+
+    // Check local files first for saved image.
+    if let Ok(image) = image::open(full_path) {
+        img_bytes = image.to_rgba8().to_vec();
+        return ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes);
+    }
+
+    // Image was not cached locally, build query request.
+    let args =
+        Arguments::new(&format!("{} {}", title, category), 4).ratio(image_search::Ratio::Tall);
+    let url_result = urls(args);
+
+    // Attempt to download image from urls.
+    if let Ok(urls) = url_result {
+        for url in urls {
+            match reqwest::blocking::get(url) {
+                Ok(response) => match response.bytes() {
+                    Ok(bytes) => {
+                        // Decode image and resize to 380x475
+                        if let Ok(image) = image::load_from_memory(&bytes) {
+                            let resized_image = image.resize_exact(
+                                380,
+                                475,
+                                image::imageops::FilterType::CatmullRom,
+                            );
+                            img_bytes = resized_image.to_rgba8().to_vec();
+
+                            // Cache the resized image locally.
+                            if let Err(e) = resized_image.save(full_path) {
+                                eprintln!("Error saving image locally: {}", e);
+                            }
+                            break;
+                        } else {
+                            eprintln!("Error decoding image data");
                         }
                     }
-                });
+                    Err(e) => eprintln!("Error reading bytes from response: {}", e),
+                },
+                Err(e) => eprintln!("Error fetching URL: {}", e),
             }
-            // If app is in home menu, display a list of all entries in the selected category.
-            else if let Some(category) = &self.ranking_category {
-                ui.columns(2, |columns| {
-                    // Category list.
-                    columns[0].set_width(370.0);
-                    columns[0].vertical(|ui| {
-                        ui.text_edit_singleline(&mut self.search_entry_box);
+        }
+    } else {
+        eprintln!("Error fetching URLs: {}", url_result.err().unwrap());
+    }
 
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                            ScrollArea::vertical().show(ui, |ui| {
-                                for (index, entry) in
-                                    self.model.get_category_entries(category).iter().enumerate()
-                                {
-                                    if entry
-                                        .title
-                                        .to_lowercase()
-                                        .contains(&self.search_entry_box.to_lowercase())
-                                    {
-                                        // Display the entry as a clickable label.
-                                        let label = ui.selectable_label(
-                                            false,
-                                            format!(
-                                                "{}/{} ({:.2}%)\t\t{}",
-                                                entry.wins,
-                                                entry.wins + entry.losses,
-                                                entry.wins as f64
-                                                    / (entry.wins + entry.losses) as f64,
-                                                entry.title
-                                            ),
-                                        );
+    ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes)
+}
 
-                                        // Check if scroll area is focused on something.
-                                        if Some(index) == self.focus_index {
-                                            let rect = label.rect;
-                                            ui.scroll_to_rect(rect, Some(egui::Align::Center));
-                                            self.focus_index = None; // Reset focus after scrolling
-                                        }
+pub fn delete_image(mut category: String, mut title: String, file_directory: &str) {
+    // Remove any extra information from the title and category stored in the spreadsheet.
+    if let Some(index) = title.find('(') {
+        title.truncate(index);
+    }
+    title = title.trim().to_string();
+    category.pop();
 
-                                        // Check if the entry was clicked.
-                                        if label.clicked() {
-                                            self.selected_entry = Some(index);
-                                            self.new_name_box.clone_from(&entry.title);
-                                        }
-                                    }
-                                }
-                            });
-                        });
-                    });
+    // Construct the file path.
+    let binding = format!("{}images/{} {}.png", file_directory, title, category);
+    let full_path = Path::new(&binding);
 
-                    columns[1].vertical(|ui| {
-                        // Image of currently selected entry.
-                        if let Some(entry_index) = &self.selected_entry {
-                            let mut delete_entry = false;
+    fs::remove_file(full_path).ok();
+}
 
-                            let entry = self.model.get_entry(category, *entry_index);
-                            let texture = ctx.load_texture(
-                                entry.title.clone(),
-                                entry.image.clone(),
-                                egui::TextureOptions::LINEAR,
-                            );
-                            ui.image(&texture);
+pub fn rename_image(
+    mut category: String,
+    mut old_title: String,
+    mut new_title: String,
+    file_directory: &str,
+) {
+    // Remove any extra information from the title and category stored in the spreadsheet.
+    if let Some(index) = old_title.find('(') {
+        old_title.truncate(index);
+    }
+    old_title = old_title.trim().to_string();
 
-                            ui.horizontal(|ui| {
-                                if ui.button("Update Name").clicked() {
-                                    rename_image(
-                                        category.to_string(),
-                                        entry.title.clone(),
-                                        self.new_name_box.clone(),
-                                        self.directory.clone(),
-                                    );
+    if let Some(index) = new_title.find('(') {
+        new_title.truncate(index);
+    }
+    new_title = new_title.trim().to_string();
 
-                                    entry.title.clone_from(&self.new_name_box);
-                                    self.focus_index = self.selected_entry;
-                                }
+    category.pop();
 
-                                if ui.button("Get New Icon").clicked() {
-                                    delete_image(
-                                        category.to_string(),
-                                        entry.title.clone(),
-                                        self.directory.clone(),
-                                    );
-                                    entry.image = get_image(
-                                        category.to_string(),
-                                        entry.title.clone(),
-                                        self.directory.clone(),
-                                    );
-                                    self.focus_index = self.selected_entry;
-                                }
+    // Construct the file paths.
+    let binding = format!("{}images/{} {}.png", file_directory, old_title, category);
+    let old_path = Path::new(&binding);
 
-                                if (ui.button("Delete Entry")).clicked() {
-                                    delete_entry = true;
-                                }
-                            });
+    let binding = format!("{}images/{} {}.png", file_directory, new_title, category);
+    let new_path = Path::new(&binding);
 
-                            if delete_entry {
-                                self.model.delete_entry(category, *entry_index);
-                                self.selected_entry = None;
-                            }
-
-                            ui.text_edit_singleline(&mut self.new_name_box);
-                        }
-                    });
-                });
-            }
-        });
+    match fs::rename(old_path, new_path) {
+        Ok(_) => {}
+        Err(e) => eprintln!("Error renaming image: {}", e),
     }
 }
 
