@@ -414,6 +414,8 @@ impl MyApp {
 
                 // Autosave everything.
                 self.model.save_to_spreadsheet();
+            } else {
+                self.model.end_ranking();
             }
         });
     }

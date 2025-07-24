@@ -184,7 +184,7 @@ impl Model {
     pub fn get_current_match(&self) -> Option<(&str, usize, &str, usize)> {
         if let Some((category, index, _)) = &self.ranking_category {
             let entries = self.categories.get(category)?;
-            if *index < entries.len() + 1 {
+            if *index < entries.len() - 1 {
                 let left_entry = &entries[*index];
                 let right_entry = &entries[*index + 1];
                 Some((left_entry, *index, right_entry, *index + 1))
@@ -196,7 +196,7 @@ impl Model {
             if lower < upper {
                 let index = (lower + upper) / 2;
                 let right_entry = &entries[index];
-                Some((entry, index, right_entry, index + 1))
+                Some((entry, 0, right_entry, index))
             } else {
                 None
             }
