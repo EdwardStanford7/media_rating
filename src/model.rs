@@ -219,6 +219,8 @@ impl Model {
                 self.ranking_category = Some((category.clone(), index + 1, *is_ascending));
             } else if !*is_ascending && *index > 0 {
                 self.ranking_category = Some((category.clone(), index - 1, *is_ascending));
+            } else {
+                self.ranking_category = None;
             }
         }
         // If ranking a new entry, adjust the bounds of the binary search. If the binary search is complete, add the new entry to the category and set ranking_new_entry to None.

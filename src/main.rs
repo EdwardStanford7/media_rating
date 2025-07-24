@@ -439,7 +439,7 @@ impl MyApp {
                                 // Display the entry as a clickable label.
                                 let label = ui.selectable_label(
                                     false,
-                                    format!("{} \t\t{}", index + 1, entry),
+                                    format!("{:>3}\t\t{}", index + 1, entry), // This bugs the shit out of me that I can't get the indentation right
                                 );
 
                                 // Check if scroll area is focused on something.
