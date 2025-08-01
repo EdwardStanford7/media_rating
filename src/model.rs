@@ -20,6 +20,8 @@ pub struct Model {
     // New entries are ranked by binary searching the sorted category and inserting the new entry in the correct position.
     // If this is Some then it is the category name, the new entry, and the current bounds of the binary search.
     ranking_new_entry: Option<(String, String, usize, usize)>,
+
+    reranking_entry: Option<(String, usize, String)>,
 }
 
 impl Model {
@@ -31,6 +33,7 @@ impl Model {
             categories: HashMap::new(),
             ranking_category: None,
             ranking_new_entry: None,
+            reranking_entry: None,
         }
     }
 
@@ -178,6 +181,13 @@ impl Model {
     pub fn end_ranking(&mut self) {
         self.ranking_category = None;
         self.ranking_new_entry = None;
+
+        if let Some((entry, position, category)) = &self.reranking_entry {
+            self.categories
+                .get_mut(category)
+                .unwrap()
+                .insert(*position, entry.clone());
+        }
     }
 
     // UI calls this function to get the current match for ranking.
@@ -196,7 +206,7 @@ impl Model {
             if lower < upper {
                 let index = (lower + upper) / 2;
                 let right_entry = &entries[index];
-                Some((entry, 0, right_entry, index))
+                Some((entry, entries.len(), right_entry, index))
             } else {
                 None
             }
@@ -243,10 +253,40 @@ impl Model {
     }
 
     // Add a new entry to a category.
-    pub fn add_entry(&mut self, entry: String, category: String) {
-        self.ranking_new_entry =
-            Some((category.clone(), entry, 0, self.get_num_entries(&category)));
+    pub fn add_entry(&mut self, entry: String, category: &String) {
+        let entries = self.categories.get_mut(category).unwrap();
+        if entries.is_empty() {
+            // If the category is empty, only add the entry if it's not already present.
+            entries.push(entry);
+            return;
+        }
+
+        if entries.contains(&entry) {
+            return;
+        }
+
+        self.ranking_new_entry = Some((category.clone(), entry, 0, self.get_num_entries(category)));
         self.ranking_category = None; // Safety.
+    }
+
+    // Re rank an entry in a category (delete and re add).
+    pub fn rerank_entry(&mut self, entry: String, position: usize, category: &String) {
+        // Store entry and remove it from the list.
+        self.reranking_entry = Some((entry.clone(), position, category.clone()));
+        self.categories.get_mut(category).unwrap().remove(position);
+
+        // Re add entry through normal process.
+        self.add_entry(entry, category);
+    }
+
+    // Rerank a random entry.
+    pub fn rerank_random_entry(&mut self) {
+        // Get random category
+        // Query google for a star rating of entries to find some entry that is theoretically out of place according to the public.
+        // Entries could be books, video games, movies, or tv shows. Not sure if there is a uniform way to get the google rating for everything.
+        // Theoretically google just displays a star rating for just searching the entry.
+
+        // Rerank that entry.
     }
 
     // Get an entry from a category by index.

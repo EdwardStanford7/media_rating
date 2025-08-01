@@ -257,21 +257,28 @@ impl MyApp {
 
                     // Select category dropdown.
                     ui.vertical(|ui| {
-                        egui::ComboBox::from_label("Select a category")
-                            .selected_text(
-                                self.selected_category
-                                    .clone()
-                                    .unwrap_or_else(|| "Choose...".to_string()),
-                            )
-                            .show_ui(ui, |ui| {
-                                for category in self.model.get_categories() {
-                                    ui.selectable_value(
-                                        &mut self.selected_category,
-                                        Some(category.clone()),
-                                        category,
-                                    );
-                                }
-                            });
+                        ui.horizontal(|ui| {
+                            egui::ComboBox::from_label("")
+                                .selected_text(
+                                    self.selected_category
+                                        .clone()
+                                        .unwrap_or_else(|| "Choose...".to_string()),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for category in self.model.get_categories() {
+                                        ui.selectable_value(
+                                            &mut self.selected_category,
+                                            Some(category.clone()),
+                                            category,
+                                        );
+                                    }
+                                });
+
+                            if ui.button("Rerank Random Entry").clicked() {
+                                self.model.rerank_random_entry();
+                                self.selected_entry = None;
+                            }
+                        });
 
                         // Check if category has changed.
                         if self.selected_category != self.previous_selected_category {
@@ -313,7 +320,7 @@ impl MyApp {
                         {
                             self.model.add_entry(
                                 self.new_entry_box.clone(),
-                                self.selected_category.clone().unwrap(),
+                                &self.selected_category.clone().unwrap(),
                             );
                             self.new_entry_box.clear();
                         }
@@ -371,7 +378,7 @@ impl MyApp {
                     ui.allocate_ui_at_rect(rect1, |ui| {
                         ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                             ui.label(
-                                egui::RichText::new(format!("{}, (#{})", entry1, index1 + 1))
+                                egui::RichText::new(format!("{} (#{})", entry1, index1 + 1))
                                     .font(FontId::proportional(23.0)),
                             );
                         });
@@ -466,6 +473,7 @@ impl MyApp {
                     let mut rename_entry = false;
                     let mut new_icon = false;
                     let mut delete_entry = false;
+                    let mut rerank_entry = false;
 
                     let entry = self.model.get_entry(category, *entry_index);
                     ui.image(&self.get_entry_texture(&entry.clone(), category, ctx));
@@ -481,6 +489,10 @@ impl MyApp {
 
                         if (ui.button("Delete Entry")).clicked() {
                             delete_entry = true;
+                        }
+
+                        if (ui.button("Rerank Entry")).clicked() {
+                            rerank_entry = true;
                         }
                     });
 
@@ -499,19 +511,18 @@ impl MyApp {
                         );
                         self.focus_index = self.selected_entry;
                         self.model.save_to_spreadsheet();
-                    }
-
-                    if new_icon {
+                    } else if new_icon {
                         delete_image(category.to_string(), entry.clone(), &self.directory);
                         self.update_entry_texture(&entry, category, ctx);
                         self.focus_index = self.selected_entry;
-                    }
-
-                    if delete_entry {
+                    } else if delete_entry {
                         self.model.delete_entry(category, *entry_index);
                         delete_image(category.to_string(), entry, &self.directory);
                         self.selected_entry = None;
                         self.model.save_to_spreadsheet();
+                    } else if rerank_entry {
+                        self.model.rerank_entry(entry, *entry_index, category);
+                        self.selected_entry = None;
                     }
 
                     ui.text_edit_singleline(&mut self.rename_entry_box);
