@@ -273,11 +273,6 @@ impl MyApp {
                                         );
                                     }
                                 });
-
-                            if ui.button("Rerank Random Entry").clicked() {
-                                self.model.rerank_random_entry();
-                                self.selected_entry = None;
-                            }
                         });
 
                         // Check if category has changed.

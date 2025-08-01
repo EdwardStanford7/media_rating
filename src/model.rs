@@ -279,16 +279,6 @@ impl Model {
         self.add_entry(entry, category);
     }
 
-    // Rerank a random entry.
-    pub fn rerank_random_entry(&mut self) {
-        // Get random category
-        // Query google for a star rating of entries to find some entry that is theoretically out of place according to the public.
-        // Entries could be books, video games, movies, or tv shows. Not sure if there is a uniform way to get the google rating for everything.
-        // Theoretically google just displays a star rating for just searching the entry.
-
-        // Rerank that entry.
-    }
-
     // Get an entry from a category by index.
     pub fn get_entry(&self, category: &String, index: usize) -> String {
         self.categories
