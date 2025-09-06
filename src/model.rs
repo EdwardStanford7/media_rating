@@ -13,10 +13,6 @@ pub struct Model {
     // Name of category mapped to vector of all entries in it.
     categories: HashMap<String, Vec<String>>,
 
-    // Categories can be re-ranked as needed. This happens by iterating through the category and doing pairwise comparisons.
-    // If this is Some then it is the category that is being ranked, the index of the entry in the category, and a boolean indicating if it is ascending or descending.
-    ranking_category: Option<(String, usize, bool)>,
-
     // New entries are ranked by binary searching the sorted category and inserting the new entry in the correct position.
     // If this is Some then it is the category name, the new entry, and the current bounds of the binary search.
     ranking_new_entry: Option<(String, String, usize, usize)>,
@@ -31,7 +27,6 @@ impl Model {
             file_directory: String::new(),
             file_name: String::new(),
             categories: HashMap::new(),
-            ranking_category: None,
             ranking_new_entry: None,
             reranking_entry: None,
         }
@@ -143,7 +138,7 @@ impl Model {
         // Save the workbook
         match workbook.save(Path::new(&(self.file_directory.clone() + &self.file_name))) {
             Ok(_result) => {}
-            Err(e) => eprintln!("Could not save to spreadsheet: {}", e),
+            Err(e) => eprintln!("Could not save to spreadsheet: {e}"),
         }
     }
 
@@ -174,12 +169,11 @@ impl Model {
 
     // Check if the model is currently in a ranking mode.
     pub fn is_ranking(&self) -> bool {
-        self.ranking_category.is_some() || self.ranking_new_entry.is_some()
+        self.ranking_new_entry.is_some()
     }
 
     // End the current ranking session.
     pub fn end_ranking(&mut self) {
-        self.ranking_category = None;
         self.ranking_new_entry = None;
 
         if let Some((entry, position, category)) = &self.reranking_entry {
@@ -192,16 +186,7 @@ impl Model {
 
     // UI calls this function to get the current match for ranking.
     pub fn get_current_match(&self) -> Option<(&str, usize, &str, usize)> {
-        if let Some((category, index, _)) = &self.ranking_category {
-            let entries = self.categories.get(category)?;
-            if *index < entries.len() - 1 {
-                let left_entry = &entries[*index];
-                let right_entry = &entries[*index + 1];
-                Some((left_entry, *index, right_entry, *index + 1))
-            } else {
-                None
-            }
-        } else if let Some((category, entry, lower, upper)) = &self.ranking_new_entry {
+        if let Some((category, entry, lower, upper)) = &self.ranking_new_entry {
             let entries = self.categories.get(category)?;
             if lower < upper {
                 let index = (lower + upper) / 2;
@@ -217,24 +202,8 @@ impl Model {
 
     // UI calls this function to report the winner of a match.
     pub fn report_match_winner(&mut self, left_won: bool) {
-        // If ranking within a category, adjust the index of the current match.
-        if let Some((category, index, is_ascending)) = &self.ranking_category {
-            if !left_won {
-                // Swap the two entries
-                let entries = self.categories.get_mut(category).unwrap();
-                entries.swap(*index, *index + 1);
-            }
-
-            if *is_ascending && *index < self.get_num_entries(category) - 1 {
-                self.ranking_category = Some((category.clone(), index + 1, *is_ascending));
-            } else if !*is_ascending && *index > 0 {
-                self.ranking_category = Some((category.clone(), index - 1, *is_ascending));
-            } else {
-                self.ranking_category = None;
-            }
-        }
-        // If ranking a new entry, adjust the bounds of the binary search. If the binary search is complete, add the new entry to the category and set ranking_new_entry to None.
-        else if let Some((category, entry, lower, upper)) = &mut self.ranking_new_entry {
+        // If we are in the middle of ranking a new entry, update the binary search bounds.
+        if let Some((category, entry, lower, upper)) = &mut self.ranking_new_entry {
             if left_won {
                 // If the left entry won, the new entry is less than the right entry.
                 *upper = (*lower + *upper) / 2;
@@ -266,7 +235,6 @@ impl Model {
         }
 
         self.ranking_new_entry = Some((category.clone(), entry, 0, self.get_num_entries(category)));
-        self.ranking_category = None; // Safety.
     }
 
     // Re rank an entry in a category (delete and re add).
@@ -301,19 +269,5 @@ impl Model {
     // Delete an entry from a category.
     pub fn delete_entry(&mut self, category: &String, index: usize) {
         self.categories.get_mut(category).unwrap().remove(index);
-    }
-
-    // Rank a category.
-    pub fn rank_category(&mut self, category: String, is_ascending: bool) {
-        self.ranking_category = Some((
-            category.clone(),
-            if is_ascending {
-                0
-            } else {
-                self.get_num_entries(&category) - 2
-            },
-            is_ascending,
-        ));
-        self.ranking_new_entry = None; // Safety.
     }
 }

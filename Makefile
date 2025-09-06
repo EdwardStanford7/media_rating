@@ -29,6 +29,7 @@ app:
 	echo '    <string>APPL</string>' >> $(PLIST_FILE)
 	echo '</dict>' >> $(PLIST_FILE)
 	echo '</plist>' >> $(PLIST_FILE)
+	codesign --deep --force --sign - $(APP_DIR)
 
 clean:
 	cargo clean

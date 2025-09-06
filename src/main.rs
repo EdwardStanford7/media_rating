@@ -26,9 +26,6 @@ struct MyApp {
     // What was the previous category selected. Used for checking when the category changes.
     previous_selected_category: Option<String>,
 
-    // Is the current ranking ascending or descending?
-    rank_ascending: bool,
-
     // What is the current contents of the new entry text box.
     new_entry_box: String,
 
@@ -63,7 +60,6 @@ impl Default for MyApp {
             directory: String::new(),
             selected_category: None,
             previous_selected_category: None,
-            rank_ascending: true,
             new_entry_box: String::new(),
             selected_entry: None,
             search_entry_box: String::new(),
@@ -175,7 +171,7 @@ impl MyApp {
                         match workbook.save(Path::new(&xlsx_path.clone().unwrap())) {
                             Ok(_result) => {}
                             Err(e) => {
-                                eprintln!("Could not create new spreadsheet: {}", e);
+                                eprintln!("Could not create new spreadsheet: {e}");
                                 exit(1)
                             }
                         }
@@ -208,7 +204,7 @@ impl MyApp {
                                 match fs::create_dir(image_directory) {
                                     Ok(_result) => {}
                                     Err(e) => {
-                                        eprintln!("Could not create image directory: {}", e);
+                                        eprintln!("Could not create image directory: {e}");
                                         exit(1)
                                     }
                                 }
@@ -282,24 +278,6 @@ impl MyApp {
                             self.previous_selected_category
                                 .clone_from(&self.selected_category);
                         }
-
-                        // Rerank category button.
-                        ui.horizontal(|ui| {
-                            if ui.button("Rank Selected Category").clicked()
-                                && self.selected_category.is_some()
-                                && self
-                                    .model
-                                    .get_num_entries(&(self.selected_category.clone().unwrap()))
-                                    >= 2
-                            {
-                                self.model.rank_category(
-                                    self.selected_category.clone().unwrap(),
-                                    self.rank_ascending,
-                                );
-                            }
-
-                            ui.toggle_value(&mut self.rank_ascending, "Rank descending");
-                        });
                     });
 
                     ui.add_space(10.0);
@@ -536,7 +514,7 @@ impl MyApp {
         if let Some(texture) = self
             .texture_cache
             .borrow()
-            .get(&format!("{} {}", entry, category))
+            .get(&format!("{entry} {category}"))
         {
             return texture.clone();
         }
@@ -548,7 +526,7 @@ impl MyApp {
             self.directory.clone(),
         );
         let texture = ctx.load_texture(
-            format!("{} {}", entry, category),
+            format!("{entry} {category}"),
             image,
             egui::TextureOptions::LINEAR,
         );
@@ -556,7 +534,7 @@ impl MyApp {
         // Cache the texture.
         self.texture_cache
             .borrow_mut()
-            .insert(format!("{} {}", entry, category), texture.clone());
+            .insert(format!("{entry} {category}"), texture.clone());
 
         texture
     }
@@ -565,7 +543,7 @@ impl MyApp {
         // Remove the old texture from the cache.
         self.texture_cache
             .borrow_mut()
-            .remove(&format!("{} {}", entry, category));
+            .remove(&format!("{entry} {category}"));
 
         // Get the new image and create a new texture.
         let image = get_image(
@@ -574,7 +552,7 @@ impl MyApp {
             self.directory.clone(),
         );
         let texture = ctx.load_texture(
-            format!("{} {}", entry, category),
+            format!("{entry} {category}"),
             image,
             egui::TextureOptions::LINEAR,
         );
@@ -582,7 +560,7 @@ impl MyApp {
         // Cache the new texture.
         self.texture_cache
             .borrow_mut()
-            .insert(format!("{} {}", entry, category), texture.clone());
+            .insert(format!("{entry} {category}"), texture.clone());
     }
 }
 
@@ -598,7 +576,7 @@ pub fn get_image(mut category: String, mut title: String, file_directory: String
     let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
 
     // Construct the file path.
-    let binding = format!("{}images/{} {}.png", file_directory, title, category);
+    let binding = format!("{file_directory}images/{title} {category}.png");
     let full_path = Path::new(&binding);
 
     // Check local files first for saved image.
@@ -608,8 +586,7 @@ pub fn get_image(mut category: String, mut title: String, file_directory: String
     }
 
     // Image was not cached locally, build query request.
-    let args =
-        Arguments::new(&format!("{} {}", title, category), 4).ratio(image_search::Ratio::Tall);
+    let args = Arguments::new(&format!("{title} {category}"), 4).ratio(image_search::Ratio::Tall);
     let url_result = urls(args);
 
     // Attempt to download image from urls.
@@ -629,16 +606,16 @@ pub fn get_image(mut category: String, mut title: String, file_directory: String
 
                             // Cache the resized image locally.
                             if let Err(e) = resized_image.save(full_path) {
-                                eprintln!("Error saving image locally: {}", e);
+                                eprintln!("Error saving image locally: {e}");
                             }
                             break;
                         } else {
                             eprintln!("Error decoding image data");
                         }
                     }
-                    Err(e) => eprintln!("Error reading bytes from response: {}", e),
+                    Err(e) => eprintln!("Error reading bytes from response: {e}"),
                 },
-                Err(e) => eprintln!("Error fetching URL: {}", e),
+                Err(e) => eprintln!("Error fetching URL: {e}"),
             }
         }
     } else {
@@ -657,7 +634,7 @@ pub fn delete_image(mut category: String, mut title: String, file_directory: &st
     category.pop();
 
     // Construct the file path.
-    let binding = format!("{}images/{} {}.png", file_directory, title, category);
+    let binding = format!("{file_directory}images/{title} {category}.png");
     let full_path = Path::new(&binding);
 
     fs::remove_file(full_path).ok();
@@ -683,15 +660,15 @@ pub fn rename_image(
     category.pop();
 
     // Construct the file paths.
-    let binding = format!("{}images/{} {}.png", file_directory, old_title, category);
+    let binding = format!("{file_directory}images/{old_title} {category}.png");
     let old_path = Path::new(&binding);
 
-    let binding = format!("{}images/{} {}.png", file_directory, new_title, category);
+    let binding = format!("{file_directory}images/{new_title} {category}.png");
     let new_path = Path::new(&binding);
 
     match fs::rename(old_path, new_path) {
         Ok(_) => {}
-        Err(e) => eprintln!("Error renaming image: {}", e),
+        Err(e) => eprintln!("Error renaming image: {e}"),
     }
 }
 
