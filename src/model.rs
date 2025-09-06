@@ -1,9 +1,19 @@
 extern crate image_search;
 
 use calamine::{open_workbook, DataType, Reader, Xlsx};
+use rand::Rng;
 use rust_xlsxwriter::{Format, Workbook};
 use std::collections::HashMap;
 use std::path::Path;
+
+#[derive(Debug)]
+struct RankingEntry {
+    name: String,
+    category: String,
+    lower_bound: usize,
+    upper_bound: usize,
+    pivot_index: usize,
+}
 
 #[derive(Debug)]
 pub struct Model {
@@ -15,7 +25,7 @@ pub struct Model {
 
     // New entries are ranked by binary searching the sorted category and inserting the new entry in the correct position.
     // If this is Some then it is the category name, the new entry, and the current bounds of the binary search.
-    ranking_new_entry: Option<(String, String, usize, usize)>,
+    ranking_new_entry: Option<RankingEntry>,
 
     reranking_entry: Option<(String, usize, String)>,
 }
@@ -162,11 +172,6 @@ impl Model {
         self.categories.get(category).unwrap()
     }
 
-    // Get how many entries there are in a category.
-    pub fn get_num_entries(&self, category: &String) -> usize {
-        self.categories.get(category).unwrap().len()
-    }
-
     // Check if the model is currently in a ranking mode.
     pub fn is_ranking(&self) -> bool {
         self.ranking_new_entry.is_some()
@@ -186,15 +191,16 @@ impl Model {
 
     // UI calls this function to get the current match for ranking.
     pub fn get_current_match(&self) -> Option<(&str, usize, &str, usize)> {
-        if let Some((category, entry, lower, upper)) = &self.ranking_new_entry {
+        if let Some(RankingEntry {
+            name,
+            category,
+            lower_bound: _,
+            upper_bound: _,
+            pivot_index,
+        }) = &self.ranking_new_entry
+        {
             let entries = self.categories.get(category)?;
-            if lower < upper {
-                let index = (lower + upper) / 2;
-                let right_entry = &entries[index];
-                Some((entry, entries.len(), right_entry, index))
-            } else {
-                None
-            }
+            Some((name, entries.len(), &entries[*pivot_index], *pivot_index))
         } else {
             None
         }
@@ -203,20 +209,27 @@ impl Model {
     // UI calls this function to report the winner of a match.
     pub fn report_match_winner(&mut self, left_won: bool) {
         // If we are in the middle of ranking a new entry, update the binary search bounds.
-        if let Some((category, entry, lower, upper)) = &mut self.ranking_new_entry {
+        if let Some(RankingEntry {
+            name,
+            category,
+            lower_bound,
+            upper_bound,
+            pivot_index,
+        }) = &mut self.ranking_new_entry
+        {
             if left_won {
-                // If the left entry won, the new entry is less than the right entry.
-                *upper = (*lower + *upper) / 2;
+                *upper_bound = *pivot_index;
             } else {
-                // If the right entry won, the new entry is greater than the left entry.
-                *lower = (*lower + *upper) / 2 + 1;
+                *lower_bound = *pivot_index + 1;
             }
 
             // Check if the binary search is complete.
-            if *lower >= *upper {
+            if *lower_bound >= *upper_bound {
                 let entries = self.categories.get_mut(category).unwrap();
-                entries.insert(*lower, entry.clone());
+                entries.insert(*lower_bound, name.clone());
                 self.ranking_new_entry = None;
+            } else {
+                *pivot_index = rand::thread_rng().gen_range(*lower_bound..*upper_bound);
             }
         }
     }
@@ -234,7 +247,13 @@ impl Model {
             return;
         }
 
-        self.ranking_new_entry = Some((category.clone(), entry, 0, self.get_num_entries(category)));
+        self.ranking_new_entry = Some(RankingEntry {
+            name: entry,
+            category: category.clone(),
+            lower_bound: 0,
+            upper_bound: entries.len(),
+            pivot_index: rand::thread_rng().gen_range(0..entries.len()),
+        });
     }
 
     // Re rank an entry in a category (delete and re add).
