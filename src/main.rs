@@ -131,6 +131,7 @@ impl MyApp {
                                     self.model.delete_category(&self.deleting_category);
                                     self.selected_category = None;
                                     self.show_delete_warning = false;
+                                    self.model.save_to_spreadsheet();
                                 }
 
                                 ui.add_space(50.0);
@@ -477,10 +478,13 @@ impl MyApp {
                             &self.directory,
                         );
 
+                        self.rename_texture(&entry, &self.rename_entry_box, category);
+
                         self.model.rename_entry(
                             category,
                             *entry_index,
                             self.rename_entry_box.clone(),
+                            &self.directory,
                         );
                         self.focus_index = self.selected_entry;
                         self.model.save_to_spreadsheet();
@@ -537,6 +541,20 @@ impl MyApp {
             .insert(format!("{entry} {category}"), texture.clone());
 
         texture
+    }
+
+    fn rename_texture(&self, old_name: &str, new_name: &str, category: &str) {
+        let key = format!("{old_name} {category}");
+
+        // Take the texture out of the cache if it exists
+        let texture = self.texture_cache.borrow_mut().remove(&key);
+
+        // If we found it, insert it with the new name
+        if let Some(texture) = texture {
+            self.texture_cache
+                .borrow_mut()
+                .insert(format!("{new_name} {category}"), texture);
+        }
     }
 
     fn update_entry_texture(&self, entry: &str, category: &str, ctx: &egui::Context) {

@@ -6,6 +6,8 @@ use rust_xlsxwriter::{Format, Workbook};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::rename_image;
+
 #[derive(Debug)]
 struct RankingEntry {
     name: String,
@@ -277,10 +279,23 @@ impl Model {
     }
 
     // Rename an entry in a category.
-    pub fn rename_entry(&mut self, category: &String, index: usize, new_name: String) {
+    pub fn rename_entry(
+        &mut self,
+        category: &String,
+        index: usize,
+        new_name: String,
+        file_directory: &str,
+    ) {
         if let Some(entries) = self.categories.get_mut(category) {
             if index < entries.len() {
+                let old_title = entries[index].clone();
                 entries[index] = new_name;
+                rename_image(
+                    category.clone(),
+                    old_title,
+                    entries[index].clone(),
+                    file_directory,
+                );
             }
         }
     }
