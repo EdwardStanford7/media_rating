@@ -457,7 +457,7 @@ impl MyApp {
                             rename_entry = true;
                         }
 
-                        if ui.button("Get New Icon").clicked() {
+                        if ui.button("Get New Image").clicked() {
                             new_icon = true;
                         }
 
