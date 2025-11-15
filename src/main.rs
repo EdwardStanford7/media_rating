@@ -2,7 +2,9 @@ use eframe::egui;
 use egui::{vec2, Align, CentralPanel, FontId, Id, Image, ImageButton, ScrollArea, TopBottomPanel};
 use native_dialog::FileDialog;
 use rust_xlsxwriter::Workbook;
-use std::{cell::RefCell, collections::HashMap, ops::ControlFlow, path::Path, process::exit};
+use std::{
+    cell::RefCell, collections::HashMap, fmt::Display, ops::ControlFlow, path::Path, process::exit,
+};
 mod model;
 use egui::ColorImage;
 use image::{self};
@@ -445,7 +447,7 @@ impl MyApp {
                 // Image of currently selected entry.
                 if let Some(entry_index) = &self.selected_entry {
                     let mut rename_entry = false;
-                    let mut new_icon = false;
+                    let mut new_image = false;
                     let mut delete_entry = false;
                     let mut rerank_entry = false;
 
@@ -458,7 +460,7 @@ impl MyApp {
                         }
 
                         if ui.button("Get New Image").clicked() {
-                            new_icon = true;
+                            new_image = true;
                         }
 
                         if (ui.button("Delete Entry")).clicked() {
@@ -488,8 +490,7 @@ impl MyApp {
                         );
                         self.focus_index = self.selected_entry;
                         self.model.save_to_spreadsheet();
-                    } else if new_icon {
-                        delete_image(category.to_string(), entry.clone(), &self.directory);
+                    } else if new_image {
                         self.update_entry_texture(&entry, category, ctx);
                         self.focus_index = self.selected_entry;
                     } else if delete_entry {
@@ -523,17 +524,25 @@ impl MyApp {
             return texture.clone();
         }
 
-        // If not cached, get the image and create a new texture.
-        let image = get_image(
+        // Load a default texture in case image retrieval fails.
+        let mut texture = ctx.load_texture(
+            format!("{entry} {category}"),
+            egui::ColorImage::new([380, 475], egui::Color32::BLACK),
+            egui::TextureOptions::LINEAR,
+        );
+
+        // Image not cached, get the image and create a new texture.
+        if let Ok(image) = get_image(
             category.to_string(),
             entry.to_string(),
             self.directory.clone(),
-        );
-        let texture = ctx.load_texture(
-            format!("{entry} {category}"),
-            image,
-            egui::TextureOptions::LINEAR,
-        );
+        ) {
+            texture = ctx.load_texture(
+                format!("{entry} {category}"),
+                image,
+                egui::TextureOptions::LINEAR,
+            );
+        }
 
         // Cache the texture.
         self.texture_cache
@@ -558,31 +567,79 @@ impl MyApp {
     }
 
     fn update_entry_texture(&self, entry: &str, category: &str, ctx: &egui::Context) {
-        // Remove the old texture from the cache.
-        self.texture_cache
-            .borrow_mut()
-            .remove(&format!("{entry} {category}"));
-
         // Get the new image and create a new texture.
-        let image = get_image(
+        match get_image(
             category.to_string(),
             entry.to_string(),
             self.directory.clone(),
-        );
-        let texture = ctx.load_texture(
-            format!("{entry} {category}"),
-            image,
-            egui::TextureOptions::LINEAR,
-        );
+        ) {
+            Err(e) => {
+                eprintln!("Error updating image for {entry} in category {category}: {e}");
+            }
+            Ok(image) => {
+                // Use the image to create a new texture.
+                delete_image(category.to_string(), entry.to_string(), &self.directory);
 
-        // Cache the new texture.
-        self.texture_cache
-            .borrow_mut()
-            .insert(format!("{entry} {category}"), texture.clone());
+                // Remove the old texture from the cache.
+                self.texture_cache
+                    .borrow_mut()
+                    .remove(&format!("{entry} {category}"));
+
+                let texture = ctx.load_texture(
+                    format!("{entry} {category}"),
+                    image,
+                    egui::TextureOptions::LINEAR,
+                );
+
+                // Cache the new texture.
+                self.texture_cache
+                    .borrow_mut()
+                    .insert(format!("{entry} {category}"), texture.clone());
+            }
+        }
     }
 }
 
-pub fn get_image(mut category: String, mut title: String, file_directory: String) -> ColorImage {
+#[derive(Debug)]
+pub struct ImageFetchError {
+    details: String,
+}
+
+impl Display for ImageFetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ImageFetchError: {}", self.details)
+    }
+}
+
+impl From<image::ImageError> for ImageFetchError {
+    fn from(err: image::ImageError) -> ImageFetchError {
+        ImageFetchError {
+            details: err.to_string(),
+        }
+    }
+}
+
+impl From<image_search::Error> for ImageFetchError {
+    fn from(err: image_search::Error) -> ImageFetchError {
+        ImageFetchError {
+            details: err.to_string(),
+        }
+    }
+}
+
+impl From<reqwest::Error> for ImageFetchError {
+    fn from(err: reqwest::Error) -> ImageFetchError {
+        ImageFetchError {
+            details: err.to_string(),
+        }
+    }
+}
+
+pub fn get_image(
+    mut category: String,
+    mut title: String,
+    file_directory: String,
+) -> Result<ColorImage, ImageFetchError> {
     // Remove any extra information from the title and category stored in the spreadsheet.
     if let Some(index) = title.find('(') {
         title.truncate(index);
@@ -590,57 +647,44 @@ pub fn get_image(mut category: String, mut title: String, file_directory: String
     title = title.trim().to_string();
     category.pop();
 
-    // Default to placeholder image.
-    let mut img_bytes = vec![0u8; 380 * 475 * 4]; //     380x475, RGBA placeholder, all black
-
     // Construct the file path.
     let binding = format!("{file_directory}images/{title} {category}.png");
     let full_path = Path::new(&binding);
 
     // Check local files first for saved image.
-    if let Ok(image) = image::open(full_path) {
-        img_bytes = image.to_rgba8().to_vec();
-        return ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes);
+    match image::open(full_path) {
+        Ok(image) => {
+            let img_bytes = image
+                .resize_exact(380, 475, image::imageops::FilterType::CatmullRom)
+                .to_rgba8()
+                .to_vec();
+            return Ok(ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes));
+        }
+        Err(e) => {
+            eprintln!("Image for {title} not found. Error: {e}");
+        }
     }
 
     // Image was not cached locally, build query request.
-    let args = Arguments::new(&format!("{title} {category}"), 4).ratio(image_search::Ratio::Tall);
-    let url_result = urls(args);
+    let args = Arguments::new(&format!("{title} {category}"), 1).ratio(image_search::Ratio::Tall);
+    let url = urls(args)?[0].clone();
 
-    // Attempt to download image from urls.
-    if let Ok(urls) = url_result {
-        for url in urls {
-            match reqwest::blocking::get(url) {
-                Ok(response) => match response.bytes() {
-                    Ok(bytes) => {
-                        // Decode image and resize to 380x475
-                        if let Ok(image) = image::load_from_memory(&bytes) {
-                            let resized_image = image.resize_exact(
-                                380,
-                                475,
-                                image::imageops::FilterType::CatmullRom,
-                            );
-                            img_bytes = resized_image.to_rgba8().to_vec();
+    // for url in urls {
+    let response = reqwest::blocking::get(url)?;
 
-                            // Cache the resized image locally.
-                            if let Err(e) = resized_image.save(full_path) {
-                                eprintln!("Error saving image locally: {e}");
-                            }
-                            break;
-                        } else {
-                            eprintln!("Error decoding image data");
-                        }
-                    }
-                    Err(e) => eprintln!("Error reading bytes from response: {e}"),
-                },
-                Err(e) => eprintln!("Error fetching URL: {e}"),
-            }
-        }
-    } else {
-        eprintln!("Error fetching URLs: {}", url_result.err().unwrap());
-    }
+    let bytes = response.bytes().map_err(|e| ImageFetchError {
+        details: format!("Error reading bytes from response: {e}"),
+    })?;
 
-    ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes)
+    // Decode image and resize to 380x475
+    let image = image::load_from_memory(&bytes)?;
+    let resized_image = image.resize_exact(380, 475, image::imageops::FilterType::CatmullRom);
+    let img_bytes = resized_image.to_rgba8().to_vec();
+
+    // Cache the resized image locally.
+    resized_image.save(full_path)?;
+
+    Ok(ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes))
 }
 
 pub fn delete_image(mut category: String, mut title: String, file_directory: &str) {
