@@ -536,6 +536,7 @@ impl MyApp {
             category.to_string(),
             entry.to_string(),
             self.directory.clone(),
+            false,
         ) {
             texture = ctx.load_texture(
                 format!("{entry} {category}"),
@@ -572,14 +573,12 @@ impl MyApp {
             category.to_string(),
             entry.to_string(),
             self.directory.clone(),
+            true,
         ) {
             Err(e) => {
-                eprintln!("Error updating image for {entry} in category {category}: {e}");
+                eprintln!("Error updating image: {e}");
             }
             Ok(image) => {
-                // Use the image to create a new texture.
-                delete_image(category.to_string(), entry.to_string(), &self.directory);
-
                 // Remove the old texture from the cache.
                 self.texture_cache
                     .borrow_mut()
@@ -639,6 +638,7 @@ pub fn get_image(
     mut category: String,
     mut title: String,
     file_directory: String,
+    force_refresh: bool,
 ) -> Result<ColorImage, ImageFetchError> {
     // Remove any extra information from the title and category stored in the spreadsheet.
     if let Some(index) = title.find('(') {
@@ -652,29 +652,25 @@ pub fn get_image(
     let full_path = Path::new(&binding);
 
     // Check local files first for saved image.
-    match image::open(full_path) {
-        Ok(image) => {
-            let img_bytes = image
-                .resize_exact(380, 475, image::imageops::FilterType::CatmullRom)
-                .to_rgba8()
-                .to_vec();
+    if !force_refresh {
+        if let Ok(image) = image::open(full_path) {
+            // let img_bytes = image;
+            let img_bytes = if image.width() != 380 || image.height() != 475 {
+                let resized_image =
+                    image.resize_exact(380, 475, image::imageops::FilterType::CatmullRom);
+                // Save the resized image back to disk.
+                resized_image.save(full_path)?;
+                resized_image.to_rgba8().to_vec()
+            } else {
+                image.to_rgba8().to_vec()
+            };
             return Ok(ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes));
-        }
-        Err(e) => {
-            eprintln!("Image for {title} not found. Error: {e}");
         }
     }
 
     // Image was not cached locally, build query request.
     let args = Arguments::new(&format!("{title} {category}"), 1).ratio(image_search::Ratio::Tall);
-    let url = urls(args)?[0].clone();
-
-    // for url in urls {
-    let response = reqwest::blocking::get(url)?;
-
-    let bytes = response.bytes().map_err(|e| ImageFetchError {
-        details: format!("Error reading bytes from response: {e}"),
-    })?;
+    let bytes = reqwest::blocking::get(urls(args)?[0].clone())?.bytes()?;
 
     // Decode image and resize to 380x475
     let image = image::load_from_memory(&bytes)?;
@@ -683,7 +679,6 @@ pub fn get_image(
 
     // Cache the resized image locally.
     resized_image.save(full_path)?;
-
     Ok(ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes))
 }
 

@@ -14,8 +14,8 @@ image = "0.25.1"
 native-dialog = "0.7.0"
 rand = "0.8.5"
 rust_xlsxwriter = "0.71.0"
-image_search = { version = "0.4.5", features = ["blocking"] }
-reqwest = {version = "0.12.5", features = ["blocking"]}
+image_search = { version = "0.4", features = ["blocking"] }
+reqwest = {version = "0.12", features = ["blocking"]}
 
 [package.metadata.bundle]
 name = "Media Rating"
