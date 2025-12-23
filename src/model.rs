@@ -1,5 +1,3 @@
-extern crate image_search;
-
 use calamine::{open_workbook, DataType, Reader, Xlsx};
 use rand::Rng;
 use rust_xlsxwriter::{Format, Workbook};

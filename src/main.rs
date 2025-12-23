@@ -5,10 +5,10 @@ use rust_xlsxwriter::Workbook;
 use std::{
     cell::RefCell, collections::HashMap, fmt::Display, ops::ControlFlow, path::Path, process::exit,
 };
+mod image_search;
 mod model;
 use egui::ColorImage;
 use image::{self};
-use image_search::{blocking::urls, Arguments};
 use model::Model;
 use std::fs;
 
@@ -618,14 +618,6 @@ impl From<image::ImageError> for ImageFetchError {
     }
 }
 
-impl From<image_search::Error> for ImageFetchError {
-    fn from(err: image_search::Error) -> ImageFetchError {
-        ImageFetchError {
-            details: err.to_string(),
-        }
-    }
-}
-
 impl From<reqwest::Error> for ImageFetchError {
     fn from(err: reqwest::Error) -> ImageFetchError {
         ImageFetchError {
@@ -668,18 +660,12 @@ pub fn get_image(
         }
     }
 
-    // Image was not cached locally, build query request.
-    let args = Arguments::new(&format!("{title} {category}"), 1).ratio(image_search::Ratio::Tall);
-    let bytes = reqwest::blocking::get(urls(args)?[0].clone())?.bytes()?;
-
-    // Decode image and resize to 380x475
-    let image = image::load_from_memory(&bytes)?;
-    let resized_image = image.resize_exact(380, 475, image::imageops::FilterType::CatmullRom);
-    let img_bytes = resized_image.to_rgba8().to_vec();
-
-    // Cache the resized image locally.
-    resized_image.save(full_path)?;
-    Ok(ColorImage::from_rgba_unmultiplied([380, 475], &img_bytes))
+    let image = image_search::search(&format!("{title} {category}"), 380, 475)?;
+    image.save(full_path)?;
+    Ok(ColorImage::from_rgba_unmultiplied(
+        [380, 475],
+        &image.to_rgba8(),
+    ))
 }
 
 pub fn delete_image(mut category: String, mut title: String, file_directory: &str) {
