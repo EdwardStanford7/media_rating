@@ -1,6 +1,7 @@
 use crate::ImageFetchError;
 use core::f32;
 use image::DynamicImage;
+use rand::seq::SliceRandom;
 
 #[derive(Debug, Clone)]
 pub struct Image {
@@ -33,18 +34,25 @@ pub fn search(query: &str, width: u32, height: u32) -> Result<DynamicImage, Imag
         .text()?;
     let image_urls = get_ddg_image_urls(json_text);
 
-    // Pick the image that best matches the desired aspect ratio
-    let mut closest_ratio = f32::INFINITY;
-    let mut closest_image = None;
-    for image in image_urls {
-        if f32::abs(image.width as f32 / image.height as f32 - width as f32 / height as f32)
-            < closest_ratio
-        {
-            closest_ratio =
-                f32::abs(image.width as f32 / image.height as f32 - width as f32 / height as f32);
-            closest_image = Some(image.clone());
-        }
-    }
+    // Pick a random image from the top 10 that best match the desired aspect ratio
+    let mut images_with_ratio: Vec<(f32, Image)> = image_urls
+        .into_iter()
+        .map(|img| {
+            let ratio_diff =
+                f32::abs(img.width as f32 / img.height as f32 - width as f32 / height as f32);
+            (ratio_diff, img)
+        })
+        .collect();
+    images_with_ratio.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let top_matches: Vec<Image> = images_with_ratio
+        .into_iter()
+        .take(10)
+        .map(|(_, img)| img)
+        .collect();
+
+    // Pick one randomly from the top matches
+    let mut rng = rand::thread_rng();
+    let closest_image = top_matches.choose(&mut rng).cloned();
 
     // Download, resize, and return the closest image
     match closest_image {

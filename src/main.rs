@@ -404,6 +404,55 @@ impl MyApp {
     }
 
     fn home_screen(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, category: &String) {
+        // Handle keyboard navigation (up/down arrows) for entry selection
+        if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+            let len = self.model.get_category_entries(category).len();
+            if len > 0 {
+                let next = match self.selected_entry {
+                    Some(i) => (i + 1).min(len - 1),
+                    None => 0,
+                };
+                self.selected_entry = Some(next);
+                self.rename_entry_box = self.model.get_category_entries(category)[next].clone();
+                self.focus_index = Some(next);
+            }
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+            let len = self.model.get_category_entries(category).len();
+            if len > 0 {
+                let prev = match self.selected_entry {
+                    Some(i) => i.saturating_sub(1),
+                    None => 0,
+                };
+                self.selected_entry = Some(prev);
+                self.rename_entry_box = self.model.get_category_entries(category)[prev].clone();
+                self.focus_index = Some(prev);
+            }
+        }
+
+        // Handle Enter key for renaming (confirm current selection)
+        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            if let Some(entry_index) = self.selected_entry {
+                let category_clone = category.clone();
+                let entry = self.model.get_entry(&category_clone, entry_index);
+                rename_image(
+                    category_clone,
+                    entry.clone(),
+                    self.rename_entry_box.clone(),
+                    &self.directory,
+                );
+                self.rename_texture(&entry, &self.rename_entry_box, category);
+                self.model.rename_entry(
+                    category,
+                    entry_index,
+                    self.rename_entry_box.clone(),
+                    &self.directory,
+                );
+                self.focus_index = self.selected_entry;
+                self.model.save_to_spreadsheet();
+            }
+        }
+
         ui.columns(2, |columns| {
             // Category list.
             columns[0].set_width(370.0);
@@ -421,7 +470,7 @@ impl MyApp {
                             {
                                 // Display the entry as a clickable label.
                                 let label = ui.selectable_label(
-                                    false,
+                                    self.selected_entry == Some(index),
                                     format!("{:>3}\t\t{}", index + 1, entry), // This bugs the shit out of me that I can't get the indentation right
                                 );
 
@@ -460,6 +509,10 @@ impl MyApp {
                         }
 
                         if ui.button("Get New Image").clicked() {
+                            new_image = true;
+                        }
+
+                        if ui.input(|i| i.key_pressed(egui::Key::N) && i.modifiers.command) {
                             new_image = true;
                         }
 
