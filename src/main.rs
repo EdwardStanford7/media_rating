@@ -381,7 +381,7 @@ impl MyApp {
                     ui.allocate_ui_at_rect(rect2, |ui| {
                         ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
                             ui.label(
-                                egui::RichText::new(format!("{}, (#{})", entry2, index2 + 1))
+                                egui::RichText::new(format!("{} (#{})", entry2, index2 + 1))
                                     .font(FontId::proportional(23.0)),
                             );
                         });
