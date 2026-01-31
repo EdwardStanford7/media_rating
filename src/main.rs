@@ -1,6 +1,7 @@
 use eframe::egui;
 use egui::{vec2, Align, CentralPanel, FontId, Id, Image, ImageButton, ScrollArea, TopBottomPanel};
 use native_dialog::FileDialog;
+use rand::{seq::SliceRandom, thread_rng};
 use rust_xlsxwriter::Workbook;
 use std::{
     cell::RefCell, collections::HashMap, fmt::Display, ops::ControlFlow, path::Path, process::exit,
@@ -242,7 +243,10 @@ impl MyApp {
             // Menu is horizontal at top of app.
             ui.horizontal(|ui| {
                 // Only display back to menu button if ranking is happening.
-                if self.model.is_ranking() && ui.button("Menu").clicked() {
+                if self.model.is_ranking()
+                    && (ui.button("Menu").clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Escape)))
+                {
                     self.selected_entry = None;
                     self.rename_entry_box.clear();
                     self.search_entry_box.clear();
@@ -417,6 +421,7 @@ impl MyApp {
                 self.focus_index = Some(next);
             }
         }
+
         if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
             let len = self.model.get_category_entries(category).len();
             if len > 0 {
@@ -450,6 +455,22 @@ impl MyApp {
                 );
                 self.focus_index = self.selected_entry;
                 self.model.save_to_spreadsheet();
+            }
+        }
+
+        // Rerank random entry on tab press
+        if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
+            // Get a random category
+            let mut rng = thread_rng();
+            if let Some(entry) = self.model.get_category_entries(category).choose(&mut rng) {
+                let index = self
+                    .model
+                    .get_category_entries(category)
+                    .iter()
+                    .position(|e| e == entry)
+                    .unwrap();
+                self.model.rerank_entry(entry.clone(), index, category);
+                self.selected_entry = None;
             }
         }
 
