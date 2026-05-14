@@ -25,6 +25,8 @@ app:
 	echo '    <string>$(APP_NAME)</string>' >> $(PLIST_FILE)
 	echo '    <key>CFBundleIconFile</key>' >> $(PLIST_FILE)
 	echo '    <string>icon.icns</string>' >> $(PLIST_FILE)
+	echo '    <key>CFBundleIdentifier</key>' >> $(PLIST_FILE)
+	echo '    <string>com.edwardstanford7.mediarating</string>' >> $(PLIST_FILE)
 	echo '    <key>CFBundlePackageType</key>' >> $(PLIST_FILE)
 	echo '    <string>APPL</string>' >> $(PLIST_FILE)
 	echo '</dict>' >> $(PLIST_FILE)
