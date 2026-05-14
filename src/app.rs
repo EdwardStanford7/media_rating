@@ -6,7 +6,7 @@ use crate::{
     image_store::ImageStore,
     main_screen::ScreenState,
     model::Model,
-    popup::{self, ConfirmDeleteCategoryPopup, Popup, PopupResponse},
+    popup::{self, ConfirmDeleteCategoryPopup, ConfirmDuplicateSwitchPopup, Popup, PopupResponse},
     ranking_screen::{RankingOutcome, RankingScreen, RankingSource},
     splash_screen::SplashScreen,
     spreadsheet,
@@ -67,6 +67,12 @@ pub enum AppAction {
     DeleteEntry {
         category: String,
         index: usize,
+    },
+    DeleteEntryAndStartRerank {
+        delete_category: String,
+        delete_index: usize,
+        rerank_category: String,
+        rerank_index: usize,
     },
     RefreshImage {
         category: String,
@@ -161,6 +167,17 @@ impl MediaRatingApp {
                 new_name,
             } => self.rename_entry(category, index, new_name),
             AppAction::DeleteEntry { category, index } => self.delete_entry(category, index),
+            AppAction::DeleteEntryAndStartRerank {
+                delete_category,
+                delete_index,
+                rerank_category,
+                rerank_index,
+            } => self.delete_entry_and_start_rerank(
+                delete_category,
+                delete_index,
+                rerank_category,
+                rerank_index,
+            ),
             AppAction::RefreshImage { category, entry } => {
                 if let Some(document) = self.document.as_mut() {
                     document
@@ -256,6 +273,17 @@ impl MediaRatingApp {
         }
     }
 
+    fn delete_entry_and_start_rerank(
+        &mut self,
+        delete_category: String,
+        delete_index: usize,
+        rerank_category: String,
+        rerank_index: usize,
+    ) {
+        self.delete_entry(delete_category, delete_index);
+        self.start_rerank_entry(rerank_category, rerank_index);
+    }
+
     fn start_add_entry(&mut self, category: String, entry: String) {
         let Some(document) = self.document.as_mut() else {
             return;
@@ -334,14 +362,19 @@ impl MediaRatingApp {
             return;
         };
 
-        if document.model.contains_entry(&to_category, &entry) {
-            if let Some(document) = self.document.as_mut() {
-                if let Some(deleted_entry) = document.model.delete_entry(&from_category, from_index)
-                {
-                    document.images.delete_image(&from_category, &deleted_entry);
-                    document.save();
-                }
-            }
+        if let Some(target_index) = document
+            .model
+            .get_category_entries(&to_category)
+            .iter()
+            .position(|existing| existing == &entry)
+        {
+            self.popup = Some(Box::new(ConfirmDuplicateSwitchPopup::new(
+                from_category,
+                from_index,
+                to_category,
+                target_index,
+                entry,
+            )));
             return;
         }
 

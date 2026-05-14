@@ -50,6 +50,72 @@ impl Popup for ConfirmDeleteCategoryPopup {
     }
 }
 
+pub struct ConfirmDuplicateSwitchPopup {
+    from_category: String,
+    from_index: usize,
+    to_category: String,
+    target_index: usize,
+    entry: String,
+}
+
+impl ConfirmDuplicateSwitchPopup {
+    pub fn new(
+        from_category: String,
+        from_index: usize,
+        to_category: String,
+        target_index: usize,
+        entry: String,
+    ) -> Self {
+        Self {
+            from_category,
+            from_index,
+            to_category,
+            target_index,
+            entry,
+        }
+    }
+}
+
+impl Popup for ConfirmDuplicateSwitchPopup {
+    fn title(&self) -> &str {
+        "Entry Already Exists"
+    }
+
+    fn show_body(&mut self, ui: &mut egui::Ui) -> PopupResponse {
+        let mut response = PopupResponse::KeepOpen;
+
+        ui.label(format!(
+            "\"{}\" already exists in {}. What should happen to the copy in {}?",
+            self.entry, self.to_category, self.from_category
+        ));
+        ui.vertical(|ui| {
+            if ui.button("Remove Source And Rerank Existing").clicked() {
+                response = PopupResponse::Action(AppAction::DeleteEntryAndStartRerank {
+                    delete_category: self.from_category.clone(),
+                    delete_index: self.from_index,
+                    rerank_category: self.to_category.clone(),
+                    rerank_index: self.target_index,
+                });
+            }
+
+            if ui.button("Remove Source Only").clicked() {
+                response = PopupResponse::Action(AppAction::DeleteEntry {
+                    category: self.from_category.clone(),
+                    index: self.from_index,
+                });
+            }
+
+            ui.add_space(8.0);
+
+            if ui.button("Cancel").clicked() {
+                response = PopupResponse::Close;
+            }
+        });
+
+        response
+    }
+}
+
 pub fn show_modal(ctx: &egui::Context, popup: &mut dyn Popup) -> PopupResponse {
     egui::Area::new(egui::Id::new("Blocking Overlay"))
         .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
