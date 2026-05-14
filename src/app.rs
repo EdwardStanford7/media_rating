@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf};
 
 use crate::{
     home_screen::HomeScreen,
+    image_picker_popup::ImagePickerPopup,
     image_store::ImageStore,
     main_screen::ScreenState,
     model::Model,
@@ -78,8 +79,24 @@ pub enum AppAction {
         category: String,
         entry: String,
     },
+    SetEntryImage {
+        category: String,
+        entry: String,
+        image: image::DynamicImage,
+        purpose: ImagePickPurpose,
+    },
     RankingFinished(RankingOutcome),
     CancelRanking,
+}
+
+#[derive(Clone)]
+pub enum ImagePickPurpose {
+    RefreshOnly,
+    AddEntry,
+    SwitchCategory {
+        from_category: String,
+        from_index: usize,
+    },
 }
 
 impl Default for MediaRatingApp {
@@ -160,7 +177,7 @@ impl MediaRatingApp {
                 from_index,
                 to_category,
                 entry,
-            } => self.start_switch_category(from_category, from_index, to_category, entry, ctx),
+            } => self.start_switch_category(from_category, from_index, to_category, entry),
             AppAction::RenameEntry {
                 category,
                 index,
@@ -179,14 +196,18 @@ impl MediaRatingApp {
                 rerank_index,
             ),
             AppAction::RefreshImage { category, entry } => {
-                if let Some(document) = self.document.as_mut() {
-                    document
-                        .images
-                        .refresh_entry_texture(&entry, &category, ctx);
-                }
+                self.open_image_picker(category, entry, ImagePickPurpose::RefreshOnly);
+            }
+            AppAction::SetEntryImage {
+                category,
+                entry,
+                image,
+                purpose,
+            } => {
+                self.set_entry_image(category, entry, image, purpose, ctx);
             }
             AppAction::RankingFinished(outcome) => self.finish_ranking(outcome, ctx),
-            AppAction::CancelRanking => self.return_to_home(),
+            AppAction::CancelRanking => self.cancel_ranking(),
         }
     }
 
@@ -284,14 +305,56 @@ impl MediaRatingApp {
         self.start_rerank_entry(rerank_category, rerank_index);
     }
 
-    fn start_add_entry(&mut self, category: String, entry: String) {
+    fn open_image_picker(&mut self, category: String, entry: String, purpose: ImagePickPurpose) {
+        self.popup = Some(Box::new(ImagePickerPopup::new(category, entry, purpose)));
+    }
+
+    fn set_entry_image(
+        &mut self,
+        category: String,
+        entry: String,
+        image: image::DynamicImage,
+        purpose: ImagePickPurpose,
+        ctx: &egui::Context,
+    ) {
         let Some(document) = self.document.as_mut() else {
+            return;
+        };
+
+        if let Err(e) = document
+            .images
+            .set_entry_image(&category, &entry, image, ctx)
+        {
+            eprintln!("Could not save selected image: {e}");
+            return;
+        }
+
+        match purpose {
+            ImagePickPurpose::RefreshOnly => {}
+            ImagePickPurpose::AddEntry => self.continue_add_entry(category, entry),
+            ImagePickPurpose::SwitchCategory {
+                from_category,
+                from_index,
+            } => self.continue_switch_category(from_category, from_index, category, entry, ctx),
+        }
+    }
+
+    fn start_add_entry(&mut self, category: String, entry: String) {
+        let Some(document) = self.document.as_ref() else {
             return;
         };
 
         if document.model.contains_entry(&category, &entry) {
             return;
         }
+
+        self.open_image_picker(category, entry, ImagePickPurpose::AddEntry);
+    }
+
+    fn continue_add_entry(&mut self, category: String, entry: String) {
+        let Some(document) = self.document.as_mut() else {
+            return;
+        };
 
         let entries = document.model.get_category_entries(&category).to_vec();
         if entries.is_empty() {
@@ -349,18 +412,17 @@ impl MediaRatingApp {
         from_index: usize,
         to_category: String,
         entry: String,
-        ctx: &egui::Context,
     ) {
         let Some(document) = self.document.as_ref() else {
             return;
         };
-        let Some(original_entry) = document
+        if document
             .model
             .get_entry(&from_category, from_index)
-            .map(str::to_string)
-        else {
+            .is_none()
+        {
             return;
-        };
+        }
 
         if let Some(target_index) = document
             .model
@@ -377,6 +439,35 @@ impl MediaRatingApp {
             )));
             return;
         }
+
+        self.open_image_picker(
+            to_category,
+            entry,
+            ImagePickPurpose::SwitchCategory {
+                from_category,
+                from_index,
+            },
+        );
+    }
+
+    fn continue_switch_category(
+        &mut self,
+        from_category: String,
+        from_index: usize,
+        to_category: String,
+        entry: String,
+        ctx: &egui::Context,
+    ) {
+        let Some(document) = self.document.as_ref() else {
+            return;
+        };
+        let Some(original_entry) = document
+            .model
+            .get_entry(&from_category, from_index)
+            .map(str::to_string)
+        else {
+            return;
+        };
 
         let entries = document.model.get_category_entries(&to_category).to_vec();
         let source = RankingSource::SwitchCategory {
@@ -458,6 +549,18 @@ impl MediaRatingApp {
             ScreenState::Ranking { home, .. } => ScreenState::Home(*home),
             other => other,
         };
+    }
+
+    fn cancel_ranking(&mut self) {
+        if let (ScreenState::Ranking { ranking, .. }, Some(document)) =
+            (&self.screen, self.document.as_mut())
+        {
+            if let Some((category, entry)) = ranking.pending_image_target() {
+                document.images.delete_image(category, entry);
+            }
+        }
+
+        self.return_to_home();
     }
 
     fn home_screen_mut(&mut self) -> Option<&mut HomeScreen> {

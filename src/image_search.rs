@@ -11,42 +11,48 @@ pub struct Image {
 }
 
 /// DuckDuckGo image search (HTML + JSON scraping).
-/// Returns the image closest to the requested aspect ratio and resizes it to 380x475.
-pub fn search(query: &str, width: u32, height: u32) -> Result<DynamicImage, ImageFetchError> {
-    let search_url = format!("https://duckduckgo.com/?q={}&iax=images&ia=images", query);
+/// Returns usable images closest to the requested aspect ratio and resizes them.
+pub fn search_many(
+    query: &str,
+    width: u32,
+    height: u32,
+    count: usize,
+) -> Result<Vec<DynamicImage>, ImageFetchError> {
     let client = reqwest::blocking::Client::builder()
         .cookie_store(true)
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
         .build()?;
 
-    // Get the vqd out of the HTML
-    let html = client.get(&search_url).send()?.text()?;
+    let html = client
+        .get("https://duckduckgo.com/")
+        .query(&[("q", query), ("iax", "images"), ("ia", "images")])
+        .send()?
+        .text()?;
     let vqd = extract_vqd(&html).ok_or(ImageFetchError {
         details: "Failed to extract DuckDuckGo vqd token".to_string(),
     })?;
 
-    // Get urls for all images in the search.
-    let json_url = format!("https://duckduckgo.com/i.js?q={}&vqd={}&o=js", query, vqd);
     let json_text = client
-        .get(&json_url)
+        .get("https://duckduckgo.com/i.js")
+        .query(&[("q", query), ("vqd", vqd.as_str()), ("o", "js")])
         .header("Referer", "https://duckduckgo.com/")
         .send()?
         .text()?;
     let image_urls = get_ddg_image_urls(json_text);
 
-    // Pick a random image from the top 10 that best match the desired aspect ratio
     let mut images_with_ratio: Vec<(f32, Image)> = image_urls
         .into_iter()
+        .filter(|img| img.width > 0 && img.height > 0 && !img.url.is_empty())
         .map(|img| {
             let ratio_diff =
                 f32::abs(img.width as f32 / img.height as f32 - width as f32 / height as f32);
             (ratio_diff, img)
         })
         .collect();
-    images_with_ratio.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    images_with_ratio.sort_by(|a, b| a.0.total_cmp(&b.0));
     let top_matches: Vec<Image> = images_with_ratio
         .into_iter()
-        .take(10)
+        .take(count.saturating_mul(4).max(count))
         .map(|(_, img)| img)
         .collect();
 
@@ -54,12 +60,9 @@ pub fn search(query: &str, width: u32, height: u32) -> Result<DynamicImage, Imag
     let mut candidates = top_matches;
     candidates.shuffle(&mut rng);
 
+    let mut results = Vec::new();
     let mut last_error = None;
     for image in candidates {
-        if image.url.is_empty() {
-            continue;
-        }
-
         let response = match client.get(&image.url).send() {
             Ok(response) => response,
             Err(e) => {
@@ -83,11 +86,14 @@ pub fn search(query: &str, width: u32, height: u32) -> Result<DynamicImage, Imag
 
         match image::load_from_memory(&img_bytes) {
             Ok(img) => {
-                return Ok(img.resize_exact(
+                results.push(img.resize_exact(
                     width,
                     height,
                     image::imageops::FilterType::CatmullRom,
                 ));
+                if results.len() >= count {
+                    return Ok(results);
+                }
             }
             Err(e) => {
                 last_error = Some(e.to_string());
@@ -95,9 +101,13 @@ pub fn search(query: &str, width: u32, height: u32) -> Result<DynamicImage, Imag
         }
     }
 
-    Err(ImageFetchError {
-        details: last_error.unwrap_or_else(|| "No usable image found".to_string()),
-    })
+    if results.is_empty() {
+        Err(ImageFetchError {
+            details: last_error.unwrap_or_else(|| "No usable image found".to_string()),
+        })
+    } else {
+        Ok(results)
+    }
 }
 
 fn extract_vqd(html: &str) -> Option<String> {

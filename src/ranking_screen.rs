@@ -71,6 +71,15 @@ impl RankingScreen {
         actions
     }
 
+    pub fn pending_image_target(&self) -> Option<(&str, &str)> {
+        match self.source {
+            RankingSource::NewEntry | RankingSource::SwitchCategory { .. } => {
+                Some((&self.category, &self.entry))
+            }
+            RankingSource::RerankEntry { .. } => None,
+        }
+    }
+
     pub fn ui(
         &mut self,
         ctx: &egui::Context,

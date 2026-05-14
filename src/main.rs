@@ -1,5 +1,6 @@
 mod app;
 mod home_screen;
+mod image_picker_popup;
 mod image_search;
 mod image_store;
 mod main_screen;

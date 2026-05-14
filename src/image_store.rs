@@ -7,10 +7,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::image_search;
-
-const IMAGE_WIDTH: u32 = 380;
-const IMAGE_HEIGHT: u32 = 475;
+pub const ENTRY_IMAGE_WIDTH: u32 = 380;
+pub const ENTRY_IMAGE_HEIGHT: u32 = 475;
 
 #[derive(Debug)]
 pub struct ImageFetchError {
@@ -74,32 +72,18 @@ impl ImageStore {
         let mut texture = ctx.load_texture(
             key.clone(),
             egui::ColorImage::new(
-                [IMAGE_WIDTH as usize, IMAGE_HEIGHT as usize],
+                [ENTRY_IMAGE_WIDTH as usize, ENTRY_IMAGE_HEIGHT as usize],
                 egui::Color32::BLACK,
             ),
             egui::TextureOptions::LINEAR,
         );
 
-        if let Ok(image) = get_image(category, entry, &self.image_directory, false) {
+        if let Ok(image) = load_cached_image(category, entry, &self.image_directory) {
             texture = ctx.load_texture(key.clone(), image, egui::TextureOptions::LINEAR);
         }
 
         self.texture_cache.insert(key, texture.clone());
         texture
-    }
-
-    pub fn refresh_entry_texture(&mut self, entry: &str, category: &str, ctx: &egui::Context) {
-        match get_image(category, entry, &self.image_directory, true) {
-            Err(e) => {
-                eprintln!("Error updating image: {e}");
-            }
-            Ok(image) => {
-                let key = texture_key(entry, category);
-                self.texture_cache.remove(&key);
-                let texture = ctx.load_texture(key.clone(), image, egui::TextureOptions::LINEAR);
-                self.texture_cache.insert(key, texture);
-            }
-        }
     }
 
     pub fn rename_image(&mut self, category: &str, old_title: &str, new_title: &str) {
@@ -132,6 +116,49 @@ impl ImageStore {
         self.delete_image(from_category, old_title);
         let _ = self.get_entry_texture(new_title, to_category, ctx);
     }
+
+    pub fn set_entry_image(
+        &mut self,
+        category: &str,
+        entry: &str,
+        image: image::DynamicImage,
+        ctx: &egui::Context,
+    ) -> Result<(), ImageFetchError> {
+        let image = resize_entry_image(image);
+        let full_path = image_path(&self.image_directory, category, entry);
+        image.save(&full_path)?;
+
+        let key = texture_key(entry, category);
+        let texture = ctx.load_texture(
+            key.clone(),
+            dynamic_image_to_color_image(&image),
+            egui::TextureOptions::LINEAR,
+        );
+        self.texture_cache.insert(key, texture);
+
+        Ok(())
+    }
+}
+
+pub fn resize_entry_image(image: image::DynamicImage) -> image::DynamicImage {
+    image.resize_exact(
+        ENTRY_IMAGE_WIDTH,
+        ENTRY_IMAGE_HEIGHT,
+        image::imageops::FilterType::CatmullRom,
+    )
+}
+
+pub fn dynamic_image_to_color_image(image: &image::DynamicImage) -> ColorImage {
+    let image = if image.width() != ENTRY_IMAGE_WIDTH || image.height() != ENTRY_IMAGE_HEIGHT {
+        resize_entry_image(image.clone())
+    } else {
+        image.clone()
+    };
+
+    ColorImage::from_rgba_unmultiplied(
+        [ENTRY_IMAGE_WIDTH as usize, ENTRY_IMAGE_HEIGHT as usize],
+        &image.to_rgba8(),
+    )
 }
 
 fn texture_key(entry: &str, category: &str) -> String {
@@ -203,47 +230,33 @@ fn image_path_candidates(image_directory: &Path, category: &str, title: &str) ->
     }
 }
 
-fn get_image(
+fn load_cached_image(
     category: &str,
     title: &str,
     image_directory: &Path,
-    force_refresh: bool,
 ) -> Result<ColorImage, ImageFetchError> {
     let full_path = image_path(image_directory, category, title);
 
-    if !force_refresh {
-        for candidate in image_path_candidates(image_directory, category, title) {
-            if let Ok(image) = image::open(&candidate) {
-                let img_bytes = if image.width() != IMAGE_WIDTH || image.height() != IMAGE_HEIGHT {
-                    let resized_image = image.resize_exact(
-                        IMAGE_WIDTH,
-                        IMAGE_HEIGHT,
-                        image::imageops::FilterType::CatmullRom,
-                    );
+    for candidate in image_path_candidates(image_directory, category, title) {
+        if let Ok(image) = image::open(&candidate) {
+            let image =
+                if image.width() != ENTRY_IMAGE_WIDTH || image.height() != ENTRY_IMAGE_HEIGHT {
+                    let resized_image = resize_entry_image(image);
                     resized_image.save(&full_path)?;
-                    resized_image.to_rgba8().to_vec()
+                    resized_image
                 } else {
                     if candidate != full_path {
                         fs::copy(&candidate, &full_path)?;
                     }
-                    image.to_rgba8().to_vec()
+                    image
                 };
-                return Ok(ColorImage::from_rgba_unmultiplied(
-                    [IMAGE_WIDTH as usize, IMAGE_HEIGHT as usize],
-                    &img_bytes,
-                ));
-            }
+            return Ok(dynamic_image_to_color_image(&image));
         }
     }
 
-    let category = clean_category(category);
-    let title = clean_title(title);
-    let image = image_search::search(&format!("{title} {category}"), IMAGE_WIDTH, IMAGE_HEIGHT)?;
-    image.save(&full_path)?;
-    Ok(ColorImage::from_rgba_unmultiplied(
-        [IMAGE_WIDTH as usize, IMAGE_HEIGHT as usize],
-        &image.to_rgba8(),
-    ))
+    Err(ImageFetchError {
+        details: "No cached image found".to_string(),
+    })
 }
 
 fn delete_image_file(category: &str, title: &str, image_directory: &Path) {
