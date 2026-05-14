@@ -1,19 +1,7 @@
 use calamine::{open_workbook, DataType, Reader, Xlsx};
-use rand::Rng;
 use rust_xlsxwriter::{Format, Workbook};
 use std::collections::HashMap;
 use std::path::Path;
-
-use crate::rename_image;
-
-#[derive(Debug)]
-struct RankingEntry {
-    name: String,
-    category: String,
-    lower_bound: usize,
-    upper_bound: usize,
-    pivot_index: usize,
-}
 
 #[derive(Debug)]
 pub struct Model {
@@ -22,12 +10,6 @@ pub struct Model {
 
     // Name of category mapped to vector of all entries in it.
     categories: HashMap<String, Vec<String>>,
-
-    // New entries are ranked by binary searching the sorted category and inserting the new entry in the correct position.
-    // If this is Some then it is the category name, the new entry, and the current bounds of the binary search.
-    ranking_new_entry: Option<RankingEntry>,
-
-    reranking_entry: Option<(String, usize, String)>,
 }
 
 impl Model {
@@ -37,8 +19,6 @@ impl Model {
             file_directory: String::new(),
             file_name: String::new(),
             categories: HashMap::new(),
-            ranking_new_entry: None,
-            reranking_entry: None,
         }
     }
 
@@ -158,164 +138,122 @@ impl Model {
     }
 
     // Delete a category.
-    pub fn delete_category(&mut self, category: &String) {
+    pub fn delete_category(&mut self, category: &str) {
         self.categories.remove(category);
     }
 
     // Get a vector of all categories.
     pub fn get_categories(&self) -> Vec<String> {
-        self.categories.keys().cloned().collect()
+        let mut categories: Vec<String> = self.categories.keys().cloned().collect();
+        categories.sort();
+        categories
     }
 
     // Get a vector of all entries in a particular category.
-    pub fn get_category_entries(&self, category: &String) -> &Vec<String> {
-        self.categories.get(category).unwrap()
+    pub fn get_category_entries(&self, category: &str) -> &[String] {
+        self.categories
+            .get(category)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
-    // Check if the model is currently in a ranking mode.
-    pub fn is_ranking(&self) -> bool {
-        self.ranking_new_entry.is_some()
+    pub fn contains_entry(&self, category: &str, entry: &str) -> bool {
+        self.categories
+            .get(category)
+            .is_some_and(|entries| entries.iter().any(|existing| existing == entry))
     }
 
-    // End the current ranking session.
-    pub fn end_ranking(&mut self) {
-        self.ranking_new_entry = None;
-
-        if let Some((entry, position, category)) = &self.reranking_entry {
-            self.categories
-                .get_mut(category)
-                .unwrap()
-                .insert(*position, entry.clone());
-        }
-    }
-
-    // UI calls this function to get the current match for ranking.
-    pub fn get_current_match(&self) -> Option<(&str, &str, usize, &str, usize)> {
-        if let Some(RankingEntry {
-            name,
-            category,
-            lower_bound: _,
-            upper_bound: _,
-            pivot_index,
-        }) = &self.ranking_new_entry
-        {
-            let entries = self.categories.get(category)?;
-            Some((
-                category,
-                name,
-                entries.len(),
-                &entries[*pivot_index],
-                *pivot_index,
-            ))
-        } else {
-            None
-        }
-    }
-
-    // UI calls this function to report the winner of a match.
-    pub fn report_match_winner(&mut self, left_won: bool) {
-        // If we are in the middle of ranking a new entry, update the binary search bounds.
-        if let Some(RankingEntry {
-            name,
-            category,
-            lower_bound,
-            upper_bound,
-            pivot_index,
-        }) = &mut self.ranking_new_entry
-        {
-            if left_won {
-                *upper_bound = *pivot_index;
-            } else {
-                *lower_bound = *pivot_index + 1;
-            }
-
-            // Check if the binary search is complete.
-            if *lower_bound >= *upper_bound {
-                let entries = self.categories.get_mut(category).unwrap();
-                entries.insert(*lower_bound, name.clone());
-                self.ranking_new_entry = None;
-            } else {
-                *pivot_index = rand::thread_rng().gen_range(*lower_bound..*upper_bound);
-            }
-        }
-    }
-
-    // Add a new entry to a category.
-    pub fn add_entry(&mut self, entry: String, category: &String) {
+    pub fn insert_entry_at(&mut self, category: &str, entry: String, index: usize) {
         let entries = self.categories.get_mut(category).unwrap();
-        if entries.is_empty() {
-            // If the category is empty, only add the entry if it's not already present.
-            entries.push(entry);
-            return;
-        }
-
         if entries.contains(&entry) {
             return;
         }
 
-        self.ranking_new_entry = Some(RankingEntry {
-            name: entry,
-            category: category.clone(),
-            lower_bound: 0,
-            upper_bound: entries.len(),
-            pivot_index: rand::thread_rng().gen_range(0..entries.len()),
-        });
+        entries.insert(index.min(entries.len()), entry);
     }
 
-    pub fn append_entry(&mut self, entry: String, category: &String) -> usize {
+    pub fn move_entry(&mut self, category: &str, from_index: usize, to_index: usize) {
         let entries = self.categories.get_mut(category).unwrap();
-        if entries.contains(&entry) {
-            return entries.iter().position(|e| e == &entry).unwrap();
+        if from_index >= entries.len() {
+            return;
         }
 
-        entries.push(entry);
-        entries.len() - 1
-    }
-
-    // Re rank an entry in a category (delete and re add).
-    pub fn rerank_entry(&mut self, entry: String, position: usize, category: &String) {
-        // Store entry and remove it from the list.
-        self.reranking_entry = Some((entry.clone(), position, category.clone()));
-        self.categories.get_mut(category).unwrap().remove(position);
-
-        // Re add entry through normal process.
-        self.add_entry(entry, category);
+        let entry = entries.remove(from_index);
+        entries.insert(to_index.min(entries.len()), entry);
     }
 
     // Get an entry from a category by index.
-    pub fn get_entry(&self, category: &String, index: usize) -> String {
+    pub fn get_entry(&self, category: &str, index: usize) -> Option<&str> {
         self.categories
-            .get(category)
-            .unwrap()
+            .get(category)?
             .get(index)
-            .unwrap()
-            .clone()
+            .map(String::as_str)
     }
 
     // Rename an entry in a category.
     pub fn rename_entry(
         &mut self,
-        category: &String,
+        category: &str,
         index: usize,
         new_name: String,
-        file_directory: &str,
-    ) {
+    ) -> Option<String> {
         if let Some(entries) = self.categories.get_mut(category) {
             if index < entries.len() {
                 let old_title = entries[index].clone();
                 entries[index] = new_name;
-                rename_image(
-                    category.clone(),
-                    old_title,
-                    entries[index].clone(),
-                    file_directory,
-                );
+                return Some(old_title);
             }
         }
+
+        None
     }
 
     // Delete an entry from a category.
-    pub fn delete_entry(&mut self, category: &String, index: usize) {
-        self.categories.get_mut(category).unwrap().remove(index);
+    pub fn delete_entry(&mut self, category: &str, index: usize) -> Option<String> {
+        let entries = self.categories.get_mut(category)?;
+        if index >= entries.len() {
+            return None;
+        }
+
+        Some(entries.remove(index))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn category_entries(entries: &[&str]) -> Vec<String> {
+        entries.iter().map(|entry| entry.to_string()).collect()
+    }
+
+    #[test]
+    fn insert_entry_at_clamps_to_category_bounds() {
+        let mut model = Model::new();
+        model.create_category("Movies:".to_string());
+
+        model.insert_entry_at("Movies:", "A".to_string(), 99);
+        model.insert_entry_at("Movies:", "B".to_string(), 0);
+
+        assert_eq!(
+            model.get_category_entries("Movies:"),
+            category_entries(&["B", "A"]).as_slice()
+        );
+    }
+
+    #[test]
+    fn move_entry_uses_index_from_list_after_removal() {
+        let mut model = Model::new();
+        model.create_category("Movies:".to_string());
+        model.insert_entry_at("Movies:", "A".to_string(), 0);
+        model.insert_entry_at("Movies:", "B".to_string(), 1);
+        model.insert_entry_at("Movies:", "C".to_string(), 2);
+
+        model.move_entry("Movies:", 1, 2);
+
+        assert_eq!(
+            model.get_category_entries("Movies:"),
+            category_entries(&["A", "C", "B"]).as_slice()
+        );
     }
 }

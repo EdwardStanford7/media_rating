@@ -1,4 +1,4 @@
-use crate::ImageFetchError;
+use crate::image_store::ImageFetchError;
 use core::f32;
 use image::DynamicImage;
 use rand::seq::SliceRandom;
