@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Model {
     // Name of category mapped to vector of all entries in it.
     categories: HashMap<String, Vec<String>>,
@@ -101,14 +101,6 @@ impl Model {
         }
 
         Some(entries.remove(index))
-    }
-}
-
-impl Default for Model {
-    fn default() -> Self {
-        Self {
-            categories: HashMap::new(),
-        }
     }
 }
 
