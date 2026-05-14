@@ -1,8 +1,11 @@
 use eframe::egui;
 use egui::{vec2, Align, FontId, Image, ImageButton};
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 
 use crate::{app::AppAction, image_store::ImageStore};
+
+const EXTRA_MATCHUPS: usize = 3;
+const EXTRA_MATCHUP_RADIUS: usize = 10;
 
 #[derive(Clone, Debug)]
 pub enum RankingSource {
@@ -33,6 +36,15 @@ pub struct RankingScreen {
     lower_bound: usize,
     upper_bound: usize,
     pivot_index: usize,
+    binary_index: Option<usize>,
+    extra_matchups_completed: usize,
+    comparisons: Vec<RankingComparison>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RankingComparison {
+    opponent_index: usize,
+    entry_won: bool,
 }
 
 impl RankingScreen {
@@ -54,7 +66,10 @@ impl RankingScreen {
             source,
             lower_bound: 0,
             upper_bound,
-            pivot_index: rand::thread_rng().gen_range(0..upper_bound),
+            pivot_index: Self::choose_binary_pivot(0, upper_bound),
+            binary_index: None,
+            extra_matchups_completed: 0,
+            comparisons: Vec::new(),
         })
     }
 
@@ -65,6 +80,9 @@ impl RankingScreen {
             if ui.button("Menu").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 actions.push(AppAction::CancelRanking);
             }
+
+            ui.separator();
+            ui.label(self.status_text());
         });
 
         ui.add_space(10.0);
@@ -152,22 +170,212 @@ impl RankingScreen {
     }
 
     fn report_match_winner(&mut self, entry_won: bool) -> Option<RankingOutcome> {
-        if entry_won {
-            self.upper_bound = self.pivot_index;
+        self.comparisons.push(RankingComparison {
+            opponent_index: self.pivot_index,
+            entry_won,
+        });
+
+        if self.binary_index.is_none() {
+            if entry_won {
+                self.upper_bound = self.pivot_index;
+            } else {
+                self.lower_bound = self.pivot_index + 1;
+            }
+
+            if self.lower_bound < self.upper_bound {
+                self.pivot_index = Self::choose_binary_pivot(self.lower_bound, self.upper_bound);
+                return None;
+            }
+
+            self.binary_index = Some(self.lower_bound);
         } else {
-            self.lower_bound = self.pivot_index + 1;
+            self.extra_matchups_completed += 1;
         }
 
-        if self.lower_bound >= self.upper_bound {
-            Some(RankingOutcome {
-                category: self.category.clone(),
-                entry: self.entry.clone(),
-                index: self.lower_bound,
-                source: self.source.clone(),
-            })
-        } else {
-            self.pivot_index = rand::thread_rng().gen_range(self.lower_bound..self.upper_bound);
-            None
+        if self.extra_matchups_completed >= EXTRA_MATCHUPS {
+            return Some(self.finish_outcome());
         }
+
+        if let Some(pivot_index) = self.choose_extra_pivot() {
+            self.pivot_index = pivot_index;
+            None
+        } else {
+            Some(self.finish_outcome())
+        }
+    }
+
+    fn choose_binary_pivot(lower_bound: usize, upper_bound: usize) -> usize {
+        let range_len = upper_bound - lower_bound;
+        if range_len <= 2 {
+            return rand::thread_rng().gen_range(lower_bound..upper_bound);
+        }
+
+        let midpoint = lower_bound + range_len / 2;
+        let jitter = (range_len / 4).max(1);
+        let start = midpoint.saturating_sub(jitter).max(lower_bound);
+        let end = (midpoint + jitter + 1).min(upper_bound);
+        rand::thread_rng().gen_range(start..end)
+    }
+
+    fn choose_extra_pivot(&self) -> Option<usize> {
+        let entry_count = self.entries.len();
+        let estimate = self.final_index();
+        let lower = estimate.saturating_sub(EXTRA_MATCHUP_RADIUS);
+        let upper = estimate
+            .saturating_add(EXTRA_MATCHUP_RADIUS)
+            .min(entry_count.saturating_sub(1));
+
+        let uncompared: Vec<usize> = (0..entry_count)
+            .filter(|index| !self.has_compared(*index))
+            .collect();
+        let nearby: Vec<usize> = uncompared
+            .iter()
+            .copied()
+            .filter(|index| *index >= lower && *index <= upper)
+            .collect();
+
+        let mut rng = rand::thread_rng();
+        nearby
+            .choose(&mut rng)
+            .or_else(|| uncompared.choose(&mut rng))
+            .copied()
+    }
+
+    fn has_compared(&self, opponent_index: usize) -> bool {
+        self.comparisons
+            .iter()
+            .any(|comparison| comparison.opponent_index == opponent_index)
+    }
+
+    fn final_index(&self) -> usize {
+        let binary_index = self.binary_index.unwrap_or(self.lower_bound);
+        let mut best_index = binary_index.min(self.entries.len());
+        let mut best_score = self.index_score(best_index);
+        let mut best_distance = best_index.abs_diff(binary_index);
+
+        for index in 0..=self.entries.len() {
+            let score = self.index_score(index);
+            let distance = index.abs_diff(binary_index);
+            if score > best_score || (score == best_score && distance < best_distance) {
+                best_index = index;
+                best_score = score;
+                best_distance = distance;
+            }
+        }
+
+        best_index
+    }
+
+    fn index_score(&self, index: usize) -> usize {
+        self.comparisons
+            .iter()
+            .filter(|comparison| comparison.agrees_with_index(index))
+            .count()
+    }
+
+    fn finish_outcome(&self) -> RankingOutcome {
+        RankingOutcome {
+            category: self.category.clone(),
+            entry: self.entry.clone(),
+            index: self.final_index(),
+            source: self.source.clone(),
+        }
+    }
+
+    fn status_text(&self) -> String {
+        if self.binary_index.is_some() {
+            format!(
+                "Final check {} of up to {}",
+                self.extra_matchups_completed + 1,
+                EXTRA_MATCHUPS
+            )
+        } else {
+            format!(
+                "Narrowing placement range {}-{}",
+                self.lower_bound + 1,
+                self.upper_bound + 1
+            )
+        }
+    }
+}
+
+impl RankingComparison {
+    fn agrees_with_index(&self, index: usize) -> bool {
+        if self.entry_won {
+            index <= self.opponent_index
+        } else {
+            index > self.opponent_index
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ranking_with_comparisons(
+        binary_index: usize,
+        comparisons: Vec<RankingComparison>,
+    ) -> RankingScreen {
+        RankingScreen {
+            category: "Movies:".to_string(),
+            entry: "New".to_string(),
+            entries: vec![
+                "A".to_string(),
+                "B".to_string(),
+                "C".to_string(),
+                "D".to_string(),
+                "E".to_string(),
+            ],
+            source: RankingSource::NewEntry,
+            lower_bound: binary_index,
+            upper_bound: binary_index,
+            pivot_index: 0,
+            binary_index: Some(binary_index),
+            extra_matchups_completed: 0,
+            comparisons,
+        }
+    }
+
+    #[test]
+    fn final_index_uses_comparison_majority() {
+        let ranking = ranking_with_comparisons(
+            3,
+            vec![
+                RankingComparison {
+                    opponent_index: 3,
+                    entry_won: true,
+                },
+                RankingComparison {
+                    opponent_index: 1,
+                    entry_won: false,
+                },
+                RankingComparison {
+                    opponent_index: 2,
+                    entry_won: true,
+                },
+            ],
+        );
+
+        assert_eq!(ranking.final_index(), 2);
+    }
+
+    #[test]
+    fn final_index_prefers_binary_result_when_scores_tie() {
+        let ranking = ranking_with_comparisons(
+            3,
+            vec![
+                RankingComparison {
+                    opponent_index: 1,
+                    entry_won: false,
+                },
+                RankingComparison {
+                    opponent_index: 4,
+                    entry_won: true,
+                },
+            ],
+        );
+
+        assert_eq!(ranking.final_index(), 3);
     }
 }
