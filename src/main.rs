@@ -325,6 +325,7 @@ impl MyApp {
                         {
                             self.model.create_category(self.new_entry_box.to_string());
                             self.new_entry_box.clear();
+                            self.model.save_to_spreadsheet();
                         }
                     });
                 }
