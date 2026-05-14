@@ -26,6 +26,9 @@ struct MyApp {
     // What category is currently selected in the rank a category dropdown.
     selected_category: Option<String>,
 
+    // What category is currently selected in the rank a category dropdown.
+    selected_switch_category: Option<String>,
+
     // What was the previous category selected. Used for checking when the category changes.
     previous_selected_category: Option<String>,
 
@@ -62,6 +65,7 @@ impl Default for MyApp {
             model_initialized: false,
             directory: String::new(),
             selected_category: None,
+            selected_switch_category: None,
             previous_selected_category: None,
             new_entry_box: String::new(),
             selected_entry: None,
@@ -333,18 +337,15 @@ impl MyApp {
 
     fn ranking_screen(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if let Some((entry1, index1, entry2, index2)) = self.model.get_current_match() {
+            if let Some((category, entry1, index1, entry2, index2)) = self.model.get_current_match()
+            {
                 // This again cuz mutable references nested in ui elements are annoying.
                 let mut entry1_won = false;
                 let mut entry2_won = false;
 
                 // Entry 1.
                 ui.vertical(|ui| {
-                    let image1 = Image::new(&self.get_entry_texture(
-                        entry1,
-                        self.selected_category.as_ref().unwrap(),
-                        ctx,
-                    ));
+                    let image1 = Image::new(&self.get_entry_texture(entry1, category, ctx));
                     let width1: f32 = image1.size().unwrap().x;
 
                     if ui.add(ImageButton::new(image1)).clicked() {
@@ -367,11 +368,7 @@ impl MyApp {
 
                 // Entry 2.
                 ui.vertical(|ui| {
-                    let image2 = Image::new(&self.get_entry_texture(
-                        entry2,
-                        self.selected_category.as_ref().unwrap(),
-                        ctx,
-                    ));
+                    let image2 = Image::new(&self.get_entry_texture(entry2, category, ctx));
                     let width2: f32 = image2.size().unwrap().x;
 
                     if ui.add(ImageButton::new(image2)).clicked() {
@@ -516,19 +513,15 @@ impl MyApp {
             columns[1].vertical(|ui| {
                 // Image of currently selected entry.
                 if let Some(entry_index) = &self.selected_entry {
-                    let mut rename_entry = false;
                     let mut new_image = false;
                     let mut delete_entry = false;
                     let mut rerank_entry = false;
+                    let mut switch_category = false;
 
                     let entry = self.model.get_entry(category, *entry_index);
                     ui.image(&self.get_entry_texture(&entry.clone(), category, ctx));
 
                     ui.horizontal(|ui| {
-                        if ui.button("Update Name").clicked() {
-                            rename_entry = true;
-                        }
-
                         if ui.button("Get New Image").clicked() {
                             new_image = true;
                         }
@@ -544,27 +537,13 @@ impl MyApp {
                         if (ui.button("Rerank Entry")).clicked() {
                             rerank_entry = true;
                         }
+
+                        if (ui.button("Switch Category")).clicked() {
+                            switch_category = true;
+                        }
                     });
 
-                    if rename_entry {
-                        rename_image(
-                            category.to_string(),
-                            entry.clone(),
-                            self.rename_entry_box.clone(),
-                            &self.directory,
-                        );
-
-                        self.rename_texture(&entry, &self.rename_entry_box, category);
-
-                        self.model.rename_entry(
-                            category,
-                            *entry_index,
-                            self.rename_entry_box.clone(),
-                            &self.directory,
-                        );
-                        self.focus_index = self.selected_entry;
-                        self.model.save_to_spreadsheet();
-                    } else if new_image {
+                    if new_image {
                         self.update_entry_texture(&entry, category, ctx);
                         self.focus_index = self.selected_entry;
                     } else if delete_entry {
@@ -575,9 +554,49 @@ impl MyApp {
                     } else if rerank_entry {
                         self.model.rerank_entry(entry, *entry_index, category);
                         self.selected_entry = None;
+                    } else if switch_category
+                        && self.selected_category != self.selected_switch_category
+                        && self.selected_switch_category.is_some()
+                    {
+                        let name = self.rename_entry_box.clone();
+                        self.model.delete_entry(category, *entry_index);
+                        delete_image(category.to_string(), entry.clone(), &self.directory);
+                        let position = self
+                            .model
+                            .append_entry(name, self.selected_switch_category.as_ref().unwrap());
+                        self.model.save_to_spreadsheet();
+                        self.model.rerank_entry(
+                            entry,
+                            position,
+                            self.selected_switch_category.as_ref().unwrap(),
+                        );
+                        self.selected_entry = None;
                     }
 
-                    ui.text_edit_singleline(&mut self.rename_entry_box);
+                    ui.horizontal(|ui| {
+                        ui.text_edit_singleline(&mut self.rename_entry_box);
+
+                        // Select category dropdown.
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                egui::ComboBox::from_label("")
+                                    .selected_text(
+                                        self.selected_switch_category
+                                            .clone()
+                                            .unwrap_or_else(|| "Choose...".to_string()),
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        for category in self.model.get_categories() {
+                                            ui.selectable_value(
+                                                &mut self.selected_switch_category,
+                                                Some(category.clone()),
+                                                category,
+                                            );
+                                        }
+                                    });
+                            });
+                        });
+                    });
                 }
             });
         });

@@ -190,7 +190,7 @@ impl Model {
     }
 
     // UI calls this function to get the current match for ranking.
-    pub fn get_current_match(&self) -> Option<(&str, usize, &str, usize)> {
+    pub fn get_current_match(&self) -> Option<(&str, &str, usize, &str, usize)> {
         if let Some(RankingEntry {
             name,
             category,
@@ -200,7 +200,13 @@ impl Model {
         }) = &self.ranking_new_entry
         {
             let entries = self.categories.get(category)?;
-            Some((name, entries.len(), &entries[*pivot_index], *pivot_index))
+            Some((
+                category,
+                name,
+                entries.len(),
+                &entries[*pivot_index],
+                *pivot_index,
+            ))
         } else {
             None
         }
@@ -254,6 +260,16 @@ impl Model {
             upper_bound: entries.len(),
             pivot_index: rand::thread_rng().gen_range(0..entries.len()),
         });
+    }
+
+    pub fn append_entry(&mut self, entry: String, category: &String) -> usize {
+        let entries = self.categories.get_mut(category).unwrap();
+        if entries.contains(&entry) {
+            return entries.iter().position(|e| e == &entry).unwrap();
+        }
+
+        entries.push(entry);
+        entries.len() - 1
     }
 
     // Re rank an entry in a category (delete and re add).
