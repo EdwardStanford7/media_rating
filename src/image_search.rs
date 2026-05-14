@@ -50,21 +50,54 @@ pub fn search(query: &str, width: u32, height: u32) -> Result<DynamicImage, Imag
         .map(|(_, img)| img)
         .collect();
 
-    // Pick one randomly from the top matches
     let mut rng = rand::thread_rng();
-    let closest_image = top_matches.choose(&mut rng).cloned();
+    let mut candidates = top_matches;
+    candidates.shuffle(&mut rng);
 
-    // Download, resize, and return the closest image
-    match closest_image {
-        Some(image) => {
-            let img_bytes = reqwest::blocking::get(&image.url)?.bytes()?;
-            let img = image::load_from_memory(&img_bytes)?;
-            Ok(img.resize_exact(width, height, image::imageops::FilterType::CatmullRom))
+    let mut last_error = None;
+    for image in candidates {
+        if image.url.is_empty() {
+            continue;
         }
-        None => Err(ImageFetchError {
-            details: "No image found".to_string(),
-        }),
+
+        let response = match client.get(&image.url).send() {
+            Ok(response) => response,
+            Err(e) => {
+                last_error = Some(e.to_string());
+                continue;
+            }
+        };
+
+        if !response.status().is_success() {
+            last_error = Some(format!("image request failed with {}", response.status()));
+            continue;
+        }
+
+        let img_bytes = match response.bytes() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                last_error = Some(e.to_string());
+                continue;
+            }
+        };
+
+        match image::load_from_memory(&img_bytes) {
+            Ok(img) => {
+                return Ok(img.resize_exact(
+                    width,
+                    height,
+                    image::imageops::FilterType::CatmullRom,
+                ));
+            }
+            Err(e) => {
+                last_error = Some(e.to_string());
+            }
+        }
     }
+
+    Err(ImageFetchError {
+        details: last_error.unwrap_or_else(|| "No usable image found".to_string()),
+    })
 }
 
 fn extract_vqd(html: &str) -> Option<String> {

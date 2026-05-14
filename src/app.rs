@@ -1,5 +1,4 @@
 use eframe::egui;
-use rust_xlsxwriter::Workbook;
 use std::{fs, path::PathBuf};
 
 use crate::{
@@ -10,6 +9,7 @@ use crate::{
     popup::{self, ConfirmDeleteCategoryPopup, Popup, PopupResponse},
     ranking_screen::{RankingOutcome, RankingScreen, RankingSource},
     splash_screen::SplashScreen,
+    spreadsheet,
 };
 
 pub struct MediaRatingApp {
@@ -19,8 +19,17 @@ pub struct MediaRatingApp {
 }
 
 struct DocumentContext {
+    spreadsheet_path: PathBuf,
     model: Model,
     images: ImageStore,
+}
+
+impl DocumentContext {
+    fn save(&self) {
+        if let Err(e) = spreadsheet::save(&self.spreadsheet_path, &self.model) {
+            eprintln!("Could not save to spreadsheet: {e}");
+        }
+    }
 }
 
 pub enum AppAction {
@@ -145,7 +154,7 @@ impl MediaRatingApp {
                 from_index,
                 to_category,
                 entry,
-            } => self.start_switch_category(from_category, from_index, to_category, entry),
+            } => self.start_switch_category(from_category, from_index, to_category, entry, ctx),
             AppAction::RenameEntry {
                 category,
                 index,
@@ -159,15 +168,14 @@ impl MediaRatingApp {
                         .refresh_entry_texture(&entry, &category, ctx);
                 }
             }
-            AppAction::RankingFinished(outcome) => self.finish_ranking(outcome),
+            AppAction::RankingFinished(outcome) => self.finish_ranking(outcome, ctx),
             AppAction::CancelRanking => self.return_to_home(),
         }
     }
 
     fn open_document(&mut self, path: PathBuf, create_new: bool) {
         if create_new {
-            let mut workbook = Workbook::new();
-            if let Err(e) = workbook.save(&path) {
+            if let Err(e) = spreadsheet::create_empty(&path) {
                 eprintln!("Could not create new spreadsheet: {e}");
                 return;
             }
@@ -177,28 +185,26 @@ impl MediaRatingApp {
             eprintln!("Spreadsheet path has no parent directory");
             return;
         };
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-            eprintln!("Spreadsheet path has no file name");
-            return;
-        };
-
-        let image_directory = parent.join("images");
+        let document_directory = parent.to_path_buf();
+        let image_directory = document_directory.join("images");
         if let Err(e) = fs::create_dir_all(&image_directory) {
             eprintln!("Could not create image directory: {e}");
             return;
         }
 
-        let directory = format!("{}/", parent.to_string_lossy());
-        let mut model = Model::new();
-        if !model.open_spreadsheet(directory.clone(), file_name.to_string()) {
-            eprintln!("Could not open spreadsheet");
-            return;
-        }
+        let model = match spreadsheet::load(&path) {
+            Ok(model) => model,
+            Err(e) => {
+                eprintln!("Could not open spreadsheet: {e}");
+                return;
+            }
+        };
 
         let selected_category = model.get_categories().first().cloned();
         self.document = Some(DocumentContext {
+            spreadsheet_path: path,
             model,
-            images: ImageStore::new(directory),
+            images: ImageStore::new(document_directory),
         });
         self.screen = ScreenState::Home(HomeScreen::new(selected_category));
     }
@@ -212,14 +218,14 @@ impl MediaRatingApp {
     fn create_category(&mut self, name: String) {
         if let Some(document) = self.document.as_mut() {
             document.model.create_category(name);
-            document.model.save_to_spreadsheet();
+            document.save();
         }
     }
 
     fn delete_category(&mut self, category: String) {
         if let Some(document) = self.document.as_mut() {
             document.model.delete_category(&category);
-            document.model.save_to_spreadsheet();
+            document.save();
         }
 
         if let Some(home) = self.home_screen_mut() {
@@ -236,7 +242,7 @@ impl MediaRatingApp {
                 document
                     .images
                     .rename_image(&category, &old_name, &new_name);
-                document.model.save_to_spreadsheet();
+                document.save();
             }
         }
     }
@@ -245,7 +251,7 @@ impl MediaRatingApp {
         if let Some(document) = self.document.as_mut() {
             if let Some(entry) = document.model.delete_entry(&category, index) {
                 document.images.delete_image(&category, &entry);
-                document.model.save_to_spreadsheet();
+                document.save();
             }
         }
     }
@@ -262,7 +268,7 @@ impl MediaRatingApp {
         let entries = document.model.get_category_entries(&category).to_vec();
         if entries.is_empty() {
             document.model.insert_entry_at(&category, entry, 0);
-            document.model.save_to_spreadsheet();
+            document.save();
             return;
         }
 
@@ -315,6 +321,7 @@ impl MediaRatingApp {
         from_index: usize,
         to_category: String,
         entry: String,
+        ctx: &egui::Context,
     ) {
         let Some(document) = self.document.as_ref() else {
             return;
@@ -332,7 +339,7 @@ impl MediaRatingApp {
                 if let Some(deleted_entry) = document.model.delete_entry(&from_category, from_index)
                 {
                     document.images.delete_image(&from_category, &deleted_entry);
-                    document.model.save_to_spreadsheet();
+                    document.save();
                 }
             }
             return;
@@ -346,12 +353,15 @@ impl MediaRatingApp {
         };
 
         if entries.is_empty() {
-            self.finish_ranking(RankingOutcome {
-                category: to_category,
-                entry,
-                index: 0,
-                source,
-            });
+            self.finish_ranking(
+                RankingOutcome {
+                    category: to_category,
+                    entry,
+                    index: 0,
+                    source,
+                },
+                ctx,
+            );
             return;
         }
 
@@ -360,7 +370,7 @@ impl MediaRatingApp {
         }
     }
 
-    fn finish_ranking(&mut self, outcome: RankingOutcome) {
+    fn finish_ranking(&mut self, outcome: RankingOutcome, ctx: &egui::Context) {
         if let Some(document) = self.document.as_mut() {
             match outcome.source {
                 RankingSource::NewEntry => {
@@ -379,16 +389,20 @@ impl MediaRatingApp {
                     original_entry,
                 } => {
                     document.model.delete_entry(&from_category, from_index);
-                    document
-                        .images
-                        .delete_image(&from_category, &original_entry);
+                    document.images.replace_for_category_switch(
+                        &from_category,
+                        &original_entry,
+                        &outcome.category,
+                        &outcome.entry,
+                        ctx,
+                    );
                     document
                         .model
                         .insert_entry_at(&outcome.category, outcome.entry, outcome.index);
                 }
             }
 
-            document.model.save_to_spreadsheet();
+            document.save();
         }
 
         self.return_to_home();

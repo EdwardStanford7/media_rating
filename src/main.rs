@@ -7,6 +7,7 @@ mod model;
 mod popup;
 mod ranking_screen;
 mod splash_screen;
+mod spreadsheet;
 
 fn main() {
     let mut options = eframe::NativeOptions::default();

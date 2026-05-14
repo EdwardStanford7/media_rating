@@ -1,135 +1,20 @@
-use calamine::{open_workbook, DataType, Reader, Xlsx};
-use rust_xlsxwriter::{Format, Workbook};
 use std::collections::HashMap;
-use std::path::Path;
 
 #[derive(Debug)]
 pub struct Model {
-    file_directory: String,
-    file_name: String,
-
     // Name of category mapped to vector of all entries in it.
     categories: HashMap<String, Vec<String>>,
 }
 
 impl Model {
-    // Create a new Model object.
-    pub fn new() -> Model {
-        Model {
-            file_directory: String::new(),
-            file_name: String::new(),
-            categories: HashMap::new(),
-        }
+    pub(crate) fn from_categories(categories: HashMap<String, Vec<String>>) -> Self {
+        Self { categories }
     }
 
-    // Read data from a spreadsheet.
-    pub fn open_spreadsheet(&mut self, file_directory: String, file_name: String) -> bool {
-        // Open a new workbook.
-        let mut workbook: Xlsx<_> = open_workbook(file_directory.clone() + &file_name).unwrap();
-
-        let sheet;
-        if let Some(result) = workbook.worksheet_range_at(0) {
-            sheet = result.unwrap();
-        } else {
-            return false;
-        }
-
-        let (height, width) = sheet.get_size();
-
-        // Iterate over all the columns to check which ones hold category rankings.
-        for column in 0..width {
-            // Get the name of the category or skip if this column does not hold a category.
-            let category_name = match sheet.get_value((0, column as u32)).unwrap().get_string() {
-                Some(name) => name.to_string(),
-                None => continue,
-            };
-
-            let mut category = Vec::new();
-
-            // Iterate over the entries in this category.
-            for row in 1..height {
-                match sheet
-                    .get_value((row as u32, column as u32))
-                    .unwrap()
-                    .get_string()
-                {
-                    Some(title) => {
-                        // Insert the entry into the category.
-                        category.push(title.to_string());
-                    }
-                    None => continue,
-                }
-            }
-
-            self.categories.insert(category_name, category);
-        }
-
-        self.file_directory = file_directory;
-        self.file_name = file_name;
-
-        true
-    }
-
-    // Write the contents of the model to a spreadsheet.
-    pub fn save_to_spreadsheet(&self) {
-        // Open a new workbook.
-        let mut workbook = Workbook::new();
-
-        // Create a new worksheet
-        let sheet = workbook.add_worksheet();
-        let _ = sheet.set_name("Sorted".to_string());
-
-        // If the spreadsheet has more than 5 categories, too bad.
-        let binding = [
-            rust_xlsxwriter::Color::RGB(0xd8bfd8),
-            rust_xlsxwriter::Color::RGB(0x93ccea),
-            rust_xlsxwriter::Color::RGB(0x90ee90),
-            rust_xlsxwriter::Color::RGB(0xfed8b1),
-            rust_xlsxwriter::Color::RGB(0xab0b23),
-        ];
-        let mut colors = (binding).iter();
-
-        let separator_format = Format::new().set_background_color(rust_xlsxwriter::Color::Black);
-
-        let _ = sheet.set_row_height(0, 30);
-
-        let mut column: u16 = 0;
-        // Write the data.
-        for (name, entries) in &self.categories {
-            let current_color = *colors.next().unwrap_or(&rust_xlsxwriter::Color::White);
-
-            // Make entire category columns be one color with black column separator.
-            let category_format = Format::new()
-                .set_font_size(12.0)
-                .set_background_color(current_color);
-            let _ = sheet.set_column_format(column, &category_format);
-            let _ = sheet.set_column_format(column + 1, &separator_format);
-            let _ = sheet.set_column_width(column, 50.0);
-            let _ = sheet.set_column_width(column + 1, 3.0);
-
-            // Write Header
-            let header_format = Format::new()
-                .set_font_size(25.0)
-                .set_bold()
-                .set_background_color(current_color);
-            let _ = sheet.write_string_with_format(0, column, name, &header_format);
-
-            // Write category entries.
-            let mut row: u32 = 1;
-            for entry in entries {
-                let _ = sheet.write_string_with_format(row, column, entry, &category_format);
-
-                row += 1;
-            }
-
-            column += 2; // Move to the next category column.
-        }
-
-        // Save the workbook
-        match workbook.save(Path::new(&(self.file_directory.clone() + &self.file_name))) {
-            Ok(_result) => {}
-            Err(e) => eprintln!("Could not save to spreadsheet: {e}"),
-        }
+    pub fn categories(&self) -> impl Iterator<Item = (&str, &[String])> {
+        self.categories
+            .iter()
+            .map(|(name, entries)| (name.as_str(), entries.as_slice()))
     }
 
     // Make a new category.
@@ -219,6 +104,14 @@ impl Model {
     }
 }
 
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            categories: HashMap::new(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,7 +122,7 @@ mod tests {
 
     #[test]
     fn insert_entry_at_clamps_to_category_bounds() {
-        let mut model = Model::new();
+        let mut model = Model::default();
         model.create_category("Movies:".to_string());
 
         model.insert_entry_at("Movies:", "A".to_string(), 99);
@@ -243,7 +136,7 @@ mod tests {
 
     #[test]
     fn move_entry_uses_index_from_list_after_removal() {
-        let mut model = Model::new();
+        let mut model = Model::default();
         model.create_category("Movies:".to_string());
         model.insert_entry_at("Movies:", "A".to_string(), 0);
         model.insert_entry_at("Movies:", "B".to_string(), 1);
