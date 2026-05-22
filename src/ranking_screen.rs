@@ -34,7 +34,6 @@ pub struct RankingScreen {
     upper_bound: usize,
     pivot_index: usize,
     binary_index: Option<usize>,
-    extra_matchups_completed: usize,
     comparisons: Vec<RankingComparison>,
 }
 
@@ -65,7 +64,6 @@ impl RankingScreen {
             upper_bound,
             pivot_index: Self::choose_binary_pivot(0, upper_bound),
             binary_index: None,
-            extra_matchups_completed: 0,
             comparisons: Vec::new(),
         })
     }
@@ -185,8 +183,6 @@ impl RankingScreen {
             }
 
             self.binary_index = Some(self.lower_bound);
-        } else {
-            self.extra_matchups_completed += 1;
         }
 
         Some(self.finish_outcome())
@@ -282,7 +278,6 @@ mod tests {
             upper_bound: binary_index,
             pivot_index: 0,
             binary_index: Some(binary_index),
-            extra_matchups_completed: 0,
             comparisons,
         }
     }
