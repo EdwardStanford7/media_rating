@@ -1,11 +1,8 @@
 use eframe::egui;
 use egui::{vec2, Align, FontId, Image, ImageButton};
-use rand::{seq::SliceRandom, Rng};
+use rand::Rng;
 
 use crate::{app::AppAction, image_store::ImageStore};
-
-const EXTRA_MATCHUPS: usize = 3;
-const EXTRA_MATCHUP_RADIUS: usize = 10;
 
 #[derive(Clone, Debug)]
 pub enum RankingSource {
@@ -192,16 +189,7 @@ impl RankingScreen {
             self.extra_matchups_completed += 1;
         }
 
-        if self.extra_matchups_completed >= EXTRA_MATCHUPS {
-            return Some(self.finish_outcome());
-        }
-
-        if let Some(pivot_index) = self.choose_extra_pivot() {
-            self.pivot_index = pivot_index;
-            None
-        } else {
-            Some(self.finish_outcome())
-        }
+        Some(self.finish_outcome())
     }
 
     fn choose_binary_pivot(lower_bound: usize, upper_bound: usize) -> usize {
@@ -215,36 +203,6 @@ impl RankingScreen {
         let start = midpoint.saturating_sub(jitter).max(lower_bound);
         let end = (midpoint + jitter + 1).min(upper_bound);
         rand::thread_rng().gen_range(start..end)
-    }
-
-    fn choose_extra_pivot(&self) -> Option<usize> {
-        let entry_count = self.entries.len();
-        let estimate = self.final_index();
-        let lower = estimate.saturating_sub(EXTRA_MATCHUP_RADIUS);
-        let upper = estimate
-            .saturating_add(EXTRA_MATCHUP_RADIUS)
-            .min(entry_count.saturating_sub(1));
-
-        let uncompared: Vec<usize> = (0..entry_count)
-            .filter(|index| !self.has_compared(*index))
-            .collect();
-        let nearby: Vec<usize> = uncompared
-            .iter()
-            .copied()
-            .filter(|index| *index >= lower && *index <= upper)
-            .collect();
-
-        let mut rng = rand::thread_rng();
-        nearby
-            .choose(&mut rng)
-            .or_else(|| uncompared.choose(&mut rng))
-            .copied()
-    }
-
-    fn has_compared(&self, opponent_index: usize) -> bool {
-        self.comparisons
-            .iter()
-            .any(|comparison| comparison.opponent_index == opponent_index)
     }
 
     fn final_index(&self) -> usize {
@@ -283,19 +241,11 @@ impl RankingScreen {
     }
 
     fn status_text(&self) -> String {
-        if self.binary_index.is_some() {
-            format!(
-                "Final check {} of up to {}",
-                self.extra_matchups_completed + 1,
-                EXTRA_MATCHUPS
-            )
-        } else {
-            format!(
-                "Narrowing placement range {}-{}",
-                self.lower_bound + 1,
-                self.upper_bound + 1
-            )
-        }
+        format!(
+            "Narrowing placement range {}-{}",
+            self.lower_bound + 1,
+            self.upper_bound + 1
+        )
     }
 }
 
