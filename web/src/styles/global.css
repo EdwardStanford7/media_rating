@@ -69,6 +69,8 @@ select {
 
 .app-shell {
     min-height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     display: grid;
     grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
 }
@@ -80,12 +82,16 @@ select {
 }
 
 .sidebar {
+    min-height: 0;
+    overflow-y: auto;
     border-right: 1px solid var(--line);
     background: #f0ece3;
     padding: 1rem;
 }
 
 .main {
+    min-height: 0;
+    overflow-y: auto;
     padding: 1.25rem clamp(1rem, 3vw, 2.25rem);
 }
 
@@ -106,6 +112,7 @@ select {
 
 .stack {
     display: grid;
+    align-content: start;
     gap: 0.9rem;
 }
 
@@ -187,6 +194,10 @@ select {
     margin-bottom: 0;
 }
 
+.queue-panel {
+    min-height: 0;
+}
+
 .compact-stack {
     gap: 0.35rem;
 }
@@ -204,6 +215,10 @@ select {
 .queue-list {
     display: grid;
     gap: 0.55rem;
+    max-height: min(42vh, 520px);
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.15rem;
 }
 
 .queue-item {
@@ -579,6 +594,22 @@ img.match-poster {
     .match-grid,
     .free-rank-match-grid {
         grid-template-columns: 1fr;
+    }
+
+    .app-shell {
+        height: auto;
+        overflow: visible;
+    }
+
+    .sidebar,
+    .main {
+        overflow: visible;
+    }
+
+    .queue-list {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
     }
 
     .sidebar {

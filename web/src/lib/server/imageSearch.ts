@@ -66,6 +66,7 @@ function buildSearchQueries(query: string) {
     addQuery(query);
     addQuery(query.replace(/\s*\([^)]*\)\s*$/u, ""));
     addQuery(query.replace(/\s*-\s*[^-]+$/u, ""));
+    addQuery(query.replace(/[()]/gu, " "));
 
     return queries;
 }
@@ -103,13 +104,13 @@ async function fetchImageCandidates(cleanQuery: string): Promise<ImageSearchCand
 
     return sourcesToCandidates(
         results
-        .filter((result) => result.image && result.width && result.height)
-        .map((result) => ({
-            imageUrl: result.image ?? "",
-            thumbnailUrl: result.thumbnail || result.image || "",
-            width: result.width ?? 0,
-            height: result.height ?? 0
-        }))
+            .filter((result) => result.image && result.width && result.height)
+            .map((result) => ({
+                imageUrl: result.image ?? "",
+                thumbnailUrl: result.thumbnail || result.image || "",
+                width: result.width ?? 0,
+                height: result.height ?? 0
+            }))
     );
 }
 

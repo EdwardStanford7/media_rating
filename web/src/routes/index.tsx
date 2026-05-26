@@ -55,6 +55,7 @@ interface ImageSearchCandidate {
 const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
+const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 
 type AppMode = "dashboard" | "free_rank";
 
@@ -1005,6 +1006,12 @@ function ImagePickerModal({
         const requestId = searchRequestIdRef.current + 1;
         searchRequestIdRef.current = requestId;
         const submittedQuery = searchQuery.trim();
+        if (!submittedQuery) {
+            setLoading(false);
+            setError("Search query is required.");
+            return;
+        }
+
         const cachedCandidates = candidatesByQueryRef.current.get(submittedQuery.toLowerCase());
         if (cachedCandidates && cachedCandidates.length > 0) {
             candidatesRef.current = cachedCandidates;
@@ -1019,6 +1026,8 @@ function ImagePickerModal({
         setLoading(true);
         setError(null);
         const cacheBust = crypto.randomUUID();
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), IMAGE_SEARCH_TIMEOUT_MS);
 
         try {
             const url = new URL("/api/image-search", window.location.origin);
@@ -1026,7 +1035,8 @@ function ImagePickerModal({
             url.searchParams.set("query", submittedQuery);
             url.searchParams.set("refresh", cacheBust);
             const response = await fetch(url, {
-                cache: "no-store"
+                cache: "no-store",
+                signal: controller.signal
             });
             const body = await response.json().catch(() => ({})) as {
                 candidates?: ImageSearchCandidate[];
@@ -1047,6 +1057,10 @@ function ImagePickerModal({
                 imageUrl: withCacheBust(candidate.imageUrl, cacheBust),
                 thumbnailUrl: withCacheBust(candidate.thumbnailUrl, cacheBust)
             }));
+            if (nextCandidates.length === 0) {
+                throw new Error("No image candidates found");
+            }
+
             candidatesRef.current = nextCandidates;
             candidatesByQueryRef.current.set(submittedQuery.toLowerCase(), nextCandidates);
             thumbnailPosterBlobsRef.current.clear();
@@ -1068,6 +1082,7 @@ function ImagePickerModal({
                 setError(errorMessage(searchError));
             }
         } finally {
+            window.clearTimeout(timeoutId);
             if (requestId === searchRequestIdRef.current) {
                 setLoading(false);
             }
@@ -1175,7 +1190,12 @@ function ImagePickerModal({
                 >
                     <input
                         value={query}
-                        onChange={(event) => setQuery(event.target.value)}
+                        onChange={(event) => {
+                            setQuery(event.target.value);
+                            if (error) {
+                                setError(null);
+                            }
+                        }}
                         placeholder="Search"
                     />
                     <button disabled={loading || Boolean(savingCandidateId)} type="submit">Search</button>
@@ -1699,6 +1719,14 @@ function withCacheBust(path: string, value: string) {
 }
 
 function errorMessage(error: unknown) {
+    if (
+        typeof DOMException !== "undefined" &&
+        error instanceof DOMException &&
+        error.name === "AbortError"
+    ) {
+        return "Image search timed out";
+    }
+
     return error instanceof Error ? error.message : String(error);
 }
 
