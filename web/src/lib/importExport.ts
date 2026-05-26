@@ -48,9 +48,8 @@ export async function writeExportWorkbook(
     workbook.creator = "Media Rating";
     workbook.created = new Date();
 
-    const sortedRows = buildSortedRows(categories);
     const sortedSheet = workbook.addWorksheet("Sorted");
-    sortedSheet.addRows(sortedRows);
+    writeSortedSheet(sortedSheet, categories);
 
     const entryMetadata = categories.flatMap((category) =>
         category.entries.map((entry) => ({
@@ -73,18 +72,15 @@ export async function writeExportWorkbook(
     return workbook.xlsx.writeBuffer();
 }
 
-function buildSortedRows(categories: CategoryWithEntries[]) {
-    const headers = categories.map((category) => category.name);
-    const maxEntries = Math.max(0, ...categories.map((category) => category.entries.length));
-    const rows: string[][] = [headers];
+function writeSortedSheet(sheet: ExcelJS.Worksheet, categories: CategoryWithEntries[]) {
+    categories.forEach((category, categoryIndex) => {
+        const column = categoryIndex + 1;
+        sheet.getCell(1, column).value = category.name;
 
-    for (let index = 0; index < maxEntries; index += 1) {
-        rows.push(
-            categories.map((category) => category.entries[index]?.name ?? "")
-        );
-    }
-
-    return rows;
+        category.entries.forEach((entry, entryIndex) => {
+            sheet.getCell(entryIndex + 2, column).value = entry.name;
+        });
+    });
 }
 
 function rowValues(row: ExcelJS.Row) {

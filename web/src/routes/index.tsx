@@ -1099,9 +1099,9 @@ function EntryCard({
         <article className="entry-card">
             <EntryPoster entry={entry} />
             <div className="entry-card-body">
-                <strong>#{entry.rankPosition + 1} {entry.name}</strong>
+                <strong className="entry-title">#{entry.rankPosition + 1} {entry.name}</strong>
                 <div className="metric-row">
-                    <span className="metric">Binary {entry.rankPosition + 1}</span>
+                    <span className="metric">Ordered List {entry.rankPosition + 1}</span>
                     <span className="metric">Elo {Math.round(entry.freeRankElo)}</span>
                     <span className="metric">{entry.freeRankWins}-{entry.freeRankLosses}</span>
                     {entry.firstConsumedAt ? (
@@ -1114,7 +1114,7 @@ function EntryCard({
                         {entry.imageKey ? "Change Image" : "Pick Image"}
                     </button>
                 </div>
-                <div className="entry-actions">
+                <div className="entry-actions stacked-action">
                     <input
                         aria-label={`Rename ${entry.name}`}
                         value={renameValue}
@@ -1122,7 +1122,7 @@ function EntryCard({
                     />
                     <button type="button" onClick={() => onRename(renameValue)}>Rename</button>
                 </div>
-                <div className="entry-actions">
+                <div className="entry-actions stacked-action">
                     <select
                         aria-label={`Move ${entry.name}`}
                         value={targetCategoryId}
