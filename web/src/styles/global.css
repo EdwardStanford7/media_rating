@@ -309,8 +309,32 @@ img.match-poster {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.entry-actions.card-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
 .entry-actions.stacked-action {
     grid-template-columns: 1fr;
+}
+
+.entry-menu-button {
+    width: 2.55rem;
+    padding-inline: 0;
+}
+
+.entry-overflow-panel,
+.entry-move-panel {
+    display: grid;
+    gap: 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fbfaf7;
+    padding: 0.65rem;
+}
+
+.entry-overflow-panel button {
+    width: 100%;
+    text-align: left;
 }
 
 .metric {

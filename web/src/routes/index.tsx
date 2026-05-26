@@ -1089,10 +1089,14 @@ function EntryCard({
 }) {
     const [renameValue, setRenameValue] = useState(entry.name);
     const [targetCategoryId, setTargetCategoryId] = useState(selectedCategoryId);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [moveControlsOpen, setMoveControlsOpen] = useState(false);
 
     useEffect(() => {
         setRenameValue(entry.name);
         setTargetCategoryId(selectedCategoryId);
+        setMenuOpen(false);
+        setMoveControlsOpen(false);
     }, [entry.name, selectedCategoryId]);
 
     return (
@@ -1108,12 +1112,34 @@ function EntryCard({
                         <span className="metric">{formatDate(entry.firstConsumedAt)}</span>
                     ) : null}
                 </div>
-                <div className="entry-actions two-buttons">
+                <div className="entry-actions card-actions">
                     <button type="button" onClick={onRerank}>Rerank</button>
                     <button type="button" onClick={onPickImage}>
                         {entry.imageKey ? "Change Image" : "Pick Image"}
                     </button>
+                    <button
+                        aria-expanded={menuOpen}
+                        aria-label={`More actions for ${entry.name}`}
+                        className="entry-menu-button"
+                        type="button"
+                        onClick={() => setMenuOpen((isOpen) => !isOpen)}
+                    >
+                        ...
+                    </button>
                 </div>
+                {menuOpen ? (
+                    <div className="entry-overflow-panel">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMoveControlsOpen(true);
+                                setMenuOpen(false);
+                            }}
+                        >
+                            Change Category
+                        </button>
+                    </div>
+                ) : null}
                 <div className="entry-actions stacked-action">
                     <input
                         aria-label={`Rename ${entry.name}`}
@@ -1122,26 +1148,39 @@ function EntryCard({
                     />
                     <button type="button" onClick={() => onRename(renameValue)}>Rename</button>
                 </div>
-                <div className="entry-actions stacked-action">
-                    <select
-                        aria-label={`Move ${entry.name}`}
-                        value={targetCategoryId}
-                        onChange={(event) => setTargetCategoryId(event.target.value)}
-                    >
-                        {categories.map((category) => (
-                            <option key={category.id} value={category.id}>
-                                {category.name}
-                            </option>
-                        ))}
-                    </select>
-                    <button
-                        disabled={targetCategoryId === selectedCategoryId}
-                        type="button"
-                        onClick={() => onSwitch(targetCategoryId)}
-                    >
-                        Move
-                    </button>
-                </div>
+                {moveControlsOpen ? (
+                    <div className="entry-move-panel">
+                        <strong>Change Category</strong>
+                        <div className="entry-actions stacked-action">
+                            <select
+                                aria-label={`Move ${entry.name}`}
+                                value={targetCategoryId}
+                                onChange={(event) => setTargetCategoryId(event.target.value)}
+                            >
+                                {categories.map((category) => (
+                                    <option key={category.id} value={category.id}>
+                                        {category.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="entry-actions two-buttons">
+                                <button
+                                    type="button"
+                                    onClick={() => setMoveControlsOpen(false)}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    disabled={targetCategoryId === selectedCategoryId}
+                                    type="button"
+                                    onClick={() => onSwitch(targetCategoryId)}
+                                >
+                                    Move
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
                 <button className="danger" type="button" onClick={onDelete}>Delete</button>
             </div>
         </article>
