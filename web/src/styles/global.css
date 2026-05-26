@@ -73,6 +73,12 @@ select {
     grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
 }
 
+.free-rank-shell {
+    min-height: 100vh;
+    display: grid;
+    padding: clamp(1rem, 3vw, 2rem);
+}
+
 .sidebar {
     border-right: 1px solid var(--line);
     background: #f0ece3;
@@ -239,6 +245,57 @@ img.match-poster {
     padding: 0.7rem;
 }
 
+.free-rank-screen {
+    width: min(1180px, 100%);
+    align-self: stretch;
+    justify-self: center;
+    grid-template-rows: auto auto 1fr;
+}
+
+.free-rank-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.free-rank-topbar h1,
+.free-rank-topbar p {
+    margin: 0;
+}
+
+.free-rank-match-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: clamp(1rem, 3vw, 2rem);
+    align-items: stretch;
+}
+
+.free-rank-choice {
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding: 0;
+    text-align: left;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+
+.free-rank-choice .match-poster {
+    width: 100%;
+    min-height: 0;
+}
+
+.free-rank-choice > span {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.85rem 1rem;
+}
+
+.free-rank-choice small {
+    color: var(--muted);
+}
+
 .status {
     border-left: 4px solid var(--gold);
     padding: 0.6rem 0.75rem;
@@ -369,7 +426,8 @@ img.match-poster {
 
     .app-shell,
     .auth-panel,
-    .match-grid {
+    .match-grid,
+    .free-rank-match-grid {
         grid-template-columns: 1fr;
     }
 
@@ -380,7 +438,8 @@ img.match-poster {
 
     .topbar,
     .toolbar,
-    .form-row {
+    .form-row,
+    .free-rank-topbar {
         align-items: stretch;
         flex-direction: column;
     }

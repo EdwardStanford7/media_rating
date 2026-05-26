@@ -1,6 +1,6 @@
 const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
-const SEARCH_RESULT_COUNT = 12;
+const SEARCH_RESULT_COUNT = 18;
 
 interface DuckDuckGoImageResult {
     image?: string;

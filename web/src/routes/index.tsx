@@ -46,6 +46,8 @@ const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 
+type AppMode = "dashboard" | "free_rank";
+
 export const Route = createFileRoute("/")({
     loader: async () => {
         const authOptions = await getAuthOptions();
@@ -210,6 +212,7 @@ function Dashboard({
     const [selectedCategoryId, setSelectedCategoryId] = useState(
         initialDashboard.categories[0]?.id ?? ""
     );
+    const [appMode, setAppMode] = useState<AppMode>("dashboard");
     const [displayMode, setDisplayMode] = useState<DisplayMode>("ordered list");
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -440,7 +443,7 @@ function Dashboard({
     }
 
     return (
-        <main className="app-shell" aria-busy={busy}>
+        <main className={appMode === "free_rank" ? "free-rank-shell" : "app-shell"} aria-busy={busy}>
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
             {imagePickerTarget ? (
                 <ImagePickerModal
@@ -449,105 +452,112 @@ function Dashboard({
                     onSaved={handleImageSaved}
                 />
             ) : null}
-            <aside className="sidebar">
-                <div className="topbar">
-                    <strong>Media Rating</strong>
-                    <button type="button" onClick={() => signOut().then(() => window.location.assign("/"))}>
-                        Sign Out
-                    </button>
-                </div>
-                <p className="muted">{userName}</p>
-
-                <form className="form-row" onSubmit={handleCreateCategory}>
-                    <input disabled={busy} name="name" placeholder="New category" required />
-                    <button disabled={busy} type="submit">Add</button>
-                </form>
-
-                <div className="category-list">
-                    {dashboard.categories.map((category) => (
-                        <button
-                            className={`category-button ${category.id === selectedCategory?.id ? "active" : ""}`}
-                            disabled={busy}
-                            key={category.id}
-                            type="button"
-                            onClick={() => setSelectedCategoryId(category.id)}
-                        >
-                            <strong>{category.name}</strong>
-                            <span className="muted"> · {category.entries.length}</span>
-                        </button>
-                    ))}
-                </div>
-
-                <form className="stack panel" onSubmit={handleImport}>
-                    <strong>Import xlsx</strong>
-                    <input disabled={busy} name="firstConsumedAt" type="date" />
-                    <input disabled={busy} name="workbook" type="file" accept=".xlsx" />
-                    <button disabled={busy} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
-                </form>
-            </aside>
-
-            <section className="main stack">
-                <div className="topbar">
-                    <div>
-                        <h1>{selectedCategory?.name ?? "Categories"}</h1>
-                        <p className="muted">Ordered list rank is primary. Free-rank Elo is saved separately.</p>
-                    </div>
-                    <div className="row">
-                        <select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as DisplayMode)}>
-                            <option value="ordered list">Ordered List</option>
-                            <option value="combined">Combined</option>
-                            <option value="free_rank">Free Rank</option>
-                        </select>
-                        <button disabled={busy} type="button" onClick={handleExport}>Export</button>
-                    </div>
-                </div>
-
-                {message ? <div className="status">{message}</div> : null}
-
-                {selectedCategory ? (
-                    <form className="panel form-row" onSubmit={handleCreateEntry}>
-                        <input name="name" placeholder="New entry" required />
-                        <input name="firstConsumedAt" type="date" />
-                        <button className="primary" disabled={busy} type="submit">Add + Rank</button>
-                    </form>
-                ) : null}
-
-                {activeSessionId ? (
-                    <BinaryRankPanel
-                        imageRefreshVersion={imageRefreshVersion}
-                        sessionId={activeSessionId}
-                        onComplete={async () => {
-                            setActiveSessionId(null);
-                            await refresh();
-                        }}
-                        onNeedImage={requestImageForMatch}
-                    />
-                ) : null}
-
-                <FreeRankPanel
+            {appMode === "free_rank" ? (
+                <FreeRankScreen
                     categories={dashboard.categories}
-                    imageRefreshVersion={imageRefreshVersion}
+                    onExit={() => setAppMode("dashboard")}
                     onNeedImage={requestImageForMatch}
                     onRanked={refresh}
                 />
+            ) : (
+                <>
+                    <aside className="sidebar">
+                        <div className="topbar">
+                            <strong>Media Rating</strong>
+                            <button type="button" onClick={() => signOut().then(() => window.location.assign("/"))}>
+                                Sign Out
+                            </button>
+                        </div>
+                        <p className="muted">{userName}</p>
 
-                <section className="entries-grid">
-                    {displayedEntries.map((entry, index) => (
-                        <EntryCard
-                            displayIndex={index}
-                            entry={entry}
-                            categories={dashboard.categories}
-                            key={entry.id}
-                            selectedCategoryId={selectedCategory.id}
-                            onDelete={() => handleDelete(entry.id)}
-                            onPickImage={() => setImagePickerTarget({ entry, category: selectedCategory })}
-                            onRename={(name) => handleRename(entry.id, name)}
-                            onRerank={() => handleRerank(entry.id)}
-                            onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
-                        />
-                    ))}
-                </section>
-            </section>
+                        <form className="form-row" onSubmit={handleCreateCategory}>
+                            <input disabled={busy} name="name" placeholder="New category" required />
+                            <button disabled={busy} type="submit">Add</button>
+                        </form>
+
+                        <div className="category-list">
+                            {dashboard.categories.map((category) => (
+                                <button
+                                    className={`category-button ${category.id === selectedCategory?.id ? "active" : ""}`}
+                                    disabled={busy}
+                                    key={category.id}
+                                    type="button"
+                                    onClick={() => setSelectedCategoryId(category.id)}
+                                >
+                                    <strong>{category.name}</strong>
+                                    <span className="muted"> · {category.entries.length}</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        <form className="stack panel" onSubmit={handleImport}>
+                            <strong>Import xlsx</strong>
+                            <input disabled={busy} name="firstConsumedAt" type="date" />
+                            <input disabled={busy} name="workbook" type="file" accept=".xlsx" />
+                            <button disabled={busy} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
+                        </form>
+                    </aside>
+
+                    <section className="main stack">
+                        <div className="topbar">
+                            <div>
+                                <h1>{selectedCategory?.name ?? "Categories"}</h1>
+                                <p className="muted">Ordered list rank is primary. Free-rank Elo is saved separately.</p>
+                            </div>
+                            <div className="row">
+                                <select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as DisplayMode)}>
+                                    <option value="ordered list">Ordered List</option>
+                                    <option value="combined">Combined</option>
+                                    <option value="free_rank">Free Rank</option>
+                                </select>
+                                <button className="primary" type="button" onClick={() => setAppMode("free_rank")}>
+                                    Switch to Free Rank Mode
+                                </button>
+                                <button disabled={busy} type="button" onClick={handleExport}>Export</button>
+                            </div>
+                        </div>
+
+                        {message ? <div className="status">{message}</div> : null}
+
+                        {selectedCategory ? (
+                            <form className="panel form-row" onSubmit={handleCreateEntry}>
+                                <input name="name" placeholder="New entry" required />
+                                <input name="firstConsumedAt" type="date" />
+                                <button className="primary" disabled={busy} type="submit">Add + Rank</button>
+                            </form>
+                        ) : null}
+
+                        {activeSessionId ? (
+                            <BinaryRankPanel
+                                imageRefreshVersion={imageRefreshVersion}
+                                sessionId={activeSessionId}
+                                onComplete={async () => {
+                                    setActiveSessionId(null);
+                                    await refresh();
+                                }}
+                                onNeedImage={requestImageForMatch}
+                            />
+                        ) : null}
+
+                        <section className="entries-grid">
+                            {displayedEntries.map((entry, index) => (
+                                <EntryCard
+                                    displayIndex={index}
+                                    entry={entry}
+                                    categories={dashboard.categories}
+                                    key={entry.id}
+                                    selectedCategoryId={selectedCategory.id}
+                                    onDelete={() => handleDelete(entry.id)}
+                                    onPickImage={() => setImagePickerTarget({ entry, category: selectedCategory })}
+                                    onRename={(name) => handleRename(entry.id, name)}
+                                    onRerank={() => handleRerank(entry.id)}
+                                    onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
+                                />
+                            ))}
+                        </section>
+                    </section>
+                </>
+            )}
         </main>
     );
 }
@@ -921,29 +931,64 @@ function BinaryRankPanel({
     );
 }
 
-function FreeRankPanel({
+function FreeRankScreen({
     categories,
-    imageRefreshVersion,
+    onExit,
     onNeedImage,
     onRanked
 }: {
     categories: CategoryWithEntries[];
-    imageRefreshVersion: number;
+    onExit: () => void;
     onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
     onRanked: () => Promise<void>;
 }) {
     const [categorySelection, setCategorySelection] = useState<string | "any">("any");
     const [matchup, setMatchup] = useState<FreeRankMatchup | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [ranking, setRanking] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const loadMatchup = useCallback(async () => {
+        setLoading(true);
         setError(null);
         try {
             setMatchup(await getFreeRankMatchup({ data: { categorySelection } }));
         } catch (loadError) {
             setError(errorMessage(loadError));
+        } finally {
+            setLoading(false);
         }
     }, [categorySelection]);
+
+    useEffect(() => {
+        void loadMatchup();
+    }, [loadMatchup]);
+
+    useEffect(() => {
+        setMatchup((currentMatchup) => {
+            if (!currentMatchup) {
+                return currentMatchup;
+            }
+
+            const category = categories.find((candidate) => candidate.id === currentMatchup.categoryId);
+            const entryA = category?.entries.find((entry) => entry.id === currentMatchup.entryA.id);
+            const entryB = category?.entries.find((entry) => entry.id === currentMatchup.entryB.id);
+
+            if (!entryA || !entryB) {
+                return currentMatchup;
+            }
+
+            if (entryA === currentMatchup.entryA && entryB === currentMatchup.entryB) {
+                return currentMatchup;
+            }
+
+            return {
+                ...currentMatchup,
+                entryA,
+                entryB
+            };
+        });
+    }, [categories]);
 
     useEffect(() => {
         if (!matchup) {
@@ -964,17 +1009,12 @@ function FreeRankPanel({
         }
     }, [matchup, onNeedImage]);
 
-    useEffect(() => {
-        if (matchup) {
-            void loadMatchup();
-        }
-    }, [imageRefreshVersion]);
-
     async function chooseWinner(winnerId: string) {
         if (!matchup) {
             return;
         }
 
+        setRanking(true);
         setError(null);
         try {
             await submitFreeRankWinner({
@@ -989,13 +1029,18 @@ function FreeRankPanel({
             await loadMatchup();
         } catch (submitError) {
             setError(errorMessage(submitError));
+        } finally {
+            setRanking(false);
         }
     }
 
     return (
-        <section className="rank-panel stack">
-            <div className="toolbar">
-                <strong>Free Rank</strong>
+        <section className="free-rank-screen stack">
+            <div className="free-rank-topbar">
+                <div>
+                    <h1>Free Rank</h1>
+                    {matchup ? <p className="muted">{matchup.categoryName}</p> : null}
+                </div>
                 <div className="row">
                     <select value={categorySelection} onChange={(event) => setCategorySelection(event.target.value)}>
                         <option value="any">Any</option>
@@ -1005,29 +1050,45 @@ function FreeRankPanel({
                             </option>
                         ))}
                     </select>
-                    <button type="button" onClick={loadMatchup}>Next</button>
+                    <button disabled={loading || ranking} type="button" onClick={() => void loadMatchup()}>Skip</button>
+                    <button type="button" onClick={onExit}>Back to List</button>
                 </div>
             </div>
 
             {error ? <div className="status">{error}</div> : null}
 
+            {loading ? <div className="status">Loading matchup...</div> : null}
+
             {matchup ? (
-                <>
-                    <span className="muted">{matchup.categoryName}</span>
-                    <div className="match-grid">
-                        <button className="match-choice" type="button" onClick={() => chooseWinner(matchup.entryA.id)}>
-                            <MatchPoster entry={matchup.entryA} />
+                <div className="free-rank-match-grid">
+                    <button
+                        className="free-rank-choice"
+                        disabled={loading || ranking}
+                        type="button"
+                        onClick={() => void chooseWinner(matchup.entryA.id)}
+                    >
+                        <MatchPoster entry={matchup.entryA} />
+                        <span>
                             <strong>{matchup.entryA.name}</strong>
-                        </button>
-                        <button className="match-choice" type="button" onClick={() => chooseWinner(matchup.entryB.id)}>
-                            <MatchPoster entry={matchup.entryB} />
+                            <small>{Math.round(matchup.entryA.freeRankElo)} Elo</small>
+                        </span>
+                    </button>
+                    <button
+                        className="free-rank-choice"
+                        disabled={loading || ranking}
+                        type="button"
+                        onClick={() => void chooseWinner(matchup.entryB.id)}
+                    >
+                        <MatchPoster entry={matchup.entryB} />
+                        <span>
                             <strong>{matchup.entryB.name}</strong>
-                        </button>
-                    </div>
-                </>
-            ) : (
+                            <small>{Math.round(matchup.entryB.freeRankElo)} Elo</small>
+                        </span>
+                    </button>
+                </div>
+            ) : !loading ? (
                 <div className="muted">No active matchup selected.</div>
-            )}
+            ) : null}
         </section>
     );
 }
