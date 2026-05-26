@@ -57,10 +57,11 @@ cf-whoami:
 	npx wrangler whoami
 
 cf-create-d1:
-	npx wrangler d1 create $(D1_NAME) --binding DB --update-config --use-remote
+	node scripts/create-d1-if-needed.mjs $(D1_NAME)
 
 cf-create-r2:
-	npx wrangler r2 bucket create $(R2_BUCKET) --binding IMAGES --update-config --use-remote
+	@echo "If this fails with Cloudflare code 10042, enable R2 in the Cloudflare dashboard first."
+	node scripts/create-r2-if-needed.mjs $(R2_BUCKET)
 
 cf-secret-auth:
 	openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET

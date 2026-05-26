@@ -1,27 +1,29 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "media-rating-web",
-  "compatibility_date": "2026-05-22",
-  "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry",
-  "observability": {
-    "enabled": true
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "media-rating",
-      "database_id": "replace-with-cloudflare-d1-database-id",
-      "migrations_dir": "migrations"
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "media-rating-web",
+    "compatibility_date": "2026-05-22",
+    "compatibility_flags": [
+        "nodejs_compat"
+    ],
+    "main": "@tanstack/react-start/server-entry",
+    "observability": {
+        "enabled": true
+    },
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "media-rating",
+            "database_id": "06785885-2db1-4110-befd-90a4bca94f5d",
+            "migrations_dir": "migrations"
+        }
+    ],
+    "r2_buckets": [
+        {
+            "bucket_name": "media-rating-images",
+            "binding": "IMAGES"
+        }
+    ],
+    "vars": {
+        "BETTER_AUTH_URL": "https://media-rating-web.m67fbmdjyt.workers.dev"
     }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "IMAGES",
-      "bucket_name": "media-rating-images"
-    }
-  ],
-  "vars": {
-    "BETTER_AUTH_URL": "http://localhost:3000"
-  }
 }

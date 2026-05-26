@@ -249,5 +249,5 @@ impl Popup for ImagePickerPopup {
 
 fn default_query(entry: &str, category: &str) -> String {
     let category = category.trim().trim_end_matches(':').trim();
-    format!("{entry} {category}")
+    format!("{entry} ({category})")
 }
