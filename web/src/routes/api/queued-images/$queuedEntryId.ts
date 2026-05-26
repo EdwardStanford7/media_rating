@@ -1,5 +1,6 @@
 import { auth } from "@/lib/server/auth";
 import { first, getDb, now } from "@/lib/server/db";
+import { isNoImageKey, hasStoredImage } from "@/lib/images";
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
 
@@ -32,6 +33,10 @@ export const Route = createFileRoute("/api/queued-images/$queuedEntryId")({
 
                 if (!entry?.image_key) {
                     return new Response("Not found", { status: 404 });
+                }
+
+                if (isNoImageKey(entry.image_key)) {
+                    return new Response("No image saved", { status: 404 });
                 }
 
                 const image = await env.IMAGES.get(entry.image_key);
@@ -97,7 +102,7 @@ export const Route = createFileRoute("/api/queued-images/$queuedEntryId")({
                     }
                 });
 
-                if (entry.image_key && entry.image_key !== imageKey) {
+                if (hasStoredImage(entry.image_key) && entry.image_key !== imageKey) {
                     await env.IMAGES.delete(entry.image_key);
                 }
 
@@ -138,7 +143,7 @@ export const Route = createFileRoute("/api/queued-images/$queuedEntryId")({
                     return Response.json({ message: "Queued entry not found" }, { status: 404 });
                 }
 
-                if (entry.image_key) {
+                if (hasStoredImage(entry.image_key)) {
                     await env.IMAGES.delete(entry.image_key);
                 }
 

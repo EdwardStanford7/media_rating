@@ -18,6 +18,7 @@ import type {
     RankingSource
 } from "@/lib/types";
 import { env } from "cloudflare:workers";
+import { NO_IMAGE_KEY, hasStoredImage } from "@/lib/images";
 import { all, assertOwned, first, getDb, newId, now } from "./db";
 
 interface CategoryRow {
@@ -49,6 +50,7 @@ interface ExistingEntryRow {
 interface QueueSettingsRow {
     enabled: number;
     delay_days: number;
+    prompt_missing_images: number;
 }
 
 interface QueuedEntryRow {
@@ -275,24 +277,96 @@ export async function createQueuedEntry(
 
 export async function updateQueueSettings(
     userId: string,
-    input: { enabled: boolean; delayDays: number }
+    input: { enabled: boolean; delayDays: number; promptForMissingImages: boolean }
 ) {
     const delayDays = normalizeQueueDelayDays(input.delayDays);
     const updatedAt = now();
 
     await getDb()
         .prepare(
-            `INSERT INTO queue_settings (user_id, enabled, delay_days, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)
+            `INSERT INTO queue_settings (
+         user_id, enabled, delay_days, prompt_missing_images, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          enabled = excluded.enabled,
          delay_days = excluded.delay_days,
+         prompt_missing_images = excluded.prompt_missing_images,
          updated_at = excluded.updated_at`
         )
-        .bind(userId, input.enabled ? 1 : 0, delayDays, updatedAt, updatedAt)
+        .bind(
+            userId,
+            input.enabled ? 1 : 0,
+            delayDays,
+            input.promptForMissingImages ? 1 : 0,
+            updatedAt,
+            updatedAt
+        )
         .run();
 
     return getQueueSettings(userId);
+}
+
+export async function markImageUnavailable(
+    userId: string,
+    input: { targetKind: "entry" | "queue"; targetId: string }
+) {
+    const updatedAt = now();
+    const db = getDb();
+
+    if (input.targetKind === "entry") {
+        const entry = await first<{ id: string; image_key: string | null }>(
+            db
+                .prepare(
+                    `SELECT id, image_key
+         FROM entries
+         WHERE id = ? AND user_id = ? AND status != 'deleted'`
+                )
+                .bind(input.targetId, userId)
+        );
+        assertOwned(entry, "Entry");
+
+        await db
+            .prepare(
+                `UPDATE entries
+         SET image_key = ?, updated_at = ?
+         WHERE id = ? AND user_id = ? AND status != 'deleted'`
+            )
+            .bind(NO_IMAGE_KEY, updatedAt, entry.id, userId)
+            .run();
+
+        if (hasStoredImage(entry.image_key)) {
+            await env.IMAGES.delete(entry.image_key);
+        }
+
+        return { imageKey: NO_IMAGE_KEY };
+    }
+
+    const queuedEntry = await first<{ id: string; image_key: string | null }>(
+        db
+            .prepare(
+                `SELECT id, image_key
+         FROM entry_queue
+         WHERE id = ? AND user_id = ? AND status = 'queued'`
+            )
+            .bind(input.targetId, userId)
+    );
+    assertOwned(queuedEntry, "Queued entry");
+
+    await db
+        .prepare(
+            `UPDATE entry_queue
+       SET image_key = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'queued'`
+        )
+        .bind(NO_IMAGE_KEY, updatedAt, queuedEntry.id, userId)
+        .run();
+
+    if (hasStoredImage(queuedEntry.image_key)) {
+        await env.IMAGES.delete(queuedEntry.image_key);
+    }
+
+    return { imageKey: NO_IMAGE_KEY };
 }
 
 export async function startQueuedEntryRanking(userId: string, queuedEntryId: string) {
@@ -340,7 +414,7 @@ export async function deleteQueuedEntry(userId: string, queuedEntryId: string) {
         .bind(updatedAt, queuedEntryId, userId)
         .run();
 
-    if (queuedEntry.imageKey) {
+    if (hasStoredImage(queuedEntry.imageKey)) {
         await env.IMAGES.delete(queuedEntry.imageKey);
     }
 }
@@ -884,7 +958,7 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
     const row = await first<QueueSettingsRow>(
         getDb()
             .prepare(
-                `SELECT enabled, delay_days
+                `SELECT enabled, delay_days, prompt_missing_images
          FROM queue_settings
          WHERE user_id = ?`
             )
@@ -893,7 +967,8 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
 
     return {
         enabled: row?.enabled === 1,
-        delayDays: normalizeQueueDelayDays(row?.delay_days ?? DEFAULT_QUEUE_DELAY_DAYS)
+        delayDays: normalizeQueueDelayDays(row?.delay_days ?? DEFAULT_QUEUE_DELAY_DAYS),
+        promptForMissingImages: row?.prompt_missing_images !== 0
     };
 }
 

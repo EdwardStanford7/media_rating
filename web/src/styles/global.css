@@ -466,6 +466,13 @@ img.match-poster {
     clip: rect(0, 0, 0, 0);
 }
 
+.image-picker-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+}
+
 .image-picker-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));

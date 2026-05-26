@@ -55,11 +55,23 @@ export const createQueuedEntry = createServerFn({ method: "POST" })
     });
 
 export const updateQueueSettings = createServerFn({ method: "POST" })
-    .inputValidator((data: { enabled: boolean; delayDays: number }) => data)
+    .inputValidator((data: {
+        enabled: boolean;
+        delayDays: number;
+        promptForMissingImages: boolean;
+    }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
         return repo.updateQueueSettings(user.id, data);
+    });
+
+export const markImageUnavailable = createServerFn({ method: "POST" })
+    .inputValidator((data: { targetKind: "entry" | "queue"; targetId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.markImageUnavailable(user.id, data);
     });
 
 export const startQueuedEntryRanking = createServerFn({ method: "POST" })

@@ -18,6 +18,7 @@ export interface Entry {
 export interface QueueSettings {
     enabled: boolean;
     delayDays: number;
+    promptForMissingImages: boolean;
 }
 
 export interface QueuedEntry {

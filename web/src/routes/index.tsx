@@ -13,6 +13,7 @@ import {
     getSession,
     importLegacyEntries,
     loadDashboard,
+    markImageUnavailable,
     renameEntry,
     startRerankEntry,
     startQueuedEntryRanking,
@@ -22,6 +23,7 @@ import {
     updateQueueSettings
 } from "@/lib/server/actions";
 import { signIn, signOut } from "@/lib/auth-client";
+import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
 import { orderEntries } from "@/lib/ranking";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type {
@@ -268,14 +270,19 @@ function Dashboard({
 
     const requestImageForMatch = useCallback(
         (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => {
-            if (entry.imageKey || imagePickerTarget || autoImagePromptedIds.has(entry.id)) {
+            if (
+                !dashboard.queueSettings.promptForMissingImages ||
+                !shouldPromptForImage(entry.imageKey) ||
+                imagePickerTarget ||
+                autoImagePromptedIds.has(entry.id)
+            ) {
                 return;
             }
 
             setAutoImagePromptedIds((promptedIds) => new Set(promptedIds).add(entry.id));
             setImagePickerTarget({ kind: "entry", item: entry, category });
         },
-        [autoImagePromptedIds, imagePickerTarget]
+        [autoImagePromptedIds, dashboard.queueSettings.promptForMissingImages, imagePickerTarget]
     );
 
     async function handleImageSaved() {
@@ -327,15 +334,17 @@ function Dashboard({
                 });
                 formElement.reset();
                 setMessage(`Queued ${cleanName} for ranking on ${formatDateTime(result.availableAt)}.`);
-                setImagePickerTarget({
-                    kind: "queue",
-                    item: {
-                        id: result.queuedEntryId,
-                        name: cleanName,
-                        imageKey: null
-                    },
-                    category: selectedCategory
-                });
+                if (dashboard.queueSettings.promptForMissingImages) {
+                    setImagePickerTarget({
+                        kind: "queue",
+                        item: {
+                            id: result.queuedEntryId,
+                            name: cleanName,
+                            imageKey: null
+                        },
+                        category: selectedCategory
+                    });
+                }
                 await refresh();
                 return;
             }
@@ -721,12 +730,14 @@ function QueuePanel({
 }) {
     const [enabled, setEnabled] = useState(settings.enabled);
     const [delayDays, setDelayDays] = useState(settings.delayDays);
+    const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
     const [currentTime, setCurrentTime] = useState(Date.now());
 
     useEffect(() => {
         setEnabled(settings.enabled);
         setDelayDays(settings.delayDays);
-    }, [settings.enabled, settings.delayDays]);
+        setPromptForMissingImages(settings.promptForMissingImages);
+    }, [settings.delayDays, settings.enabled, settings.promptForMissingImages]);
 
     useEffect(() => {
         const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
@@ -740,7 +751,8 @@ function QueuePanel({
         event.preventDefault();
         await onSave({
             enabled,
-            delayDays
+            delayDays,
+            promptForMissingImages
         });
     }
 
@@ -761,6 +773,15 @@ function QueuePanel({
                     />
                     <span>Queue new entries</span>
                 </label>
+                <label className="checkbox-row">
+                    <input
+                        checked={promptForMissingImages}
+                        disabled={busy}
+                        type="checkbox"
+                        onChange={(event) => setPromptForMissingImages(event.target.checked)}
+                    />
+                    <span>Prompt for missing images</span>
+                </label>
                 <label className="stack compact-stack">
                     <span className="muted">Delay days</span>
                     <input
@@ -772,7 +793,7 @@ function QueuePanel({
                         onChange={(event) => setDelayDays(Number(event.target.value))}
                     />
                 </label>
-                <button disabled={busy} type="submit">Save Queue Settings</button>
+                <button disabled={busy} type="submit">Save Settings</button>
             </form>
 
             {queuedEntries.length > 0 ? (
@@ -832,7 +853,7 @@ function QueuedEntryRow({
                         type="button"
                         onClick={() => onPickImage(entry)}
                     >
-                        {entry.imageKey ? "Change Image" : "Pick Image"}
+                        {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
                     <button disabled={!isReady} type="button" onClick={() => void onStart(entry)}>Rank</button>
                     <button className="danger" type="button" onClick={() => void onDelete(entry)}>Remove</button>
@@ -849,7 +870,7 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
         setImageFailed(false);
     }, [entry.id, entry.imageKey]);
 
-    if (entry.imageKey && !imageFailed) {
+    if (hasStoredImage(entry.imageKey) && !imageFailed) {
         return (
             <img
                 className="queue-poster"
@@ -865,6 +886,7 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     return (
         <div className="queue-poster image-placeholder">
             <span>{entry.name}</span>
+            {isNoImageKey(entry.imageKey) ? <small>No image</small> : null}
         </div>
     );
 }
@@ -991,6 +1013,25 @@ function ImagePickerModal({
         }
     }
 
+    async function saveNoImage() {
+        setSavingCandidateId("none");
+        setError(null);
+
+        try {
+            await markImageUnavailable({
+                data: {
+                    targetKind: target.kind,
+                    targetId: target.item.id
+                }
+            });
+            await onSaved();
+        } catch (saveError) {
+            setError(errorMessage(saveError));
+        } finally {
+            setSavingCandidateId(null);
+        }
+    }
+
     return (
         <div className="modal-backdrop">
             <section className="image-picker-modal">
@@ -1027,20 +1068,29 @@ function ImagePickerModal({
                     </button>
                 </form>
 
-                <label className="file-button">
-                    <span>Upload File</span>
-                    <input
-                        accept="image/*"
+                <div className="image-picker-actions">
+                    <label className="file-button">
+                        <span>Upload File</span>
+                        <input
+                            accept="image/*"
+                            disabled={loading || Boolean(savingCandidateId)}
+                            type="file"
+                            onChange={(event) => {
+                                const file = event.currentTarget.files?.[0];
+                                if (file) {
+                                    void uploadLocalFile(file);
+                                }
+                            }}
+                        />
+                    </label>
+                    <button
                         disabled={loading || Boolean(savingCandidateId)}
-                        type="file"
-                        onChange={(event) => {
-                            const file = event.currentTarget.files?.[0];
-                            if (file) {
-                                void uploadLocalFile(file);
-                            }
-                        }}
-                    />
-                </label>
+                        type="button"
+                        onClick={() => void saveNoImage()}
+                    >
+                        {savingCandidateId === "none" ? "Saving..." : "Use No Image"}
+                    </button>
+                </div>
 
                 {error ? <div className="status">{error}</div> : null}
                 {loading ? <div className="status">Searching for images...</div> : null}
@@ -1115,7 +1165,7 @@ function EntryCard({
                 <div className="entry-actions card-actions">
                     <button type="button" onClick={onRerank}>Rerank</button>
                     <button type="button" onClick={onPickImage}>
-                        {entry.imageKey ? "Change Image" : "Pick Image"}
+                        {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
                     <button
                         aria-expanded={menuOpen}
@@ -1194,7 +1244,7 @@ function EntryPoster({ entry }: { entry: Entry }) {
         setImageFailed(false);
     }, [entry.id, entry.imageKey]);
 
-    if (entry.imageKey && !imageFailed) {
+    if (hasStoredImage(entry.imageKey) && !imageFailed) {
         return (
             <img
                 className="entry-poster"
@@ -1210,7 +1260,7 @@ function EntryPoster({ entry }: { entry: Entry }) {
     return (
         <div className="entry-poster image-placeholder">
             <span>{entry.name}</span>
-            <small>No image</small>
+            <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
         </div>
     );
 }
@@ -1240,9 +1290,9 @@ function BinaryRankPanel({
             return;
         }
 
-        const missingImageEntry = !session.subject.imageKey
+        const missingImageEntry = shouldPromptForImage(session.subject.imageKey)
             ? session.subject
-            : !session.opponent.imageKey
+            : shouldPromptForImage(session.opponent.imageKey)
                 ? session.opponent
                 : null;
 
@@ -1363,9 +1413,9 @@ function FreeRankScreen({
             return;
         }
 
-        const missingImageEntry = !matchup.entryA.imageKey
+        const missingImageEntry = shouldPromptForImage(matchup.entryA.imageKey)
             ? matchup.entryA
-            : !matchup.entryB.imageKey
+            : shouldPromptForImage(matchup.entryB.imageKey)
                 ? matchup.entryB
                 : null;
 
@@ -1468,7 +1518,7 @@ function MatchPoster({ entry }: { entry: Entry }) {
         setImageFailed(false);
     }, [entry.id, entry.imageKey]);
 
-    if (entry.imageKey && !imageFailed) {
+    if (hasStoredImage(entry.imageKey) && !imageFailed) {
         return (
             <img
                 className="match-poster"
@@ -1483,7 +1533,7 @@ function MatchPoster({ entry }: { entry: Entry }) {
     return (
         <div className="match-poster image-placeholder">
             <span>{entry.name}</span>
-            <small>No image</small>
+            <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
         </div>
     );
 }
@@ -1523,7 +1573,8 @@ function errorMessage(error: unknown) {
 async function imageUrlToPosterBlob(imageUrl: string) {
     const response = await fetch(imageUrl);
     if (!response.ok) {
-        throw new Error("Image could not be loaded");
+        const detail = await response.text().catch(() => "");
+        throw new Error(detail || "Full-size image could not be loaded");
     }
 
     return imageBlobToPosterBlob(await response.blob());
@@ -1601,7 +1652,7 @@ function imageBlobToPosterBlob(blob: Blob) {
         };
         image.onerror = () => {
             URL.revokeObjectURL(objectUrl);
-            reject(new Error("Image could not be loaded"));
+            reject(new Error("Full-size image could not be loaded"));
         };
         image.src = objectUrl;
     });
