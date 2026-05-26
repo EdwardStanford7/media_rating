@@ -36,6 +36,10 @@ export const Route = createFileRoute("/api/image-search")({
                 try {
                     return Response.json({
                         candidates: await searchImageCandidates(searchQuery)
+                    }, {
+                        headers: {
+                            "cache-control": "private, no-store"
+                        }
                     });
                 } catch (error) {
                     return Response.json(

@@ -125,6 +125,10 @@ select {
     padding: 1rem;
 }
 
+.search-panel {
+    padding: 0.75rem;
+}
+
 .auth-page {
     min-height: 100vh;
     display: grid;
@@ -333,7 +337,7 @@ img.match-poster {
     min-height: 0;
 }
 
-.free-rank-choice > span {
+.free-rank-choice>span {
     display: grid;
     gap: 0.2rem;
     padding: 0.85rem 1rem;

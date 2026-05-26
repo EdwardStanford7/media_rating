@@ -50,7 +50,7 @@ export const Route = createFileRoute("/api/images/$entryId")({
                 return new Response(image.body, {
                     headers: {
                         "content-type": image.httpMetadata?.contentType ?? "image/png",
-                        "cache-control": "private, max-age=3600"
+                        "cache-control": "private, no-cache"
                     }
                 });
             },
@@ -90,12 +90,16 @@ export const Route = createFileRoute("/api/images/$entryId")({
                     return Response.json({ message: "Image is too large" }, { status: 413 });
                 }
 
-                const imageKey = `${session.user.id}/entries/${entry.id}.png`;
+                const imageKey = `${session.user.id}/entries/${entry.id}-${now()}.jpg`;
                 await env.IMAGES.put(imageKey, image, {
                     httpMetadata: {
                         contentType
                     }
                 });
+
+                if (entry.image_key && entry.image_key !== imageKey) {
+                    await env.IMAGES.delete(entry.image_key);
+                }
 
                 await getDb()
                     .prepare(

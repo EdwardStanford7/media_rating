@@ -55,7 +55,7 @@ export const Route = createFileRoute("/api/image-proxy")({
 
                 return new Response(image, {
                     headers: {
-                        "cache-control": "private, max-age=1800",
+                        "cache-control": "private, no-store",
                         "content-type": contentType
                     }
                 });

@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     createCategory,
     createEntryWithBinaryRanking,
@@ -220,6 +220,7 @@ function Dashboard({
     );
     const [appMode, setAppMode] = useState<AppMode>("dashboard");
     const [displayMode, setDisplayMode] = useState<DisplayMode>("ordered list");
+    const [entrySearch, setEntrySearch] = useState("");
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
@@ -235,9 +236,18 @@ function Dashboard({
             null,
         [dashboard.categories, selectedCategoryId]
     );
-    const displayedEntries = selectedCategory
-        ? orderEntries(selectedCategory.entries, displayMode)
-        : [];
+    const displayedEntries = useMemo(() => {
+        if (!selectedCategory) {
+            return [];
+        }
+
+        const searchTerm = entrySearch.trim().toLowerCase();
+        const entries = searchTerm
+            ? selectedCategory.entries.filter((entry) => entry.name.toLowerCase().includes(searchTerm))
+            : selectedCategory.entries;
+
+        return orderEntries(entries, displayMode);
+    }, [displayMode, entrySearch, selectedCategory]);
 
     async function refresh() {
         const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
@@ -598,13 +608,24 @@ function Dashboard({
                         {message ? <div className="status">{message}</div> : null}
 
                         {selectedCategory ? (
-                            <form className="panel form-row" onSubmit={handleCreateEntry}>
-                                <input name="name" placeholder="New entry" required />
-                                <input name="firstConsumedAt" type="date" />
-                                <button className="primary" disabled={busy} type="submit">
-                                    {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
-                                </button>
-                            </form>
+                            <>
+                                <form className="panel form-row" onSubmit={handleCreateEntry}>
+                                    <input name="name" placeholder="New entry" required />
+                                    <input name="firstConsumedAt" type="date" />
+                                    <button className="primary" disabled={busy} type="submit">
+                                        {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
+                                    </button>
+                                </form>
+
+                                <div className="panel search-panel">
+                                    <input
+                                        aria-label="Search entries"
+                                        value={entrySearch}
+                                        placeholder="Search entries"
+                                        onChange={(event) => setEntrySearch(event.target.value)}
+                                    />
+                                </div>
+                            </>
                         ) : null}
 
                         {activeSessionId ? (
@@ -620,9 +641,8 @@ function Dashboard({
                         ) : null}
 
                         <section className="entries-grid">
-                            {displayedEntries.map((entry, index) => (
+                            {displayedEntries.map((entry) => (
                                 <EntryCard
-                                    displayIndex={index}
                                     entry={entry}
                                     categories={dashboard.categories}
                                     key={entry.id}
@@ -635,6 +655,9 @@ function Dashboard({
                                 />
                             ))}
                         </section>
+                        {selectedCategory && displayedEntries.length === 0 ? (
+                            <div className="muted">No entries match that search.</div>
+                        ) : null}
                     </section>
                 </>
             )}
@@ -795,16 +818,29 @@ function ImagePickerModal({
     const [loading, setLoading] = useState(false);
     const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const candidatesRef = useRef<ImageSearchCandidate[]>([]);
+    const lastSuccessfulQueryRef = useRef<string | null>(null);
 
     const search = useCallback(async (searchQuery: string) => {
+        const cleanQuery = searchQuery.trim();
+        if (cleanQuery && cleanQuery === lastSuccessfulQueryRef.current && candidatesRef.current.length > 0) {
+            setCandidates(candidatesRef.current);
+            setError(null);
+            return;
+        }
+
         setLoading(true);
         setError(null);
+        const cacheBust = crypto.randomUUID();
 
         try {
             const url = new URL("/api/image-search", window.location.origin);
             url.searchParams.set("entryId", target.entry.id);
             url.searchParams.set("query", searchQuery);
-            const response = await fetch(url);
+            url.searchParams.set("refresh", cacheBust);
+            const response = await fetch(url, {
+                cache: "no-store"
+            });
             const body = await response.json().catch(() => ({})) as {
                 candidates?: ImageSearchCandidate[];
                 message?: string;
@@ -814,10 +850,23 @@ function ImagePickerModal({
                 throw new Error(body.message ?? "Image search failed");
             }
 
-            setCandidates(Array.isArray(body.candidates) ? body.candidates : []);
+            const candidates = Array.isArray(body.candidates) ? body.candidates : [];
+            const nextCandidates = candidates.map((candidate) => ({
+                ...candidate,
+                imageUrl: withCacheBust(candidate.imageUrl, cacheBust),
+                thumbnailUrl: withCacheBust(candidate.thumbnailUrl, cacheBust)
+            }));
+            candidatesRef.current = nextCandidates;
+            lastSuccessfulQueryRef.current = cleanQuery;
+            setCandidates(nextCandidates);
         } catch (searchError) {
-            setCandidates([]);
-            setError(errorMessage(searchError));
+            if (candidatesRef.current.length > 0) {
+                setCandidates(candidatesRef.current);
+                setError(`${errorMessage(searchError)}. Showing previous results.`);
+            } else {
+                setCandidates([]);
+                setError(errorMessage(searchError));
+            }
         } finally {
             setLoading(false);
         }
@@ -825,6 +874,8 @@ function ImagePickerModal({
 
     useEffect(() => {
         setQuery(defaultQuery);
+        candidatesRef.current = [];
+        lastSuccessfulQueryRef.current = null;
         setCandidates([]);
         void search(defaultQuery);
     }, [defaultQuery, search]);
@@ -943,7 +994,6 @@ function ImagePickerModal({
 
 function EntryCard({
     entry,
-    displayIndex,
     categories,
     selectedCategoryId,
     onDelete,
@@ -953,7 +1003,6 @@ function EntryCard({
     onSwitch
 }: {
     entry: Entry;
-    displayIndex: number;
     categories: CategoryWithEntries[];
     selectedCategoryId: string;
     onDelete: () => void;
@@ -974,7 +1023,7 @@ function EntryCard({
         <article className="entry-card">
             <EntryPoster entry={entry} />
             <div className="entry-card-body">
-                <strong>#{displayIndex + 1} {entry.name}</strong>
+                <strong>#{entry.rankPosition + 1} {entry.name}</strong>
                 <div className="metric-row">
                     <span className="metric">Binary {entry.rankPosition + 1}</span>
                     <span className="metric">Elo {Math.round(entry.freeRankElo)}</span>
@@ -1034,7 +1083,7 @@ function EntryPoster({ entry }: { entry: Entry }) {
         return (
             <img
                 className="entry-poster"
-                src={`/api/images/${entry.id}`}
+                src={`/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                 alt=""
                 loading="lazy"
                 decoding="async"
@@ -1308,7 +1357,7 @@ function MatchPoster({ entry }: { entry: Entry }) {
         return (
             <img
                 className="match-poster"
-                src={`/api/images/${entry.id}`}
+                src={`/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                 alt=""
                 decoding="async"
                 onError={() => setImageFailed(true)}
@@ -1344,6 +1393,12 @@ function formatDateTime(timestamp: number) {
         hour: "numeric",
         minute: "2-digit"
     }).format(new Date(timestamp));
+}
+
+function withCacheBust(path: string, value: string) {
+    const url = new URL(path, window.location.origin);
+    url.searchParams.set("refresh", value);
+    return `${url.pathname}${url.search}`;
 }
 
 function errorMessage(error: unknown) {
