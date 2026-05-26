@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiImageSearchRouteImport } from './routes/api/image-search'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
+import { Route as ApiQueuedImagesQueuedEntryIdRouteImport } from './routes/api/queued-images/$queuedEntryId'
 import { Route as ApiImagesEntryIdRouteImport } from './routes/api/images/$entryId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
@@ -30,6 +31,12 @@ const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
   path: '/api/image-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiQueuedImagesQueuedEntryIdRoute =
+  ApiQueuedImagesQueuedEntryIdRouteImport.update({
+    id: '/api/queued-images/$queuedEntryId',
+    path: '/api/queued-images/$queuedEntryId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiImagesEntryIdRoute = ApiImagesEntryIdRouteImport.update({
   id: '/api/images/$entryId',
   path: '/api/images/$entryId',
@@ -47,6 +54,7 @@ export interface FileRoutesByFullPath {
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
+  '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +62,7 @@ export interface FileRoutesByTo {
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
+  '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,6 +71,7 @@ export interface FileRoutesById {
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
+  '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -71,6 +81,7 @@ export interface FileRouteTypes {
     | '/api/image-search'
     | '/api/auth/$'
     | '/api/images/$entryId'
+    | '/api/queued-images/$queuedEntryId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -78,6 +89,7 @@ export interface FileRouteTypes {
     | '/api/image-search'
     | '/api/auth/$'
     | '/api/images/$entryId'
+    | '/api/queued-images/$queuedEntryId'
   id:
     | '__root__'
     | '/'
@@ -85,6 +97,7 @@ export interface FileRouteTypes {
     | '/api/image-search'
     | '/api/auth/$'
     | '/api/images/$entryId'
+    | '/api/queued-images/$queuedEntryId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -93,6 +106,7 @@ export interface RootRouteChildren {
   ApiImageSearchRoute: typeof ApiImageSearchRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiImagesEntryIdRoute: typeof ApiImagesEntryIdRoute
+  ApiQueuedImagesQueuedEntryIdRoute: typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -118,6 +132,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImageProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/queued-images/$queuedEntryId': {
+      id: '/api/queued-images/$queuedEntryId'
+      path: '/api/queued-images/$queuedEntryId'
+      fullPath: '/api/queued-images/$queuedEntryId'
+      preLoaderRoute: typeof ApiQueuedImagesQueuedEntryIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/images/$entryId': {
       id: '/api/images/$entryId'
       path: '/api/images/$entryId'
@@ -141,6 +162,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiImageSearchRoute: ApiImageSearchRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiImagesEntryIdRoute: ApiImagesEntryIdRoute,
+  ApiQueuedImagesQueuedEntryIdRoute: ApiQueuedImagesQueuedEntryIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

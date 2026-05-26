@@ -36,7 +36,8 @@ import type {
 } from "@/lib/types";
 
 interface ImagePickerTarget {
-    entry: Entry;
+    kind: "entry" | "queue";
+    item: Pick<Entry | QueuedEntry, "id" | "name" | "imageKey">;
     category: Pick<CategoryWithEntries, "id" | "name">;
 }
 
@@ -272,7 +273,7 @@ function Dashboard({
             }
 
             setAutoImagePromptedIds((promptedIds) => new Set(promptedIds).add(entry.id));
-            setImagePickerTarget({ entry, category });
+            setImagePickerTarget({ kind: "entry", item: entry, category });
         },
         [autoImagePromptedIds, imagePickerTarget]
     );
@@ -312,6 +313,7 @@ function Dashboard({
         setMessage(null);
         const form = new FormData(formElement);
         const name = String(form.get("name") ?? "");
+        const cleanName = name.trim();
         const firstConsumedAt = dateInputToTimestamp(String(form.get("firstConsumedAt") ?? ""));
 
         try {
@@ -324,7 +326,16 @@ function Dashboard({
                     }
                 });
                 formElement.reset();
-                setMessage(`Queued ${name.trim()} for ranking on ${formatDateTime(result.availableAt)}.`);
+                setMessage(`Queued ${cleanName} for ranking on ${formatDateTime(result.availableAt)}.`);
+                setImagePickerTarget({
+                    kind: "queue",
+                    item: {
+                        id: result.queuedEntryId,
+                        name: cleanName,
+                        imageKey: null
+                    },
+                    category: selectedCategory
+                });
                 await refresh();
                 return;
             }
@@ -581,6 +592,14 @@ function Dashboard({
                             queuedEntries={dashboard.queuedEntries}
                             settings={dashboard.queueSettings}
                             onDelete={handleDeleteQueuedEntry}
+                            onPickImage={(entry) => setImagePickerTarget({
+                                kind: "queue",
+                                item: entry,
+                                category: {
+                                    id: entry.categoryId,
+                                    name: entry.categoryName
+                                }
+                            })}
                             onSave={handleQueueSettings}
                             onStart={handleStartQueuedEntry}
                         />
@@ -648,7 +667,11 @@ function Dashboard({
                                     key={entry.id}
                                     selectedCategoryId={selectedCategory.id}
                                     onDelete={() => handleDelete(entry.id)}
-                                    onPickImage={() => setImagePickerTarget({ entry, category: selectedCategory })}
+                                    onPickImage={() => setImagePickerTarget({
+                                        kind: "entry",
+                                        item: entry,
+                                        category: selectedCategory
+                                    })}
                                     onRename={(name) => handleRename(entry.id, name)}
                                     onRerank={() => handleRerank(entry.id)}
                                     onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
@@ -684,6 +707,7 @@ function QueuePanel({
     queuedEntries,
     settings,
     onDelete,
+    onPickImage,
     onSave,
     onStart
 }: {
@@ -691,6 +715,7 @@ function QueuePanel({
     queuedEntries: QueuedEntry[];
     settings: QueueSettings;
     onDelete: (entry: QueuedEntry) => Promise<void>;
+    onPickImage: (entry: QueuedEntry) => void;
     onSave: (settings: QueueSettings) => Promise<void>;
     onStart: (entry: QueuedEntry) => Promise<void>;
 }) {
@@ -758,6 +783,7 @@ function QueuePanel({
                             isReady
                             key={entry.id}
                             onDelete={onDelete}
+                            onPickImage={onPickImage}
                             onStart={onStart}
                         />
                     ))}
@@ -767,6 +793,7 @@ function QueuePanel({
                             isReady={false}
                             key={entry.id}
                             onDelete={onDelete}
+                            onPickImage={onPickImage}
                             onStart={onStart}
                         />
                     ))}
@@ -782,23 +809,62 @@ function QueuedEntryRow({
     entry,
     isReady,
     onDelete,
+    onPickImage,
     onStart
 }: {
     entry: QueuedEntry;
     isReady: boolean;
     onDelete: (entry: QueuedEntry) => Promise<void>;
+    onPickImage: (entry: QueuedEntry) => void;
     onStart: (entry: QueuedEntry) => Promise<void>;
 }) {
     return (
         <div className={`queue-item ${isReady ? "ready" : ""}`}>
-            <div>
-                <strong>{entry.name}</strong>
-                <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
+            <QueuedPoster entry={entry} />
+            <div className="queue-item-body">
+                <div>
+                    <strong>{entry.name}</strong>
+                    <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
+                </div>
+                <div className="queue-actions">
+                    <button
+                        className="queue-image-button"
+                        type="button"
+                        onClick={() => onPickImage(entry)}
+                    >
+                        {entry.imageKey ? "Change Image" : "Pick Image"}
+                    </button>
+                    <button disabled={!isReady} type="button" onClick={() => void onStart(entry)}>Rank</button>
+                    <button className="danger" type="button" onClick={() => void onDelete(entry)}>Remove</button>
+                </div>
             </div>
-            <div className="queue-actions">
-                <button disabled={!isReady} type="button" onClick={() => void onStart(entry)}>Rank</button>
-                <button className="danger" type="button" onClick={() => void onDelete(entry)}>Remove</button>
-            </div>
+        </div>
+    );
+}
+
+function QueuedPoster({ entry }: { entry: QueuedEntry }) {
+    const [imageFailed, setImageFailed] = useState(false);
+
+    useEffect(() => {
+        setImageFailed(false);
+    }, [entry.id, entry.imageKey]);
+
+    if (entry.imageKey && !imageFailed) {
+        return (
+            <img
+                className="queue-poster"
+                src={`/api/queued-images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => setImageFailed(true)}
+            />
+        );
+    }
+
+    return (
+        <div className="queue-poster image-placeholder">
+            <span>{entry.name}</span>
         </div>
     );
 }
@@ -812,31 +878,28 @@ function ImagePickerModal({
     onClose: () => void;
     onSaved: () => Promise<void>;
 }) {
-    const defaultQuery = `${target.entry.name} (${target.category.name})`;
+    const defaultQuery = `${target.item.name} (${target.category.name})`;
     const [query, setQuery] = useState(defaultQuery);
     const [candidates, setCandidates] = useState<ImageSearchCandidate[]>([]);
     const [loading, setLoading] = useState(false);
     const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const candidatesRef = useRef<ImageSearchCandidate[]>([]);
-    const lastSuccessfulQueryRef = useRef<string | null>(null);
+    const displayedQueryRef = useRef<string | null>(null);
+    const searchRequestIdRef = useRef(0);
 
     const search = useCallback(async (searchQuery: string) => {
-        const cleanQuery = searchQuery.trim();
-        if (cleanQuery && cleanQuery === lastSuccessfulQueryRef.current && candidatesRef.current.length > 0) {
-            setCandidates(candidatesRef.current);
-            setError(null);
-            return;
-        }
-
+        const requestId = searchRequestIdRef.current + 1;
+        searchRequestIdRef.current = requestId;
+        const submittedQuery = searchQuery.trim();
         setLoading(true);
         setError(null);
         const cacheBust = crypto.randomUUID();
 
         try {
             const url = new URL("/api/image-search", window.location.origin);
-            url.searchParams.set("entryId", target.entry.id);
-            url.searchParams.set("query", searchQuery);
+            url.searchParams.set(target.kind === "entry" ? "entryId" : "queuedEntryId", target.item.id);
+            url.searchParams.set("query", submittedQuery);
             url.searchParams.set("refresh", cacheBust);
             const response = await fetch(url, {
                 cache: "no-store"
@@ -850,6 +913,10 @@ function ImagePickerModal({
                 throw new Error(body.message ?? "Image search failed");
             }
 
+            if (requestId !== searchRequestIdRef.current) {
+                return;
+            }
+
             const candidates = Array.isArray(body.candidates) ? body.candidates : [];
             const nextCandidates = candidates.map((candidate) => ({
                 ...candidate,
@@ -857,25 +924,34 @@ function ImagePickerModal({
                 thumbnailUrl: withCacheBust(candidate.thumbnailUrl, cacheBust)
             }));
             candidatesRef.current = nextCandidates;
-            lastSuccessfulQueryRef.current = cleanQuery;
+            displayedQueryRef.current = submittedQuery;
             setCandidates(nextCandidates);
         } catch (searchError) {
+            if (requestId !== searchRequestIdRef.current) {
+                return;
+            }
+
             if (candidatesRef.current.length > 0) {
                 setCandidates(candidatesRef.current);
-                setError(`${errorMessage(searchError)}. Showing previous results.`);
+                const previousQuery = displayedQueryRef.current
+                    ? ` for "${displayedQueryRef.current}"`
+                    : "";
+                setError(`${errorMessage(searchError)}. Showing previous results${previousQuery}.`);
             } else {
                 setCandidates([]);
                 setError(errorMessage(searchError));
             }
         } finally {
-            setLoading(false);
+            if (requestId === searchRequestIdRef.current) {
+                setLoading(false);
+            }
         }
-    }, [target.entry.id]);
+    }, [target.kind, target.item.id]);
 
     useEffect(() => {
         setQuery(defaultQuery);
         candidatesRef.current = [];
-        lastSuccessfulQueryRef.current = null;
+        displayedQueryRef.current = null;
         setCandidates([]);
         void search(defaultQuery);
     }, [defaultQuery, search]);
@@ -886,7 +962,7 @@ function ImagePickerModal({
 
         try {
             const blob = await imageUrlToPosterBlob(candidate.imageUrl);
-            await uploadEntryImage(target.entry.id, blob);
+            await uploadImageForTarget(target, blob);
             await onSaved();
         } catch (saveError) {
             setError(errorMessage(saveError));
@@ -903,7 +979,7 @@ function ImagePickerModal({
             const objectUrl = URL.createObjectURL(file);
             try {
                 const blob = await imageUrlToPosterBlob(objectUrl);
-                await uploadEntryImage(target.entry.id, blob);
+                await uploadImageForTarget(target, blob);
                 await onSaved();
             } finally {
                 URL.revokeObjectURL(objectUrl);
@@ -921,7 +997,7 @@ function ImagePickerModal({
                 <div className="toolbar">
                     <div>
                         <h2>Pick Image</h2>
-                        <p className="muted">{target.entry.name} - {target.category.name}</p>
+                        <p className="muted">{target.item.name} - {target.category.name}</p>
                     </div>
                     <button type="button" onClick={onClose}>Close</button>
                 </div>
@@ -1492,8 +1568,11 @@ function imageBlobToPosterBlob(blob: Blob) {
     });
 }
 
-async function uploadEntryImage(entryId: string, blob: Blob) {
-    const response = await fetch(`/api/images/${encodeURIComponent(entryId)}`, {
+async function uploadImageForTarget(target: ImagePickerTarget, blob: Blob) {
+    const endpoint = target.kind === "entry"
+        ? `/api/images/${encodeURIComponent(target.item.id)}`
+        : `/api/queued-images/${encodeURIComponent(target.item.id)}`;
+    const response = await fetch(endpoint, {
         method: "POST",
         headers: {
             "content-type": blob.type || "image/jpeg"

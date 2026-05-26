@@ -14,21 +14,34 @@ export const Route = createFileRoute("/api/image-search")({
 
                 const url = new URL(request.url);
                 const entryId = url.searchParams.get("entryId") ?? "";
+                const queuedEntryId = url.searchParams.get("queuedEntryId") ?? "";
                 const query = url.searchParams.get("query") ?? "";
 
-                const entry = await first<{ name: string; category_name: string }>(
-                    getDb()
-                        .prepare(
-                            `SELECT entries.name, categories.name AS category_name
-               FROM entries
-               INNER JOIN categories ON categories.id = entries.category_id
-               WHERE entries.id = ? AND entries.user_id = ? AND entries.status != 'deleted'`
-                        )
-                        .bind(entryId, session.user.id)
-                );
+                const entry = queuedEntryId
+                    ? await first<{ name: string; category_name: string }>(
+                        getDb()
+                            .prepare(
+                                `SELECT entry_queue.name, categories.name AS category_name
+                 FROM entry_queue
+                 INNER JOIN categories ON categories.id = entry_queue.category_id
+                 WHERE entry_queue.id = ? AND entry_queue.user_id = ?
+                   AND entry_queue.status = 'queued'`
+                            )
+                            .bind(queuedEntryId, session.user.id)
+                    )
+                    : await first<{ name: string; category_name: string }>(
+                        getDb()
+                            .prepare(
+                                `SELECT entries.name, categories.name AS category_name
+                 FROM entries
+                 INNER JOIN categories ON categories.id = entries.category_id
+                 WHERE entries.id = ? AND entries.user_id = ? AND entries.status != 'deleted'`
+                            )
+                            .bind(entryId, session.user.id)
+                    );
 
                 if (!entry) {
-                    return Response.json({ message: "Entry not found" }, { status: 404 });
+                    return Response.json({ message: "Image target not found" }, { status: 404 });
                 }
 
                 const searchQuery = query.trim() || `${entry.name} (${entry.category_name})`;

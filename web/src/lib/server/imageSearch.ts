@@ -1,9 +1,6 @@
 const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
 const SEARCH_RESULT_COUNT = 18;
-const SEARCH_CACHE_LIMIT = 50;
-
-const searchCache = new Map<string, ImageSearchCandidate[]>();
 
 interface DuckDuckGoImageResult {
     image?: string;
@@ -57,25 +54,52 @@ export async function searchImageCandidates(query: string): Promise<ImageSearchC
         throw new Error("Search query is required");
     }
 
-    const cacheKey = cleanQuery.toLowerCase();
-    const cachedCandidates = searchCache.get(cacheKey);
-    try {
-        const candidates = await fetchImageCandidates(cleanQuery);
-        cacheImageCandidates(cacheKey, candidates);
-        return candidates;
-    } catch (error) {
-        if (cachedCandidates) {
-            return cachedCandidates;
-        }
+    const queries = buildSearchQueries(cleanQuery);
+    let firstError: unknown = null;
 
+    for (const candidateQuery of queries) {
         try {
-            const fallbackCandidates = await fetchFallbackImageCandidates(cleanQuery);
-            cacheImageCandidates(cacheKey, fallbackCandidates);
-            return fallbackCandidates;
-        } catch {
-            throw error;
+            const candidates = await fetchImageCandidates(candidateQuery);
+            if (candidates.length > 0) {
+                return candidates;
+            }
+        } catch (error) {
+            firstError ??= error;
         }
     }
+
+    for (const candidateQuery of queries) {
+        try {
+            const candidates = await fetchFallbackImageCandidates(candidateQuery);
+            if (candidates.length > 0) {
+                return candidates;
+            }
+        } catch (error) {
+            firstError ??= error;
+        }
+    }
+
+    if (firstError instanceof Error) {
+        throw firstError;
+    }
+
+    throw new Error("No image candidates found");
+}
+
+function buildSearchQueries(query: string) {
+    const queries: string[] = [];
+    const addQuery = (value: string) => {
+        const cleanValue = value.trim().replace(/\s+/g, " ");
+        if (cleanValue && !queries.some((candidate) => candidate.toLowerCase() === cleanValue.toLowerCase())) {
+            queries.push(cleanValue);
+        }
+    };
+
+    addQuery(query);
+    addQuery(query.replace(/\s*\([^)]*\)\s*$/u, ""));
+    addQuery(query.replace(/\s*-\s*[^-]+$/u, ""));
+
+    return queries;
 }
 
 async function fetchImageCandidates(cleanQuery: string): Promise<ImageSearchCandidate[]> {
@@ -125,10 +149,13 @@ async function fetchImageCandidates(cleanQuery: string): Promise<ImageSearchCand
 }
 
 async function fetchFallbackImageCandidates(cleanQuery: string): Promise<ImageSearchCandidate[]> {
-    const sources = [
-        ...await fetchWikipediaPageImages(cleanQuery),
-        ...await fetchCommonsImages(cleanQuery)
-    ];
+    const results = await Promise.allSettled([
+        fetchWikipediaPageImages(cleanQuery),
+        fetchCommonsImages(cleanQuery)
+    ]);
+    const sources = results.flatMap((result) =>
+        result.status === "fulfilled" ? result.value : []
+    );
     const candidates = sourcesToCandidates(sources);
     if (candidates.length === 0) {
         throw new Error("No fallback images found");
@@ -218,22 +245,6 @@ function sourcesToCandidates(sources: CandidateSource[]): ImageSearchCandidate[]
                 height: source.height
             };
         });
-}
-
-function cacheImageCandidates(cacheKey: string, candidates: ImageSearchCandidate[]) {
-    if (searchCache.has(cacheKey)) {
-        searchCache.delete(cacheKey);
-    }
-
-    searchCache.set(cacheKey, candidates);
-
-    while (searchCache.size > SEARCH_CACHE_LIMIT) {
-        const oldestKey = searchCache.keys().next().value;
-        if (!oldestKey) {
-            return;
-        }
-        searchCache.delete(oldestKey);
-    }
 }
 
 export function encodeImageUrl(value: string) {

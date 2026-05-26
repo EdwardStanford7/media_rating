@@ -17,6 +17,7 @@ import type {
     QueueSettings,
     RankingSource
 } from "@/lib/types";
+import { env } from "cloudflare:workers";
 import { all, assertOwned, first, getDb, newId, now } from "./db";
 
 interface CategoryRow {
@@ -55,6 +56,7 @@ interface QueuedEntryRow {
     category_id: string;
     category_name: string;
     name: string;
+    image_key: string | null;
     first_consumed_at: number | null;
     available_at: number;
     created_at: number;
@@ -167,6 +169,7 @@ export async function createEntryWithBinaryRanking(
         name: string;
         firstConsumedAt: number | null;
         ignoredQueuedEntryId?: string;
+        imageKey?: string | null;
     }
 ) {
     const db = getDb();
@@ -201,7 +204,7 @@ export async function createEntryWithBinaryRanking(
             cleanName,
             activeCount,
             status,
-            null,
+            input.imageKey ?? null,
             createdAt,
             input.firstConsumedAt,
             DEFAULT_ELO,
@@ -307,7 +310,8 @@ export async function startQueuedEntryRanking(userId: string, queuedEntryId: str
         categoryId: queuedEntry.categoryId,
         name: queuedEntry.name,
         firstConsumedAt: queuedEntry.firstConsumedAt,
-        ignoredQueuedEntryId: queuedEntry.id
+        ignoredQueuedEntryId: queuedEntry.id,
+        imageKey: queuedEntry.imageKey
     });
 
     await getDb()
@@ -335,6 +339,10 @@ export async function deleteQueuedEntry(userId: string, queuedEntryId: string) {
         )
         .bind(updatedAt, queuedEntryId, userId)
         .run();
+
+    if (queuedEntry.imageKey) {
+        await env.IMAGES.delete(queuedEntry.imageKey);
+    }
 }
 
 export async function startRerankEntry(userId: string, entryId: string) {
@@ -894,7 +902,7 @@ async function listQueuedEntries(userId: string): Promise<QueuedEntry[]> {
         getDb()
             .prepare(
                 `SELECT entry_queue.id, entry_queue.category_id, categories.name AS category_name,
-                entry_queue.name, entry_queue.first_consumed_at, entry_queue.available_at,
+                entry_queue.name, entry_queue.image_key, entry_queue.first_consumed_at, entry_queue.available_at,
                 entry_queue.created_at
          FROM entry_queue
          INNER JOIN categories ON categories.id = entry_queue.category_id
@@ -912,7 +920,7 @@ async function getOwnedQueuedEntry(userId: string, queuedEntryId: string) {
         getDb()
             .prepare(
                 `SELECT entry_queue.id, entry_queue.category_id, categories.name AS category_name,
-                entry_queue.name, entry_queue.first_consumed_at, entry_queue.available_at,
+                entry_queue.name, entry_queue.image_key, entry_queue.first_consumed_at, entry_queue.available_at,
                 entry_queue.created_at
          FROM entry_queue
          INNER JOIN categories ON categories.id = entry_queue.category_id
@@ -1125,6 +1133,7 @@ function mapQueuedEntry(row: QueuedEntryRow): QueuedEntry {
         categoryId: row.category_id,
         categoryName: row.category_name,
         name: row.name,
+        imageKey: row.image_key,
         firstConsumedAt: row.first_consumed_at,
         availableAt: row.available_at,
         createdAt: row.created_at

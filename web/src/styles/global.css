@@ -183,6 +183,8 @@ select {
 
 .queue-item {
     display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    align-items: start;
     gap: 0.55rem;
     padding: 0.65rem;
     border: 1px solid var(--line);
@@ -199,10 +201,40 @@ select {
     margin: 0.2rem 0 0;
 }
 
+.queue-item-body {
+    min-width: 0;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.queue-poster {
+    display: grid;
+    place-items: center;
+    width: 54px;
+    aspect-ratio: 4 / 5;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: linear-gradient(135deg, #eee8dd, #d9e8e2);
+    color: var(--muted);
+    font-size: 0.7rem;
+    text-align: center;
+}
+
+img.queue-poster {
+    display: block;
+    height: auto;
+    object-fit: cover;
+}
+
 .queue-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.45rem;
+}
+
+.queue-image-button {
+    grid-column: 1 / -1;
 }
 
 .entries-grid {

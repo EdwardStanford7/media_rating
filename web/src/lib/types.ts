@@ -25,6 +25,7 @@ export interface QueuedEntry {
     categoryId: string;
     categoryName: string;
     name: string;
+    imageKey: string | null;
     firstConsumedAt: number | null;
     availableAt: number;
     createdAt: number;
