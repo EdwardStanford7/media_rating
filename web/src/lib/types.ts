@@ -15,6 +15,21 @@ export interface Entry {
     freeRankLosses: number;
 }
 
+export interface QueueSettings {
+    enabled: boolean;
+    delayDays: number;
+}
+
+export interface QueuedEntry {
+    id: string;
+    categoryId: string;
+    categoryName: string;
+    name: string;
+    firstConsumedAt: number | null;
+    availableAt: number;
+    createdAt: number;
+}
+
 export interface CategoryWithEntries {
     id: string;
     name: string;
@@ -25,6 +40,8 @@ export interface CategoryWithEntries {
 
 export interface DashboardData {
     categories: CategoryWithEntries[];
+    queueSettings: QueueSettings;
+    queuedEntries: QueuedEntry[];
 }
 
 export interface BinarySessionView {

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     createCategory,
     createEntryWithBinaryRanking,
+    createQueuedEntry,
     deleteEntry,
+    deleteQueuedEntry,
     getAuthOptions,
     getBinarySession,
     getFreeRankMatchup,
@@ -13,9 +15,11 @@ import {
     loadDashboard,
     renameEntry,
     startRerankEntry,
+    startQueuedEntryRanking,
     submitBinaryWinner,
     submitFreeRankWinner,
-    switchEntryCategory
+    switchEntryCategory,
+    updateQueueSettings
 } from "@/lib/server/actions";
 import { signIn, signOut } from "@/lib/auth-client";
 import { orderEntries } from "@/lib/ranking";
@@ -26,7 +30,9 @@ import type {
     DashboardData,
     DisplayMode,
     Entry,
-    FreeRankMatchup
+    FreeRankMatchup,
+    QueuedEntry,
+    QueueSettings
 } from "@/lib/types";
 
 interface ImagePickerTarget {
@@ -292,16 +298,31 @@ function Dashboard({
             return;
         }
 
-        startBusy("Starting binary rank...");
+        startBusy("Adding entry...");
         setMessage(null);
         const form = new FormData(formElement);
+        const name = String(form.get("name") ?? "");
         const firstConsumedAt = dateInputToTimestamp(String(form.get("firstConsumedAt") ?? ""));
 
         try {
+            if (dashboard.queueSettings.enabled) {
+                const result = await createQueuedEntry({
+                    data: {
+                        categoryId: selectedCategory.id,
+                        name,
+                        firstConsumedAt
+                    }
+                });
+                formElement.reset();
+                setMessage(`Queued ${name.trim()} for ranking on ${formatDateTime(result.availableAt)}.`);
+                await refresh();
+                return;
+            }
+
             const result = await createEntryWithBinaryRanking({
                 data: {
                     categoryId: selectedCategory.id,
-                    name: String(form.get("name") ?? ""),
+                    name,
                     firstConsumedAt
                 }
             });
@@ -311,6 +332,54 @@ function Dashboard({
                 setActiveSessionId(result.sessionId);
             }
 
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
+    async function handleQueueSettings(settings: QueueSettings) {
+        startBusy("Saving queue settings...");
+        setMessage(null);
+
+        try {
+            await updateQueueSettings({ data: settings });
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
+    async function handleStartQueuedEntry(entry: QueuedEntry) {
+        startBusy("Starting queued rank...");
+        setMessage(null);
+
+        try {
+            const result = await startQueuedEntryRanking({ data: { queuedEntryId: entry.id } });
+            setSelectedCategoryId(entry.categoryId);
+            if (result.kind === "session") {
+                setActiveSessionId(result.sessionId);
+            } else {
+                setMessage(`${entry.name} was added as the first ranked entry in ${entry.categoryName}.`);
+            }
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
+    async function handleDeleteQueuedEntry(entry: QueuedEntry) {
+        startBusy("Removing queued entry...");
+        setMessage(null);
+
+        try {
+            await deleteQueuedEntry({ data: { queuedEntryId: entry.id } });
             await refresh();
         } catch (error) {
             setMessage(errorMessage(error));
@@ -496,6 +565,15 @@ function Dashboard({
                             <input disabled={busy} name="workbook" type="file" accept=".xlsx" />
                             <button disabled={busy} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
                         </form>
+
+                        <QueuePanel
+                            busy={busy}
+                            queuedEntries={dashboard.queuedEntries}
+                            settings={dashboard.queueSettings}
+                            onDelete={handleDeleteQueuedEntry}
+                            onSave={handleQueueSettings}
+                            onStart={handleStartQueuedEntry}
+                        />
                     </aside>
 
                     <section className="main stack">
@@ -523,7 +601,9 @@ function Dashboard({
                             <form className="panel form-row" onSubmit={handleCreateEntry}>
                                 <input name="name" placeholder="New entry" required />
                                 <input name="firstConsumedAt" type="date" />
-                                <button className="primary" disabled={busy} type="submit">Add + Rank</button>
+                                <button className="primary" disabled={busy} type="submit">
+                                    {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
+                                </button>
                             </form>
                         ) : null}
 
@@ -571,6 +651,130 @@ function BusyOverlay({ label }: { label: string }) {
                     <strong>{label}</strong>
                     <p className="muted">Keep this tab open.</p>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function QueuePanel({
+    busy,
+    queuedEntries,
+    settings,
+    onDelete,
+    onSave,
+    onStart
+}: {
+    busy: boolean;
+    queuedEntries: QueuedEntry[];
+    settings: QueueSettings;
+    onDelete: (entry: QueuedEntry) => Promise<void>;
+    onSave: (settings: QueueSettings) => Promise<void>;
+    onStart: (entry: QueuedEntry) => Promise<void>;
+}) {
+    const [enabled, setEnabled] = useState(settings.enabled);
+    const [delayDays, setDelayDays] = useState(settings.delayDays);
+    const [currentTime, setCurrentTime] = useState(Date.now());
+
+    useEffect(() => {
+        setEnabled(settings.enabled);
+        setDelayDays(settings.delayDays);
+    }, [settings.enabled, settings.delayDays]);
+
+    useEffect(() => {
+        const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+        return () => window.clearInterval(interval);
+    }, []);
+
+    const readyEntries = queuedEntries.filter((entry) => entry.availableAt <= currentTime);
+    const pendingEntries = queuedEntries.filter((entry) => entry.availableAt > currentTime);
+
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        await onSave({
+            enabled,
+            delayDays
+        });
+    }
+
+    return (
+        <section className="stack panel queue-panel">
+            <div className="toolbar queue-toolbar">
+                <strong>Queue</strong>
+                <span className="metric">{readyEntries.length} ready</span>
+            </div>
+
+            <form className="stack" onSubmit={handleSubmit}>
+                <label className="checkbox-row">
+                    <input
+                        checked={enabled}
+                        disabled={busy}
+                        type="checkbox"
+                        onChange={(event) => setEnabled(event.target.checked)}
+                    />
+                    <span>Queue new entries</span>
+                </label>
+                <label className="stack compact-stack">
+                    <span className="muted">Delay days</span>
+                    <input
+                        disabled={busy}
+                        min={0}
+                        max={365}
+                        type="number"
+                        value={delayDays}
+                        onChange={(event) => setDelayDays(Number(event.target.value))}
+                    />
+                </label>
+                <button disabled={busy} type="submit">Save Queue Settings</button>
+            </form>
+
+            {queuedEntries.length > 0 ? (
+                <div className="queue-list">
+                    {readyEntries.map((entry) => (
+                        <QueuedEntryRow
+                            entry={entry}
+                            isReady
+                            key={entry.id}
+                            onDelete={onDelete}
+                            onStart={onStart}
+                        />
+                    ))}
+                    {pendingEntries.map((entry) => (
+                        <QueuedEntryRow
+                            entry={entry}
+                            isReady={false}
+                            key={entry.id}
+                            onDelete={onDelete}
+                            onStart={onStart}
+                        />
+                    ))}
+                </div>
+            ) : (
+                <div className="muted">No queued entries.</div>
+            )}
+        </section>
+    );
+}
+
+function QueuedEntryRow({
+    entry,
+    isReady,
+    onDelete,
+    onStart
+}: {
+    entry: QueuedEntry;
+    isReady: boolean;
+    onDelete: (entry: QueuedEntry) => Promise<void>;
+    onStart: (entry: QueuedEntry) => Promise<void>;
+}) {
+    return (
+        <div className={`queue-item ${isReady ? "ready" : ""}`}>
+            <div>
+                <strong>{entry.name}</strong>
+                <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
+            </div>
+            <div className="queue-actions">
+                <button disabled={!isReady} type="button" onClick={() => void onStart(entry)}>Rank</button>
+                <button className="danger" type="button" onClick={() => void onDelete(entry)}>Remove</button>
             </div>
         </div>
     );
@@ -1129,6 +1333,16 @@ function formatDate(timestamp: number) {
         year: "numeric",
         month: "short",
         day: "numeric"
+    }).format(new Date(timestamp));
+}
+
+function formatDateTime(timestamp: number) {
+    return new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
     }).format(new Date(timestamp));
 }
 

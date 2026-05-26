@@ -13,6 +13,8 @@ import type {
     Entry,
     FreeRankMatchup,
     ParsedImport,
+    QueuedEntry,
+    QueueSettings,
     RankingSource
 } from "@/lib/types";
 import { all, assertOwned, first, getDb, newId, now } from "./db";
@@ -43,6 +45,21 @@ interface ExistingEntryRow {
     status: string;
 }
 
+interface QueueSettingsRow {
+    enabled: number;
+    delay_days: number;
+}
+
+interface QueuedEntryRow {
+    id: string;
+    category_id: string;
+    category_name: string;
+    name: string;
+    first_consumed_at: number | null;
+    available_at: number;
+    created_at: number;
+}
+
 interface SessionRow {
     id: string;
     user_id: string;
@@ -56,12 +73,17 @@ interface SessionRow {
 }
 
 const IMPORT_BATCH_SIZE = 100;
+const DEFAULT_QUEUE_DELAY_DAYS = 3;
+const MAX_QUEUE_DELAY_DAYS = 365;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function loadDashboard(
     userId: string,
     displayMode: DisplayMode
 ): Promise<DashboardData> {
     const db = getDb();
+    const queueSettings = await getQueueSettings(userId);
+    const queuedEntries = await listQueuedEntries(userId);
     const categories = await all<CategoryRow>(
         db
             .prepare(
@@ -74,7 +96,7 @@ export async function loadDashboard(
     );
 
     if (categories.length === 0) {
-        return { categories: [] };
+        return { categories: [], queueSettings, queuedEntries };
     }
 
     const entryRows = await all<EntryRow>(
@@ -102,7 +124,9 @@ export async function loadDashboard(
             sortOrder: category.sort_order,
             createdAt: category.created_at,
             entries: orderEntries(entriesByCategory.get(category.id) ?? [], displayMode)
-        }))
+        })),
+        queueSettings,
+        queuedEntries
     };
 }
 
@@ -142,6 +166,7 @@ export async function createEntryWithBinaryRanking(
         categoryId: string;
         name: string;
         firstConsumedAt: number | null;
+        ignoredQueuedEntryId?: string;
     }
 ) {
     const db = getDb();
@@ -152,6 +177,8 @@ export async function createEntryWithBinaryRanking(
     if (!cleanName) {
         throw new Error("Entry name is required");
     }
+
+    await assertEntryNameAvailable(userId, input.categoryId, cleanName, input.ignoredQueuedEntryId);
 
     const activeCount = await getActiveEntryCount(userId, input.categoryId);
     const createdAt = now();
@@ -195,6 +222,119 @@ export async function createEntryWithBinaryRanking(
     });
 
     return { kind: "session" as const, entryId, sessionId };
+}
+
+export async function createQueuedEntry(
+    userId: string,
+    input: {
+        categoryId: string;
+        name: string;
+        firstConsumedAt: number | null;
+    }
+) {
+    const category = await getOwnedCategory(userId, input.categoryId);
+    assertOwned(category, "Category");
+
+    const cleanName = input.name.trim();
+    if (!cleanName) {
+        throw new Error("Entry name is required");
+    }
+
+    await assertEntryNameAvailable(userId, input.categoryId, cleanName);
+
+    const settings = await getQueueSettings(userId);
+    const createdAt = now();
+    const availableAt = createdAt + settings.delayDays * DAY_MS;
+    const queueId = newId("queue");
+
+    await getDb()
+        .prepare(
+            `INSERT INTO entry_queue (
+         id, user_id, category_id, name, first_consumed_at, available_at,
+         status, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`
+        )
+        .bind(
+            queueId,
+            userId,
+            input.categoryId,
+            cleanName,
+            input.firstConsumedAt,
+            availableAt,
+            createdAt,
+            createdAt
+        )
+        .run();
+
+    return { queuedEntryId: queueId, availableAt };
+}
+
+export async function updateQueueSettings(
+    userId: string,
+    input: { enabled: boolean; delayDays: number }
+) {
+    const delayDays = normalizeQueueDelayDays(input.delayDays);
+    const updatedAt = now();
+
+    await getDb()
+        .prepare(
+            `INSERT INTO queue_settings (user_id, enabled, delay_days, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         enabled = excluded.enabled,
+         delay_days = excluded.delay_days,
+         updated_at = excluded.updated_at`
+        )
+        .bind(userId, input.enabled ? 1 : 0, delayDays, updatedAt, updatedAt)
+        .run();
+
+    return getQueueSettings(userId);
+}
+
+export async function startQueuedEntryRanking(userId: string, queuedEntryId: string) {
+    const queuedEntry = await getOwnedQueuedEntry(userId, queuedEntryId);
+    assertOwned(queuedEntry, "Queued entry");
+
+    const currentTime = now();
+    if (queuedEntry.availableAt > currentTime) {
+        throw new Error("This queued entry is not ready to rank yet");
+    }
+
+    await assertEntryNameAvailable(userId, queuedEntry.categoryId, queuedEntry.name, queuedEntry.id);
+
+    const result = await createEntryWithBinaryRanking(userId, {
+        categoryId: queuedEntry.categoryId,
+        name: queuedEntry.name,
+        firstConsumedAt: queuedEntry.firstConsumedAt,
+        ignoredQueuedEntryId: queuedEntry.id
+    });
+
+    await getDb()
+        .prepare(
+            `UPDATE entry_queue
+       SET status = 'started', updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'queued'`
+        )
+        .bind(currentTime, queuedEntry.id, userId)
+        .run();
+
+    return result;
+}
+
+export async function deleteQueuedEntry(userId: string, queuedEntryId: string) {
+    const queuedEntry = await getOwnedQueuedEntry(userId, queuedEntryId);
+    assertOwned(queuedEntry, "Queued entry");
+
+    const updatedAt = now();
+    await getDb()
+        .prepare(
+            `UPDATE entry_queue
+       SET status = 'deleted', updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'queued'`
+        )
+        .bind(updatedAt, queuedEntryId, userId)
+        .run();
 }
 
 export async function startRerankEntry(userId: string, entryId: string) {
@@ -654,6 +794,21 @@ export async function importLegacyEntries(userId: string, parsedImport: ParsedIm
         }
     }
 
+    const existingQueuedEntries = await all<{ category_id: string; name: string }>(
+        db
+            .prepare(
+                `SELECT category_id, name
+         FROM entry_queue
+         WHERE user_id = ? AND status = 'queued'`
+            )
+            .bind(userId)
+    );
+    for (const entry of existingQueuedEntries) {
+        const names = namesByCategory.get(entry.category_id) ?? new Set<string>();
+        names.add(entry.name);
+        namesByCategory.set(entry.category_id, names);
+    }
+
     const entryInsertStatements: D1PreparedStatement[] = [];
     let importedCount = 0;
     let skippedCount = 0;
@@ -715,6 +870,100 @@ async function runBatches(db: D1Database, statements: D1PreparedStatement[]) {
     for (let index = 0; index < statements.length; index += IMPORT_BATCH_SIZE) {
         await db.batch(statements.slice(index, index + IMPORT_BATCH_SIZE));
     }
+}
+
+async function getQueueSettings(userId: string): Promise<QueueSettings> {
+    const row = await first<QueueSettingsRow>(
+        getDb()
+            .prepare(
+                `SELECT enabled, delay_days
+         FROM queue_settings
+         WHERE user_id = ?`
+            )
+            .bind(userId)
+    );
+
+    return {
+        enabled: row?.enabled === 1,
+        delayDays: normalizeQueueDelayDays(row?.delay_days ?? DEFAULT_QUEUE_DELAY_DAYS)
+    };
+}
+
+async function listQueuedEntries(userId: string): Promise<QueuedEntry[]> {
+    const rows = await all<QueuedEntryRow>(
+        getDb()
+            .prepare(
+                `SELECT entry_queue.id, entry_queue.category_id, categories.name AS category_name,
+                entry_queue.name, entry_queue.first_consumed_at, entry_queue.available_at,
+                entry_queue.created_at
+         FROM entry_queue
+         INNER JOIN categories ON categories.id = entry_queue.category_id
+         WHERE entry_queue.user_id = ? AND entry_queue.status = 'queued'
+         ORDER BY entry_queue.available_at ASC, entry_queue.created_at ASC`
+            )
+            .bind(userId)
+    );
+
+    return rows.map(mapQueuedEntry);
+}
+
+async function getOwnedQueuedEntry(userId: string, queuedEntryId: string) {
+    const row = await first<QueuedEntryRow>(
+        getDb()
+            .prepare(
+                `SELECT entry_queue.id, entry_queue.category_id, categories.name AS category_name,
+                entry_queue.name, entry_queue.first_consumed_at, entry_queue.available_at,
+                entry_queue.created_at
+         FROM entry_queue
+         INNER JOIN categories ON categories.id = entry_queue.category_id
+         WHERE entry_queue.id = ? AND entry_queue.user_id = ? AND entry_queue.status = 'queued'`
+            )
+            .bind(queuedEntryId, userId)
+    );
+
+    return row ? mapQueuedEntry(row) : null;
+}
+
+async function assertEntryNameAvailable(
+    userId: string,
+    categoryId: string,
+    name: string,
+    ignoredQueuedEntryId?: string
+) {
+    const existingEntry = await first<{ id: string }>(
+        getDb()
+            .prepare(
+                `SELECT id
+         FROM entries
+         WHERE user_id = ? AND category_id = ? AND name = ? AND status != 'deleted'`
+            )
+            .bind(userId, categoryId, name)
+    );
+    if (existingEntry) {
+        throw new Error("That entry already exists in this category");
+    }
+
+    const existingQueuedEntry = await first<{ id: string }>(
+        getDb()
+            .prepare(
+                `SELECT id
+         FROM entry_queue
+         WHERE user_id = ? AND category_id = ? AND name = ? AND status = 'queued'
+           AND (? IS NULL OR id != ?)`
+            )
+            .bind(userId, categoryId, name, ignoredQueuedEntryId ?? null, ignoredQueuedEntryId ?? null)
+    );
+    if (existingQueuedEntry) {
+        throw new Error("That entry is already queued in this category");
+    }
+}
+
+function normalizeQueueDelayDays(value: number) {
+    if (!Number.isFinite(value)) {
+        return DEFAULT_QUEUE_DELAY_DAYS;
+    }
+
+    return Math.max(0, Math.min(MAX_QUEUE_DELAY_DAYS, Math.floor(value)));
 }
 
 async function createBinarySession(input: {
@@ -867,5 +1116,17 @@ function mapEntry(row: EntryRow): Entry {
         freeRankElo: row.free_rank_elo,
         freeRankWins: row.free_rank_wins,
         freeRankLosses: row.free_rank_losses
+    };
+}
+
+function mapQueuedEntry(row: QueuedEntryRow): QueuedEntry {
+    return {
+        id: row.id,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        name: row.name,
+        firstConsumedAt: row.first_consumed_at,
+        availableAt: row.available_at,
+        createdAt: row.created_at
     };
 }

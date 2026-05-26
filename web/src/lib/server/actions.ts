@@ -40,6 +40,44 @@ export const createEntryWithBinaryRanking = createServerFn({ method: "POST" })
         return repo.createEntryWithBinaryRanking(user.id, data);
     });
 
+export const createQueuedEntry = createServerFn({ method: "POST" })
+    .inputValidator(
+        (data: {
+            categoryId: string;
+            name: string;
+            firstConsumedAt: number | null;
+        }) => data
+    )
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.createQueuedEntry(user.id, data);
+    });
+
+export const updateQueueSettings = createServerFn({ method: "POST" })
+    .inputValidator((data: { enabled: boolean; delayDays: number }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.updateQueueSettings(user.id, data);
+    });
+
+export const startQueuedEntryRanking = createServerFn({ method: "POST" })
+    .inputValidator((data: { queuedEntryId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.startQueuedEntryRanking(user.id, data.queuedEntryId);
+    });
+
+export const deleteQueuedEntry = createServerFn({ method: "POST" })
+    .inputValidator((data: { queuedEntryId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.deleteQueuedEntry(user.id, data.queuedEntryId);
+    });
+
 export const startRerankEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string }) => data)
     .handler(async ({ data }) => {
