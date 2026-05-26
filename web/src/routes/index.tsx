@@ -14,6 +14,7 @@ import {
     importLegacyEntries,
     loadDashboard,
     markImageUnavailable,
+    renameCategory,
     renameEntry,
     startRerankEntry,
     startQueuedEntryRanking,
@@ -309,6 +310,20 @@ function Dashboard({
         }
     }
 
+    async function handleRenameCategory(categoryId: string, name: string) {
+        startBusy("Renaming category...");
+        setMessage(null);
+
+        try {
+            await renameCategory({ data: { categoryId, name } });
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
     async function handleCreateEntry(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         const formElement = event.currentTarget;
@@ -576,16 +591,14 @@ function Dashboard({
 
                         <div className="category-list">
                             {dashboard.categories.map((category) => (
-                                <button
-                                    className={`category-button ${category.id === selectedCategory?.id ? "active" : ""}`}
-                                    disabled={busy}
+                                <CategoryListItem
+                                    category={category}
+                                    isActive={category.id === selectedCategory?.id}
                                     key={category.id}
-                                    type="button"
-                                    onClick={() => setSelectedCategoryId(category.id)}
-                                >
-                                    <strong>{category.name}</strong>
-                                    <span className="muted"> · {category.entries.length}</span>
-                                </button>
+                                    busy={busy}
+                                    onRename={(name) => handleRenameCategory(category.id, name)}
+                                    onSelect={() => setSelectedCategoryId(category.id)}
+                                />
                             ))}
                         </div>
 
@@ -694,6 +707,82 @@ function Dashboard({
                 </>
             )}
         </main>
+    );
+}
+
+function CategoryListItem({
+    category,
+    isActive,
+    busy,
+    onRename,
+    onSelect
+}: {
+    category: CategoryWithEntries;
+    isActive: boolean;
+    busy: boolean;
+    onRename: (name: string) => Promise<void>;
+    onSelect: () => void;
+}) {
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [name, setName] = useState(category.name);
+
+    useEffect(() => {
+        setName(category.name);
+        setIsRenaming(false);
+    }, [category.name]);
+
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        await onRename(name);
+        setIsRenaming(false);
+    }
+
+    if (isRenaming) {
+        return (
+            <form className="category-rename-form" onSubmit={handleSubmit}>
+                <input
+                    autoFocus
+                    disabled={busy}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                />
+                <div className="category-rename-actions">
+                    <button disabled={busy} type="submit">Save</button>
+                    <button
+                        disabled={busy}
+                        type="button"
+                        onClick={() => {
+                            setName(category.name);
+                            setIsRenaming(false);
+                        }}
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        );
+    }
+
+    return (
+        <div className="category-row">
+            <button
+                className={`category-button ${isActive ? "active" : ""}`}
+                disabled={busy}
+                type="button"
+                onClick={onSelect}
+            >
+                <strong>{category.name}</strong>
+                <span className="muted"> · {category.entries.length}</span>
+            </button>
+            <button
+                className="category-edit-button"
+                disabled={busy}
+                type="button"
+                onClick={() => setIsRenaming(true)}
+            >
+                Rename
+            </button>
+        </div>
     );
 }
 

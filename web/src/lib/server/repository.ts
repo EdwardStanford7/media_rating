@@ -164,6 +164,26 @@ export async function createCategory(userId: string, name: string) {
     return id;
 }
 
+export async function renameCategory(userId: string, categoryId: string, name: string) {
+    const category = await getOwnedCategory(userId, categoryId);
+    assertOwned(category, "Category");
+
+    const cleanName = name.trim();
+    if (!cleanName) {
+        throw new Error("Category name is required");
+    }
+
+    const updatedAt = now();
+    await getDb()
+        .prepare(
+            `UPDATE categories
+       SET name = ?, updated_at = ?
+       WHERE user_id = ? AND id = ?`
+        )
+        .bind(cleanName, updatedAt, userId, categoryId)
+        .run();
+}
+
 export async function createEntryWithBinaryRanking(
     userId: string,
     input: {

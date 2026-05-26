@@ -149,6 +149,12 @@ select {
     margin: 1rem 0;
 }
 
+.category-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.4rem;
+}
+
 .category-button {
     text-align: left;
 }
@@ -156,6 +162,25 @@ select {
 .category-button.active {
     border-color: var(--accent);
     background: #e0ebe8;
+}
+
+.category-edit-button {
+    padding-inline: 0.55rem;
+}
+
+.category-rename-form {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fbfaf7;
+}
+
+.category-rename-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
 }
 
 .queue-toolbar {
