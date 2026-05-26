@@ -36,11 +36,13 @@ Create Cloudflare D1/R2 resources before remote deploy, then replace the placeho
 
 The app uses email/password auth only. The first account can sign up normally. After a user exists, server-side signup closes by default so the public Workers URL cannot be used to create random accounts.
 
-To create additional accounts later, set an invite code secret:
+To create additional accounts later, generate and set an invite code secret:
 
 ```sh
 make cf-secret-signup-invite
 ```
+
+The command prints the generated invite code once after uploading it to Wrangler.
 
 ## Verification
 

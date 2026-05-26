@@ -21,7 +21,7 @@ help:
 	@echo "  make cf-create-d1         Create D1 database and update wrangler.jsonc"
 	@echo "  make cf-create-r2         Create R2 bucket and update wrangler.jsonc"
 	@echo "  make cf-secret-auth       Generate and set BETTER_AUTH_SECRET"
-	@echo "  make cf-secret-signup-invite Prompt for optional signup invite code"
+	@echo "  make cf-secret-signup-invite Generate and set optional signup invite code"
 	@echo "  make cf-reset-free-rank-remote Reset remote free-rank Elo/matches after confirmation"
 	@echo ""
 	@echo "Deploy:"
@@ -69,8 +69,12 @@ cf-secret-auth:
 	openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET
 
 cf-secret-signup-invite:
-	@echo "Optional. Set this only if you want to create additional accounts after the first user."
-	npx wrangler secret put SIGNUP_INVITE_CODE
+	@echo "Optional. Use this only if you want to create additional accounts after the first user."
+	@code=$$(openssl rand -hex 12); \
+	printf "%s" "$$code" | npx wrangler secret put SIGNUP_INVITE_CODE; \
+	echo ""; \
+	echo "Generated SIGNUP_INVITE_CODE: $$code"; \
+	echo "Save this code now. Wrangler will not show it again."
 
 cf-migrate-local:
 	npm run db:migrate:local
