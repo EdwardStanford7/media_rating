@@ -1,5 +1,3 @@
-const POSTER_WIDTH = 380;
-const POSTER_HEIGHT = 475;
 const SEARCH_RESULT_COUNT = 18;
 
 interface DuckDuckGoImageResult {
@@ -14,25 +12,6 @@ interface CandidateSource {
     thumbnailUrl: string;
     width: number;
     height: number;
-}
-
-interface WikipediaPage {
-    thumbnail?: {
-        source?: string;
-        width?: number;
-        height?: number;
-    };
-}
-
-interface CommonsPage {
-    imageinfo?: Array<{
-        thumburl?: string;
-        url?: string;
-        thumbwidth?: number;
-        thumbheight?: number;
-        width?: number;
-        height?: number;
-    }>;
 }
 
 export interface ImageSearchCandidate {
@@ -60,17 +39,6 @@ export async function searchImageCandidates(query: string): Promise<ImageSearchC
     for (const candidateQuery of queries) {
         try {
             const candidates = await fetchImageCandidates(candidateQuery);
-            if (candidates.length > 0) {
-                return candidates;
-            }
-        } catch (error) {
-            firstError ??= error;
-        }
-    }
-
-    for (const candidateQuery of queries) {
-        try {
-            const candidates = await fetchFallbackImageCandidates(candidateQuery);
             if (candidates.length > 0) {
                 return candidates;
             }
@@ -122,15 +90,12 @@ async function fetchImageCandidates(cleanQuery: string): Promise<ImageSearchCand
     jsonUrl.searchParams.set("q", cleanQuery);
     jsonUrl.searchParams.set("vqd", vqd);
     jsonUrl.searchParams.set("o", "json");
-    jsonUrl.searchParams.set("l", "us-en");
-    jsonUrl.searchParams.set("p", "1");
-    jsonUrl.searchParams.set("f", ",,,");
 
     const jsonResponse = await fetchText(jsonUrl, {
         accept: "application/json, text/javascript, */*; q=0.01",
         cookie: htmlResponse.cookie,
         mode: "cors",
-        referer: htmlUrl.toString(),
+        referer: "https://duckduckgo.com/",
         requestedWith: "XMLHttpRequest"
     });
     const payload = JSON.parse(jsonResponse.text) as { results?: DuckDuckGoImageResult[] };
@@ -148,75 +113,7 @@ async function fetchImageCandidates(cleanQuery: string): Promise<ImageSearchCand
     );
 }
 
-async function fetchFallbackImageCandidates(cleanQuery: string): Promise<ImageSearchCandidate[]> {
-    const results = await Promise.allSettled([
-        fetchWikipediaPageImages(cleanQuery),
-        fetchCommonsImages(cleanQuery)
-    ]);
-    const sources = results.flatMap((result) =>
-        result.status === "fulfilled" ? result.value : []
-    );
-    const candidates = sourcesToCandidates(sources);
-    if (candidates.length === 0) {
-        throw new Error("No fallback images found");
-    }
-
-    return candidates;
-}
-
-async function fetchWikipediaPageImages(cleanQuery: string): Promise<CandidateSource[]> {
-    const url = new URL("https://en.wikipedia.org/w/api.php");
-    url.searchParams.set("action", "query");
-    url.searchParams.set("format", "json");
-    url.searchParams.set("generator", "search");
-    url.searchParams.set("gsrsearch", cleanQuery);
-    url.searchParams.set("gsrlimit", "12");
-    url.searchParams.set("prop", "pageimages");
-    url.searchParams.set("piprop", "thumbnail");
-    url.searchParams.set("pithumbsize", "700");
-    url.searchParams.set("origin", "*");
-
-    const response = await fetchJson<{ query?: { pages?: Record<string, WikipediaPage> } }>(url);
-    return Object.values(response.query?.pages ?? {})
-        .map((page) => page.thumbnail)
-        .filter((thumbnail): thumbnail is Required<WikipediaPage>["thumbnail"] =>
-            Boolean(thumbnail?.source && thumbnail.width && thumbnail.height)
-        )
-        .map((thumbnail) => ({
-            imageUrl: thumbnail.source ?? "",
-            thumbnailUrl: thumbnail.source ?? "",
-            width: thumbnail.width ?? 0,
-            height: thumbnail.height ?? 0
-        }));
-}
-
-async function fetchCommonsImages(cleanQuery: string): Promise<CandidateSource[]> {
-    const url = new URL("https://commons.wikimedia.org/w/api.php");
-    url.searchParams.set("action", "query");
-    url.searchParams.set("format", "json");
-    url.searchParams.set("generator", "search");
-    url.searchParams.set("gsrsearch", cleanQuery);
-    url.searchParams.set("gsrnamespace", "6");
-    url.searchParams.set("gsrlimit", "18");
-    url.searchParams.set("prop", "imageinfo");
-    url.searchParams.set("iiprop", "url|size");
-    url.searchParams.set("iiurlwidth", "700");
-    url.searchParams.set("origin", "*");
-
-    const response = await fetchJson<{ query?: { pages?: Record<string, CommonsPage> } }>(url);
-    return Object.values(response.query?.pages ?? {})
-        .flatMap((page) => page.imageinfo ?? [])
-        .filter((image) => (image.thumburl || image.url) && (image.thumbwidth || image.width) && (image.thumbheight || image.height))
-        .map((image) => ({
-            imageUrl: image.url ?? image.thumburl ?? "",
-            thumbnailUrl: image.thumburl ?? image.url ?? "",
-            width: image.width ?? image.thumbwidth ?? 0,
-            height: image.height ?? image.thumbheight ?? 0
-        }));
-}
-
 function sourcesToCandidates(sources: CandidateSource[]): ImageSearchCandidate[] {
-    const targetRatio = POSTER_WIDTH / POSTER_HEIGHT;
     const seen = new Set<string>();
 
     return sources
@@ -228,13 +125,8 @@ function sourcesToCandidates(sources: CandidateSource[]): ImageSearchCandidate[]
             seen.add(source.imageUrl);
             return true;
         })
-        .map((source) => ({
-            ratioDiff: Math.abs(source.width / source.height - targetRatio),
-            source
-        }))
-        .sort((left, right) => left.ratioDiff - right.ratioDiff)
         .slice(0, SEARCH_RESULT_COUNT)
-        .map(({ source }) => {
+        .map((source) => {
             const imageId = encodeImageUrl(source.imageUrl);
             const thumbnailId = encodeImageUrl(source.thumbnailUrl || source.imageUrl);
             return {
@@ -343,21 +235,6 @@ async function fetchText(
             response.headers.get("set-cookie")?.split(",").map((cookie) => cookie.split(";")[0]).join("; ") ||
             null
     };
-}
-
-async function fetchJson<T>(url: URL): Promise<T> {
-    const response = await fetch(url, {
-        headers: {
-            "accept": "application/json",
-            "user-agent": "MediaRating/1.0 (personal media ranking app)"
-        }
-    });
-
-    if (!response.ok) {
-        throw new Error(`Fallback image search failed with ${response.status}`);
-    }
-
-    return response.json() as Promise<T>;
 }
 
 function isBlockedHost(hostname: string) {

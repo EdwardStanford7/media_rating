@@ -239,7 +239,7 @@ img.queue-poster {
 
 .entries-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
     gap: 1rem;
 }
 
@@ -343,6 +343,7 @@ img.match-poster {
     padding: 0.15rem 0.45rem;
     color: var(--muted);
     font-size: 0.78rem;
+    white-space: nowrap;
 }
 
 .match-grid {

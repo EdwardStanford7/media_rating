@@ -907,6 +907,8 @@ function ImagePickerModal({
     const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const candidatesRef = useRef<ImageSearchCandidate[]>([]);
+    const candidatesByQueryRef = useRef<Map<string, ImageSearchCandidate[]>>(new Map());
+    const thumbnailPosterBlobsRef = useRef<Map<string, Blob>>(new Map());
     const displayedQueryRef = useRef<string | null>(null);
     const searchRequestIdRef = useRef(0);
 
@@ -914,6 +916,17 @@ function ImagePickerModal({
         const requestId = searchRequestIdRef.current + 1;
         searchRequestIdRef.current = requestId;
         const submittedQuery = searchQuery.trim();
+        const cachedCandidates = candidatesByQueryRef.current.get(submittedQuery.toLowerCase());
+        if (cachedCandidates && cachedCandidates.length > 0) {
+            candidatesRef.current = cachedCandidates;
+            thumbnailPosterBlobsRef.current.clear();
+            displayedQueryRef.current = submittedQuery;
+            setCandidates(cachedCandidates);
+            setError(null);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         setError(null);
         const cacheBust = crypto.randomUUID();
@@ -946,6 +959,8 @@ function ImagePickerModal({
                 thumbnailUrl: withCacheBust(candidate.thumbnailUrl, cacheBust)
             }));
             candidatesRef.current = nextCandidates;
+            candidatesByQueryRef.current.set(submittedQuery.toLowerCase(), nextCandidates);
+            thumbnailPosterBlobsRef.current.clear();
             displayedQueryRef.current = submittedQuery;
             setCandidates(nextCandidates);
         } catch (searchError) {
@@ -973,17 +988,26 @@ function ImagePickerModal({
     useEffect(() => {
         setQuery(defaultQuery);
         candidatesRef.current = [];
+        candidatesByQueryRef.current.clear();
+        thumbnailPosterBlobsRef.current.clear();
         displayedQueryRef.current = null;
         setCandidates([]);
         void search(defaultQuery);
     }, [defaultQuery, search]);
 
-    async function selectCandidate(candidate: ImageSearchCandidate) {
+    async function selectCandidate(
+        candidate: ImageSearchCandidate,
+        renderedThumbnail: HTMLImageElement | null
+    ) {
         setSavingCandidateId(candidate.id);
         setError(null);
 
         try {
-            const blob = await imageUrlToPosterBlob(candidate.imageUrl);
+            const blob = await imageCandidateToPosterBlob(
+                candidate,
+                renderedThumbnail,
+                thumbnailPosterBlobsRef.current.get(candidate.id) ?? null
+            );
             await uploadImageForTarget(target, blob);
             await onSaved();
         } catch (saveError) {
@@ -991,6 +1015,16 @@ function ImagePickerModal({
         } finally {
             setSavingCandidateId(null);
         }
+    }
+
+    function cacheRenderedThumbnail(candidate: ImageSearchCandidate, image: HTMLImageElement) {
+        void imageElementToPosterBlob(image)
+            .then((blob) => {
+                thumbnailPosterBlobsRef.current.set(candidate.id, blob);
+            })
+            .catch(() => {
+                thumbnailPosterBlobsRef.current.delete(candidate.id);
+            });
     }
 
     async function uploadLocalFile(file: File) {
@@ -1102,9 +1136,18 @@ function ImagePickerModal({
                             disabled={Boolean(savingCandidateId)}
                             key={candidate.id}
                             type="button"
-                            onClick={() => void selectCandidate(candidate)}
+                            onClick={(event) => {
+                                const renderedThumbnail = event.currentTarget.querySelector("img");
+                                void selectCandidate(candidate, renderedThumbnail);
+                            }}
                         >
-                            <img alt="" src={candidate.thumbnailUrl} loading="lazy" decoding="async" />
+                            <img
+                                alt=""
+                                src={candidate.thumbnailUrl}
+                                loading="lazy"
+                                decoding="async"
+                                onLoad={(event) => cacheRenderedThumbnail(candidate, event.currentTarget)}
+                            />
                             {savingCandidateId === candidate.id ? <span>Saving...</span> : null}
                         </button>
                     ))}
@@ -1573,11 +1616,42 @@ function errorMessage(error: unknown) {
 async function imageUrlToPosterBlob(imageUrl: string) {
     const response = await fetch(imageUrl);
     if (!response.ok) {
-        const detail = await response.text().catch(() => "");
-        throw new Error(detail || "Full-size image could not be loaded");
+        throw new Error("Remote image could not be loaded");
     }
 
     return imageBlobToPosterBlob(await response.blob());
+}
+
+async function imageCandidateToPosterBlob(
+    candidate: ImageSearchCandidate,
+    renderedThumbnail: HTMLImageElement | null,
+    cachedThumbnailBlob: Blob | null
+) {
+    try {
+        return await imageUrlToPosterBlob(candidate.imageUrl);
+    } catch (fullSizeError) {
+        if (cachedThumbnailBlob) {
+            return cachedThumbnailBlob;
+        }
+
+        if (
+            renderedThumbnail?.complete &&
+            renderedThumbnail.naturalWidth > 0 &&
+            renderedThumbnail.naturalHeight > 0
+        ) {
+            try {
+                return await imageElementToPosterBlob(renderedThumbnail);
+            } catch {
+                // Fall through to a network thumbnail fetch as the last resort.
+            }
+        }
+
+        if (candidate.thumbnailUrl === candidate.imageUrl) {
+            throw new Error("Displayed image could not be saved");
+        }
+
+        return imageUrlToPosterBlob(candidate.thumbnailUrl);
+    }
 }
 
 function imageBlobToPosterBlob(blob: Blob) {
@@ -1590,71 +1664,78 @@ function imageBlobToPosterBlob(blob: Blob) {
         const objectUrl = URL.createObjectURL(blob);
 
         image.onload = () => {
-            try {
-                const canvas = document.createElement("canvas");
-                const context = canvas.getContext("2d");
-                if (!context) {
-                    throw new Error("Image processing is unavailable");
-                }
-
-                const sourceWidth = image.naturalWidth;
-                const sourceHeight = image.naturalHeight;
-                if (sourceWidth === 0 || sourceHeight === 0) {
-                    throw new Error("Image has no dimensions");
-                }
-
-                const targetRatio = POSTER_WIDTH / POSTER_HEIGHT;
-                const sourceRatio = sourceWidth / sourceHeight;
-                let cropX = 0;
-                let cropY = 0;
-                let cropWidth = sourceWidth;
-                let cropHeight = sourceHeight;
-
-                if (sourceRatio > targetRatio) {
-                    cropWidth = sourceHeight * targetRatio;
-                    cropX = (sourceWidth - cropWidth) / 2;
-                } else {
-                    cropHeight = sourceWidth / targetRatio;
-                    cropY = (sourceHeight - cropHeight) / 2;
-                }
-
-                canvas.width = POSTER_WIDTH;
-                canvas.height = POSTER_HEIGHT;
-                context.drawImage(
-                    image,
-                    cropX,
-                    cropY,
-                    cropWidth,
-                    cropHeight,
-                    0,
-                    0,
-                    POSTER_WIDTH,
-                    POSTER_HEIGHT
-                );
-
-                canvas.toBlob(
-                    (posterBlob) => {
-                        if (!posterBlob) {
-                            reject(new Error("Image could not be saved"));
-                            return;
-                        }
-
-                        resolve(posterBlob);
-                    },
-                    "image/jpeg",
-                    0.9
-                );
-            } catch (error) {
-                reject(error);
-            } finally {
-                URL.revokeObjectURL(objectUrl);
-            }
+            imageElementToPosterBlob(image)
+                .then(resolve)
+                .catch(reject)
+                .finally(() => URL.revokeObjectURL(objectUrl));
         };
         image.onerror = () => {
             URL.revokeObjectURL(objectUrl);
             reject(new Error("Full-size image could not be loaded"));
         };
         image.src = objectUrl;
+    });
+}
+
+function imageElementToPosterBlob(image: HTMLImageElement) {
+    return new Promise<Blob>((resolve, reject) => {
+        try {
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            if (!context) {
+                throw new Error("Image processing is unavailable");
+            }
+
+            const sourceWidth = image.naturalWidth;
+            const sourceHeight = image.naturalHeight;
+            if (sourceWidth === 0 || sourceHeight === 0) {
+                throw new Error("Image has no dimensions");
+            }
+
+            const targetRatio = POSTER_WIDTH / POSTER_HEIGHT;
+            const sourceRatio = sourceWidth / sourceHeight;
+            let cropX = 0;
+            let cropY = 0;
+            let cropWidth = sourceWidth;
+            let cropHeight = sourceHeight;
+
+            if (sourceRatio > targetRatio) {
+                cropWidth = sourceHeight * targetRatio;
+                cropX = (sourceWidth - cropWidth) / 2;
+            } else {
+                cropHeight = sourceWidth / targetRatio;
+                cropY = (sourceHeight - cropHeight) / 2;
+            }
+
+            canvas.width = POSTER_WIDTH;
+            canvas.height = POSTER_HEIGHT;
+            context.drawImage(
+                image,
+                cropX,
+                cropY,
+                cropWidth,
+                cropHeight,
+                0,
+                0,
+                POSTER_WIDTH,
+                POSTER_HEIGHT
+            );
+
+            canvas.toBlob(
+                (posterBlob) => {
+                    if (!posterBlob) {
+                        reject(new Error("Image could not be saved"));
+                        return;
+                    }
+
+                    resolve(posterBlob);
+                },
+                "image/jpeg",
+                0.9
+            );
+        } catch (error) {
+            reject(error);
+        }
     });
 }
 
