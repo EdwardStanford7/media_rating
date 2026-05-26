@@ -572,6 +572,11 @@ function Dashboard({
                     categories={dashboard.categories}
                     onExit={() => setAppMode("dashboard")}
                     onNeedImage={requestImageForMatch}
+                    onPickImage={(entry, category) => setImagePickerTarget({
+                        kind: "entry",
+                        item: entry,
+                        category
+                    })}
                     onRanked={refresh}
                 />
             ) : (
@@ -1505,11 +1510,13 @@ function FreeRankScreen({
     categories,
     onExit,
     onNeedImage,
+    onPickImage,
     onRanked
 }: {
     categories: CategoryWithEntries[];
     onExit: () => void;
     onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
+    onPickImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
     onRanked: () => Promise<void>;
 }) {
     const [categorySelection, setCategorySelection] = useState<string | "any">("any");
@@ -1631,35 +1638,73 @@ function FreeRankScreen({
 
             {matchup ? (
                 <div className="free-rank-match-grid">
-                    <button
-                        className="free-rank-choice"
+                    <FreeRankChoice
                         disabled={loading || ranking}
-                        type="button"
-                        onClick={() => void chooseWinner(matchup.entryA.id)}
-                    >
-                        <MatchPoster entry={matchup.entryA} />
-                        <span>
-                            <strong>{matchup.entryA.name}</strong>
-                            <small>{Math.round(matchup.entryA.freeRankElo)} Elo</small>
-                        </span>
-                    </button>
-                    <button
-                        className="free-rank-choice"
+                        entry={matchup.entryA}
+                        onChoose={() => void chooseWinner(matchup.entryA.id)}
+                        onPickImage={() => onPickImage(matchup.entryA, {
+                            id: matchup.categoryId,
+                            name: matchup.categoryName
+                        })}
+                    />
+                    <FreeRankChoice
                         disabled={loading || ranking}
-                        type="button"
-                        onClick={() => void chooseWinner(matchup.entryB.id)}
-                    >
-                        <MatchPoster entry={matchup.entryB} />
-                        <span>
-                            <strong>{matchup.entryB.name}</strong>
-                            <small>{Math.round(matchup.entryB.freeRankElo)} Elo</small>
-                        </span>
-                    </button>
+                        entry={matchup.entryB}
+                        onChoose={() => void chooseWinner(matchup.entryB.id)}
+                        onPickImage={() => onPickImage(matchup.entryB, {
+                            id: matchup.categoryId,
+                            name: matchup.categoryName
+                        })}
+                    />
                 </div>
             ) : !loading ? (
                 <div className="muted">No active matchup selected.</div>
             ) : null}
         </section>
+    );
+}
+
+function FreeRankChoice({
+    disabled,
+    entry,
+    onChoose,
+    onPickImage
+}: {
+    disabled: boolean;
+    entry: Entry;
+    onChoose: () => void;
+    onPickImage: () => void;
+}) {
+    return (
+        <article className="free-rank-choice">
+            <div className="free-rank-poster-wrap">
+                <button
+                    className="free-rank-poster-button"
+                    disabled={disabled}
+                    type="button"
+                    onClick={onChoose}
+                >
+                    <MatchPoster entry={entry} />
+                </button>
+                <button
+                    className="free-rank-image-edit"
+                    disabled={disabled}
+                    type="button"
+                    onClick={onPickImage}
+                >
+                    New Image
+                </button>
+            </div>
+            <button
+                className="free-rank-label-button"
+                disabled={disabled}
+                type="button"
+                onClick={onChoose}
+            >
+                <strong>{entry.name}</strong>
+                <small>{Math.round(entry.freeRankElo)} Elo</small>
+            </button>
+        </article>
     );
 }
 
