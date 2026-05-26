@@ -15,7 +15,7 @@ export const loadDashboard = createServerFn({ method: "GET" })
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
-        return repo.loadDashboard(user.id, data.displayMode ?? "binary");
+        return repo.loadDashboard(user.id, data.displayMode ?? "ordered list");
     });
 
 export const createCategory = createServerFn({ method: "POST" })

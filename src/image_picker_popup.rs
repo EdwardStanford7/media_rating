@@ -12,7 +12,7 @@ use crate::{
     popup::{Popup, PopupResponse},
 };
 
-const SEARCH_RESULT_COUNT: usize = 12;
+const SEARCH_RESULT_COUNT: usize = 18;
 
 enum SearchState {
     Idle,

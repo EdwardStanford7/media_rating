@@ -13,6 +13,8 @@ TanStack Start + Cloudflare Workers port of the Rust media ranking app.
 - Free-rank Elo, wins, and losses saved on entries, with `free_rank` match rows retaining Elo before/after values.
 - Binary, Free Rank, and bounded Combined display modes.
 - Legacy xlsx import with an optional default first-consumed date.
+- Imported entries start without images. Images can be picked later from a 12-result search popup or uploaded manually.
+- Binary/free-rank comparisons prompt for one missing image at a time instead of fetching images during import.
 - xlsx export with the legacy `Sorted` sheet and entry metadata.
 
 ## Local Setup

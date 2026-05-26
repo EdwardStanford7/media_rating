@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     createCategory,
     createEntryWithBinaryRanking,
@@ -29,6 +29,23 @@ import type {
     FreeRankMatchup
 } from "@/lib/types";
 
+interface ImagePickerTarget {
+    entry: Entry;
+    category: Pick<CategoryWithEntries, "id" | "name">;
+}
+
+interface ImageSearchCandidate {
+    id: string;
+    imageUrl: string;
+    thumbnailUrl: string;
+    width: number;
+    height: number;
+}
+
+const POSTER_WIDTH = 380;
+const POSTER_HEIGHT = 475;
+const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
+
 export const Route = createFileRoute("/")({
     loader: async () => {
         const authOptions = await getAuthOptions();
@@ -40,7 +57,7 @@ export const Route = createFileRoute("/")({
         return {
             session,
             authOptions,
-            dashboard: await loadDashboard({ data: { displayMode: "binary" } })
+            dashboard: await loadDashboard({ data: { displayMode: "ordered list" } })
         };
     },
     component: Home
@@ -193,10 +210,14 @@ function Dashboard({
     const [selectedCategoryId, setSelectedCategoryId] = useState(
         initialDashboard.categories[0]?.id ?? ""
     );
-    const [displayMode, setDisplayMode] = useState<DisplayMode>("binary");
+    const [displayMode, setDisplayMode] = useState<DisplayMode>("ordered list");
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [busyLabel, setBusyLabel] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
+    const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
+    const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
+    const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
 
     const selectedCategory = useMemo(
         () =>
@@ -210,37 +231,67 @@ function Dashboard({
         : [];
 
     async function refresh() {
-        const nextDashboard = await loadDashboard({ data: { displayMode: "binary" } });
+        const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
         setDashboard(nextDashboard);
         await router.invalidate();
     }
 
+    function startBusy(label: string) {
+        setBusy(true);
+        setBusyLabel(label);
+    }
+
+    function finishBusy() {
+        setBusy(false);
+        setBusyLabel(null);
+    }
+
+    const requestImageForMatch = useCallback(
+        (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => {
+            if (entry.imageKey || imagePickerTarget || autoImagePromptedIds.has(entry.id)) {
+                return;
+            }
+
+            setAutoImagePromptedIds((promptedIds) => new Set(promptedIds).add(entry.id));
+            setImagePickerTarget({ entry, category });
+        },
+        [autoImagePromptedIds, imagePickerTarget]
+    );
+
+    async function handleImageSaved() {
+        setImagePickerTarget(null);
+        setImageRefreshVersion((version) => version + 1);
+        await refresh();
+    }
+
     async function handleCreateCategory(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        setBusy(true);
+        const formElement = event.currentTarget;
+        startBusy("Adding category...");
         setMessage(null);
-        const form = new FormData(event.currentTarget);
+        const form = new FormData(formElement);
 
         try {
             await createCategory({ data: { name: String(form.get("name") ?? "") } });
-            event.currentTarget.reset();
+            formElement.reset();
             await refresh();
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            setBusy(false);
+            finishBusy();
         }
     }
 
     async function handleCreateEntry(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        const formElement = event.currentTarget;
         if (!selectedCategory) {
             return;
         }
 
-        setBusy(true);
+        startBusy("Starting binary rank...");
         setMessage(null);
-        const form = new FormData(event.currentTarget);
+        const form = new FormData(formElement);
         const firstConsumedAt = dateInputToTimestamp(String(form.get("firstConsumedAt") ?? ""));
 
         try {
@@ -251,7 +302,7 @@ function Dashboard({
                     firstConsumedAt
                 }
             });
-            event.currentTarget.reset();
+            formElement.reset();
 
             if (result.kind === "session") {
                 setActiveSessionId(result.sessionId);
@@ -261,12 +312,12 @@ function Dashboard({
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            setBusy(false);
+            finishBusy();
         }
     }
 
     async function handleRerank(entryId: string) {
-        setBusy(true);
+        startBusy("Preparing rerank...");
         setMessage(null);
 
         try {
@@ -278,12 +329,12 @@ function Dashboard({
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            setBusy(false);
+            finishBusy();
         }
     }
 
     async function handleRename(entryId: string, name: string) {
-        setBusy(true);
+        startBusy("Renaming entry...");
         setMessage(null);
 
         try {
@@ -292,12 +343,12 @@ function Dashboard({
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            setBusy(false);
+            finishBusy();
         }
     }
 
     async function handleDelete(entryId: string) {
-        setBusy(true);
+        startBusy("Deleting entry...");
         setMessage(null);
 
         try {
@@ -306,12 +357,12 @@ function Dashboard({
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            setBusy(false);
+            finishBusy();
         }
     }
 
     async function handleSwitch(entryId: string, targetCategoryId: string) {
-        setBusy(true);
+        startBusy("Moving entry...");
         setMessage(null);
 
         try {
@@ -324,51 +375,80 @@ function Dashboard({
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            setBusy(false);
+            finishBusy();
         }
     }
 
     async function handleImport(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        setBusy(true);
+        const formElement = event.currentTarget;
+        startBusy("Reading spreadsheet...");
         setMessage(null);
-        const form = new FormData(event.currentTarget);
+        const form = new FormData(formElement);
         const file = form.get("workbook");
 
         if (!(file instanceof File) || file.size === 0) {
-            setBusy(false);
+            finishBusy();
             return;
         }
 
         try {
+            await nextPaint();
             const firstConsumedAt = dateInputToTimestamp(String(form.get("firstConsumedAt") ?? ""));
-            const parsed = await parseLegacyWorkbook(await file.arrayBuffer(), firstConsumedAt);
+            const buffer = await file.arrayBuffer();
+            setBusyLabel("Parsing spreadsheet...");
+            await nextPaint();
+            const parsed = await parseLegacyWorkbook(buffer, firstConsumedAt);
+            setBusyLabel(`Importing ${parsed.entries.length} entries...`);
+            await nextPaint();
             const result = await importLegacyEntries({ data: parsed });
-            setMessage(`Imported ${result.importedCount} entries.`);
-            event.currentTarget.reset();
+            setBusyLabel("Refreshing dashboard...");
+            setMessage(
+                result.skippedCount > 0
+                    ? `Imported ${result.importedCount} entries. Skipped ${result.skippedCount} duplicates.`
+                    : `Imported ${result.importedCount} entries.`
+            );
+            formElement.reset();
             await refresh();
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            setBusy(false);
+            finishBusy();
         }
     }
 
     async function handleExport() {
-        const buffer = await writeExportWorkbook(dashboard.categories);
-        const blob = new Blob([buffer], {
-            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = "Media Ratings.xlsx";
-        anchor.click();
-        URL.revokeObjectURL(url);
+        startBusy("Preparing export...");
+        setMessage(null);
+        try {
+            await nextPaint();
+            const buffer = await writeExportWorkbook(dashboard.categories);
+            const blob = new Blob([buffer], {
+                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = "Media Ratings.xlsx";
+            anchor.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
     }
 
     return (
-        <main className="app-shell">
+        <main className="app-shell" aria-busy={busy}>
+            {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
+            {imagePickerTarget ? (
+                <ImagePickerModal
+                    target={imagePickerTarget}
+                    onClose={() => setImagePickerTarget(null)}
+                    onSaved={handleImageSaved}
+                />
+            ) : null}
             <aside className="sidebar">
                 <div className="topbar">
                     <strong>Media Rating</strong>
@@ -379,7 +459,7 @@ function Dashboard({
                 <p className="muted">{userName}</p>
 
                 <form className="form-row" onSubmit={handleCreateCategory}>
-                    <input name="name" placeholder="New category" required />
+                    <input disabled={busy} name="name" placeholder="New category" required />
                     <button disabled={busy} type="submit">Add</button>
                 </form>
 
@@ -387,6 +467,7 @@ function Dashboard({
                     {dashboard.categories.map((category) => (
                         <button
                             className={`category-button ${category.id === selectedCategory?.id ? "active" : ""}`}
+                            disabled={busy}
                             key={category.id}
                             type="button"
                             onClick={() => setSelectedCategoryId(category.id)}
@@ -399,9 +480,9 @@ function Dashboard({
 
                 <form className="stack panel" onSubmit={handleImport}>
                     <strong>Import xlsx</strong>
-                    <input name="firstConsumedAt" type="date" />
-                    <input name="workbook" type="file" accept=".xlsx" />
-                    <button disabled={busy} type="submit">Import</button>
+                    <input disabled={busy} name="firstConsumedAt" type="date" />
+                    <input disabled={busy} name="workbook" type="file" accept=".xlsx" />
+                    <button disabled={busy} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
                 </form>
             </aside>
 
@@ -409,15 +490,15 @@ function Dashboard({
                 <div className="topbar">
                     <div>
                         <h1>{selectedCategory?.name ?? "Categories"}</h1>
-                        <p className="muted">Binary rank is primary. Free-rank Elo is saved separately.</p>
+                        <p className="muted">Ordered list rank is primary. Free-rank Elo is saved separately.</p>
                     </div>
                     <div className="row">
                         <select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as DisplayMode)}>
-                            <option value="binary">Binary</option>
+                            <option value="ordered list">Ordered List</option>
                             <option value="combined">Combined</option>
                             <option value="free_rank">Free Rank</option>
                         </select>
-                        <button type="button" onClick={handleExport}>Export</button>
+                        <button disabled={busy} type="button" onClick={handleExport}>Export</button>
                     </div>
                 </div>
 
@@ -433,15 +514,22 @@ function Dashboard({
 
                 {activeSessionId ? (
                     <BinaryRankPanel
+                        imageRefreshVersion={imageRefreshVersion}
                         sessionId={activeSessionId}
                         onComplete={async () => {
                             setActiveSessionId(null);
                             await refresh();
                         }}
+                        onNeedImage={requestImageForMatch}
                     />
                 ) : null}
 
-                <FreeRankPanel categories={dashboard.categories} onRanked={refresh} />
+                <FreeRankPanel
+                    categories={dashboard.categories}
+                    imageRefreshVersion={imageRefreshVersion}
+                    onNeedImage={requestImageForMatch}
+                    onRanked={refresh}
+                />
 
                 <section className="entries-grid">
                     {displayedEntries.map((entry, index) => (
@@ -452,6 +540,7 @@ function Dashboard({
                             key={entry.id}
                             selectedCategoryId={selectedCategory.id}
                             onDelete={() => handleDelete(entry.id)}
+                            onPickImage={() => setImagePickerTarget({ entry, category: selectedCategory })}
                             onRename={(name) => handleRename(entry.id, name)}
                             onRerank={() => handleRerank(entry.id)}
                             onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
@@ -463,12 +552,188 @@ function Dashboard({
     );
 }
 
+function BusyOverlay({ label }: { label: string }) {
+    return (
+        <div aria-live="polite" className="busy-overlay" role="status">
+            <div className="busy-card">
+                <div aria-hidden="true" className="spinner" />
+                <div>
+                    <strong>{label}</strong>
+                    <p className="muted">Keep this tab open.</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ImagePickerModal({
+    target,
+    onClose,
+    onSaved
+}: {
+    target: ImagePickerTarget;
+    onClose: () => void;
+    onSaved: () => Promise<void>;
+}) {
+    const defaultQuery = `${target.entry.name} (${target.category.name})`;
+    const [query, setQuery] = useState(defaultQuery);
+    const [candidates, setCandidates] = useState<ImageSearchCandidate[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const search = useCallback(async (searchQuery: string) => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            const url = new URL("/api/image-search", window.location.origin);
+            url.searchParams.set("entryId", target.entry.id);
+            url.searchParams.set("query", searchQuery);
+            const response = await fetch(url);
+            const body = await response.json().catch(() => ({})) as {
+                candidates?: ImageSearchCandidate[];
+                message?: string;
+            };
+
+            if (!response.ok) {
+                throw new Error(body.message ?? "Image search failed");
+            }
+
+            setCandidates(Array.isArray(body.candidates) ? body.candidates : []);
+        } catch (searchError) {
+            setCandidates([]);
+            setError(errorMessage(searchError));
+        } finally {
+            setLoading(false);
+        }
+    }, [target.entry.id]);
+
+    useEffect(() => {
+        setQuery(defaultQuery);
+        setCandidates([]);
+        void search(defaultQuery);
+    }, [defaultQuery, search]);
+
+    async function selectCandidate(candidate: ImageSearchCandidate) {
+        setSavingCandidateId(candidate.id);
+        setError(null);
+
+        try {
+            const blob = await imageUrlToPosterBlob(candidate.imageUrl);
+            await uploadEntryImage(target.entry.id, blob);
+            await onSaved();
+        } catch (saveError) {
+            setError(errorMessage(saveError));
+        } finally {
+            setSavingCandidateId(null);
+        }
+    }
+
+    async function uploadLocalFile(file: File) {
+        setSavingCandidateId("local");
+        setError(null);
+
+        try {
+            const objectUrl = URL.createObjectURL(file);
+            try {
+                const blob = await imageUrlToPosterBlob(objectUrl);
+                await uploadEntryImage(target.entry.id, blob);
+                await onSaved();
+            } finally {
+                URL.revokeObjectURL(objectUrl);
+            }
+        } catch (saveError) {
+            setError(errorMessage(saveError));
+        } finally {
+            setSavingCandidateId(null);
+        }
+    }
+
+    return (
+        <div className="modal-backdrop">
+            <section className="image-picker-modal">
+                <div className="toolbar">
+                    <div>
+                        <h2>Pick Image</h2>
+                        <p className="muted">{target.entry.name} - {target.category.name}</p>
+                    </div>
+                    <button type="button" onClick={onClose}>Close</button>
+                </div>
+
+                <form
+                    className="form-row"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void search(query);
+                    }}
+                >
+                    <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Search"
+                    />
+                    <button disabled={loading || Boolean(savingCandidateId)} type="submit">Search</button>
+                    <button
+                        disabled={loading || Boolean(savingCandidateId)}
+                        type="button"
+                        onClick={() => {
+                            setQuery(defaultQuery);
+                            void search(defaultQuery);
+                        }}
+                    >
+                        Default
+                    </button>
+                </form>
+
+                <label className="file-button">
+                    <span>Upload File</span>
+                    <input
+                        accept="image/*"
+                        disabled={loading || Boolean(savingCandidateId)}
+                        type="file"
+                        onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            if (file) {
+                                void uploadLocalFile(file);
+                            }
+                        }}
+                    />
+                </label>
+
+                {error ? <div className="status">{error}</div> : null}
+                {loading ? <div className="status">Searching for images...</div> : null}
+
+                <div className="image-picker-grid">
+                    {candidates.map((candidate) => (
+                        <button
+                            className="image-candidate"
+                            disabled={Boolean(savingCandidateId)}
+                            key={candidate.id}
+                            type="button"
+                            onClick={() => void selectCandidate(candidate)}
+                        >
+                            <img alt="" src={candidate.thumbnailUrl} loading="lazy" decoding="async" />
+                            {savingCandidateId === candidate.id ? <span>Saving...</span> : null}
+                        </button>
+                    ))}
+                </div>
+
+                {!loading && candidates.length === 0 ? (
+                    <div className="muted">No image candidates loaded.</div>
+                ) : null}
+            </section>
+        </div>
+    );
+}
+
 function EntryCard({
     entry,
     displayIndex,
     categories,
     selectedCategoryId,
     onDelete,
+    onPickImage,
     onRename,
     onRerank,
     onSwitch
@@ -478,6 +743,7 @@ function EntryCard({
     categories: CategoryWithEntries[];
     selectedCategoryId: string;
     onDelete: () => void;
+    onPickImage: () => void;
     onRename: (name: string) => void;
     onRerank: () => void;
     onSwitch: (targetCategoryId: string) => void;
@@ -503,7 +769,12 @@ function EntryCard({
                         <span className="metric">{formatDate(entry.firstConsumedAt)}</span>
                     ) : null}
                 </div>
-                <button type="button" onClick={onRerank}>Rerank</button>
+                <div className="entry-actions two-buttons">
+                    <button type="button" onClick={onRerank}>Rerank</button>
+                    <button type="button" onClick={onPickImage}>
+                        {entry.imageKey ? "Change Image" : "Pick Image"}
+                    </button>
+                </div>
                 <div className="entry-actions">
                     <input
                         aria-label={`Rename ${entry.name}`}
@@ -539,28 +810,43 @@ function EntryCard({
 }
 
 function EntryPoster({ entry }: { entry: Entry }) {
-    if (entry.imageKey) {
+    const [imageFailed, setImageFailed] = useState(false);
+
+    useEffect(() => {
+        setImageFailed(false);
+    }, [entry.id, entry.imageKey]);
+
+    if (entry.imageKey && !imageFailed) {
         return (
             <img
                 className="entry-poster"
                 src={`/api/images/${entry.id}`}
                 alt=""
-                onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                }}
+                loading="lazy"
+                decoding="async"
+                onError={() => setImageFailed(true)}
             />
         );
     }
 
-    return <div className="entry-poster">{entry.name}</div>;
+    return (
+        <div className="entry-poster image-placeholder">
+            <span>{entry.name}</span>
+            <small>No image</small>
+        </div>
+    );
 }
 
 function BinaryRankPanel({
     sessionId,
-    onComplete
+    imageRefreshVersion,
+    onComplete,
+    onNeedImage
 }: {
     sessionId: string;
+    imageRefreshVersion: number;
     onComplete: () => Promise<void>;
+    onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
 }) {
     const [session, setSession] = useState<BinarySessionView | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -569,7 +855,26 @@ function BinaryRankPanel({
         getBinarySession({ data: { sessionId } })
             .then(setSession)
             .catch((loadError) => setError(errorMessage(loadError)));
-    }, [sessionId]);
+    }, [sessionId, imageRefreshVersion]);
+
+    useEffect(() => {
+        if (!session) {
+            return;
+        }
+
+        const missingImageEntry = !session.subject.imageKey
+            ? session.subject
+            : !session.opponent.imageKey
+                ? session.opponent
+                : null;
+
+        if (missingImageEntry) {
+            onNeedImage(missingImageEntry, {
+                id: session.categoryId,
+                name: session.categoryName
+            });
+        }
+    }, [session, onNeedImage]);
 
     async function chooseWinner(winnerId: string) {
         setError(null);
@@ -618,23 +923,52 @@ function BinaryRankPanel({
 
 function FreeRankPanel({
     categories,
+    imageRefreshVersion,
+    onNeedImage,
     onRanked
 }: {
     categories: CategoryWithEntries[];
+    imageRefreshVersion: number;
+    onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
     onRanked: () => Promise<void>;
 }) {
     const [categorySelection, setCategorySelection] = useState<string | "any">("any");
     const [matchup, setMatchup] = useState<FreeRankMatchup | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    async function loadMatchup() {
+    const loadMatchup = useCallback(async () => {
         setError(null);
         try {
             setMatchup(await getFreeRankMatchup({ data: { categorySelection } }));
         } catch (loadError) {
             setError(errorMessage(loadError));
         }
-    }
+    }, [categorySelection]);
+
+    useEffect(() => {
+        if (!matchup) {
+            return;
+        }
+
+        const missingImageEntry = !matchup.entryA.imageKey
+            ? matchup.entryA
+            : !matchup.entryB.imageKey
+                ? matchup.entryB
+                : null;
+
+        if (missingImageEntry) {
+            onNeedImage(missingImageEntry, {
+                id: matchup.categoryId,
+                name: matchup.categoryName
+            });
+        }
+    }, [matchup, onNeedImage]);
+
+    useEffect(() => {
+        if (matchup) {
+            void loadMatchup();
+        }
+    }, [imageRefreshVersion]);
 
     async function chooseWinner(winnerId: string) {
         if (!matchup) {
@@ -699,11 +1033,30 @@ function FreeRankPanel({
 }
 
 function MatchPoster({ entry }: { entry: Entry }) {
-    if (entry.imageKey) {
-        return <img className="match-poster" src={`/api/images/${entry.id}`} alt="" />;
+    const [imageFailed, setImageFailed] = useState(false);
+
+    useEffect(() => {
+        setImageFailed(false);
+    }, [entry.id, entry.imageKey]);
+
+    if (entry.imageKey && !imageFailed) {
+        return (
+            <img
+                className="match-poster"
+                src={`/api/images/${entry.id}`}
+                alt=""
+                decoding="async"
+                onError={() => setImageFailed(true)}
+            />
+        );
     }
 
-    return <div className="match-poster">{entry.name}</div>;
+    return (
+        <div className="match-poster image-placeholder">
+            <span>{entry.name}</span>
+            <small>No image</small>
+        </div>
+    );
 }
 
 function dateInputToTimestamp(value: string) {
@@ -720,4 +1073,115 @@ function formatDate(timestamp: number) {
 
 function errorMessage(error: unknown) {
     return error instanceof Error ? error.message : String(error);
+}
+
+async function imageUrlToPosterBlob(imageUrl: string) {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+        throw new Error("Image could not be loaded");
+    }
+
+    return imageBlobToPosterBlob(await response.blob());
+}
+
+function imageBlobToPosterBlob(blob: Blob) {
+    if (blob.size > MAX_LOCAL_IMAGE_BYTES) {
+        throw new Error("Image file is too large");
+    }
+
+    return new Promise<Blob>((resolve, reject) => {
+        const image = new Image();
+        const objectUrl = URL.createObjectURL(blob);
+
+        image.onload = () => {
+            try {
+                const canvas = document.createElement("canvas");
+                const context = canvas.getContext("2d");
+                if (!context) {
+                    throw new Error("Image processing is unavailable");
+                }
+
+                const sourceWidth = image.naturalWidth;
+                const sourceHeight = image.naturalHeight;
+                if (sourceWidth === 0 || sourceHeight === 0) {
+                    throw new Error("Image has no dimensions");
+                }
+
+                const targetRatio = POSTER_WIDTH / POSTER_HEIGHT;
+                const sourceRatio = sourceWidth / sourceHeight;
+                let cropX = 0;
+                let cropY = 0;
+                let cropWidth = sourceWidth;
+                let cropHeight = sourceHeight;
+
+                if (sourceRatio > targetRatio) {
+                    cropWidth = sourceHeight * targetRatio;
+                    cropX = (sourceWidth - cropWidth) / 2;
+                } else {
+                    cropHeight = sourceWidth / targetRatio;
+                    cropY = (sourceHeight - cropHeight) / 2;
+                }
+
+                canvas.width = POSTER_WIDTH;
+                canvas.height = POSTER_HEIGHT;
+                context.drawImage(
+                    image,
+                    cropX,
+                    cropY,
+                    cropWidth,
+                    cropHeight,
+                    0,
+                    0,
+                    POSTER_WIDTH,
+                    POSTER_HEIGHT
+                );
+
+                canvas.toBlob(
+                    (posterBlob) => {
+                        if (!posterBlob) {
+                            reject(new Error("Image could not be saved"));
+                            return;
+                        }
+
+                        resolve(posterBlob);
+                    },
+                    "image/jpeg",
+                    0.9
+                );
+            } catch (error) {
+                reject(error);
+            } finally {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("Image could not be loaded"));
+        };
+        image.src = objectUrl;
+    });
+}
+
+async function uploadEntryImage(entryId: string, blob: Blob) {
+    const response = await fetch(`/api/images/${encodeURIComponent(entryId)}`, {
+        method: "POST",
+        headers: {
+            "content-type": blob.type || "image/jpeg"
+        },
+        body: blob
+    });
+
+    if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = body && typeof body === "object" && "message" in body && typeof body.message === "string"
+            ? body.message
+            : "Image upload failed";
+        throw new Error(message);
+    }
+}
+
+function nextPaint() {
+    return new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+    });
 }

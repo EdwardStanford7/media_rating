@@ -10,12 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiImageSearchRouteImport } from './routes/api/image-search'
+import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 import { Route as ApiImagesEntryIdRouteImport } from './routes/api/images/$entryId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiImageSearchRoute = ApiImageSearchRouteImport.update({
+  id: '/api/image-search',
+  path: '/api/image-search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
+  id: '/api/image-proxy',
+  path: '/api/image-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiImagesEntryIdRoute = ApiImagesEntryIdRouteImport.update({
@@ -31,30 +43,54 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
+  '/api/image-search': typeof ApiImageSearchRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
+  '/api/image-search': typeof ApiImageSearchRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
+  '/api/image-search': typeof ApiImageSearchRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/auth/$' | '/api/images/$entryId'
+  fullPaths:
+    | '/'
+    | '/api/image-proxy'
+    | '/api/image-search'
+    | '/api/auth/$'
+    | '/api/images/$entryId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/auth/$' | '/api/images/$entryId'
-  id: '__root__' | '/' | '/api/auth/$' | '/api/images/$entryId'
+  to:
+    | '/'
+    | '/api/image-proxy'
+    | '/api/image-search'
+    | '/api/auth/$'
+    | '/api/images/$entryId'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/image-proxy'
+    | '/api/image-search'
+    | '/api/auth/$'
+    | '/api/images/$entryId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiImageProxyRoute: typeof ApiImageProxyRoute
+  ApiImageSearchRoute: typeof ApiImageSearchRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiImagesEntryIdRoute: typeof ApiImagesEntryIdRoute
 }
@@ -66,6 +102,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/image-search': {
+      id: '/api/image-search'
+      path: '/api/image-search'
+      fullPath: '/api/image-search'
+      preLoaderRoute: typeof ApiImageSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/image-proxy': {
+      id: '/api/image-proxy'
+      path: '/api/image-proxy'
+      fullPath: '/api/image-proxy'
+      preLoaderRoute: typeof ApiImageProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/images/$entryId': {
@@ -87,6 +137,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiImageProxyRoute: ApiImageProxyRoute,
+  ApiImageSearchRoute: ApiImageSearchRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiImagesEntryIdRoute: ApiImagesEntryIdRoute,
 }
