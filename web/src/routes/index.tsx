@@ -254,12 +254,12 @@ function Dashboard({
         return orderEntries(entries, displayMode);
     }, [displayMode, entrySearch, selectedCategory]);
     const starRatings = useMemo(() => {
-        if (!selectedCategory) {
+        if (!selectedCategory || !dashboard.queueSettings.showStarRatings) {
             return new Map<string, number>();
         }
 
         return starRatingsByEntryId(selectedCategory.entries);
-    }, [selectedCategory]);
+    }, [dashboard.queueSettings.showStarRatings, selectedCategory]);
 
     async function refresh() {
         const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
@@ -701,7 +701,9 @@ function Dashboard({
                                     categories={dashboard.categories}
                                     key={entry.id}
                                     selectedCategoryId={selectedCategory.id}
-                                    starRating={starRatings.get(entry.id) ?? 5}
+                                    starRating={dashboard.queueSettings.showStarRatings
+                                        ? starRatings.get(entry.id) ?? 5
+                                        : null}
                                     onDelete={() => handleDelete(entry.id)}
                                     onPickImage={() => setImagePickerTarget({
                                         kind: "entry",
@@ -834,13 +836,21 @@ function QueuePanel({
     const [enabled, setEnabled] = useState(settings.enabled);
     const [delayDays, setDelayDays] = useState(settings.delayDays);
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
+    const [showStarRatings, setShowStarRatings] = useState(settings.showStarRatings);
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(Date.now());
 
     useEffect(() => {
         setEnabled(settings.enabled);
         setDelayDays(settings.delayDays);
         setPromptForMissingImages(settings.promptForMissingImages);
-    }, [settings.delayDays, settings.enabled, settings.promptForMissingImages]);
+        setShowStarRatings(settings.showStarRatings);
+    }, [
+        settings.delayDays,
+        settings.enabled,
+        settings.promptForMissingImages,
+        settings.showStarRatings
+    ]);
 
     useEffect(() => {
         const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
@@ -855,7 +865,8 @@ function QueuePanel({
         await onSave({
             enabled,
             delayDays,
-            promptForMissingImages
+            promptForMissingImages,
+            showStarRatings
         });
     }
 
@@ -863,41 +874,63 @@ function QueuePanel({
         <section className="stack panel queue-panel">
             <div className="toolbar queue-toolbar">
                 <strong>Queue</strong>
-                <span className="metric">{readyEntries.length} ready</span>
+                <div className="queue-summary">
+                    <span className="metric">{queuedEntries.length} queued</span>
+                    <span className="metric">{readyEntries.length} ready</span>
+                    <button
+                        aria-expanded={settingsOpen}
+                        className="queue-settings-toggle"
+                        type="button"
+                        onClick={() => setSettingsOpen((isOpen) => !isOpen)}
+                    >
+                        Settings
+                    </button>
+                </div>
             </div>
 
-            <form className="stack" onSubmit={handleSubmit}>
-                <label className="checkbox-row">
-                    <input
-                        checked={enabled}
-                        disabled={busy}
-                        type="checkbox"
-                        onChange={(event) => setEnabled(event.target.checked)}
-                    />
-                    <span>Queue new entries</span>
-                </label>
-                <label className="checkbox-row">
-                    <input
-                        checked={promptForMissingImages}
-                        disabled={busy}
-                        type="checkbox"
-                        onChange={(event) => setPromptForMissingImages(event.target.checked)}
-                    />
-                    <span>Prompt for missing images</span>
-                </label>
-                <label className="stack compact-stack">
-                    <span className="muted">Delay days</span>
-                    <input
-                        disabled={busy}
-                        min={0}
-                        max={365}
-                        type="number"
-                        value={delayDays}
-                        onChange={(event) => setDelayDays(Number(event.target.value))}
-                    />
-                </label>
-                <button disabled={busy} type="submit">Save Settings</button>
-            </form>
+            {settingsOpen ? (
+                <form className="stack queue-settings-form" onSubmit={handleSubmit}>
+                    <label className="checkbox-row">
+                        <input
+                            checked={enabled}
+                            disabled={busy}
+                            type="checkbox"
+                            onChange={(event) => setEnabled(event.target.checked)}
+                        />
+                        <span>Queue new entries</span>
+                    </label>
+                    <label className="checkbox-row">
+                        <input
+                            checked={promptForMissingImages}
+                            disabled={busy}
+                            type="checkbox"
+                            onChange={(event) => setPromptForMissingImages(event.target.checked)}
+                        />
+                        <span>Prompt for missing images</span>
+                    </label>
+                    <label className="checkbox-row">
+                        <input
+                            checked={showStarRatings}
+                            disabled={busy}
+                            type="checkbox"
+                            onChange={(event) => setShowStarRatings(event.target.checked)}
+                        />
+                        <span>Show star ratings</span>
+                    </label>
+                    <label className="stack compact-stack">
+                        <span className="muted">Delay days</span>
+                        <input
+                            disabled={busy}
+                            min={0}
+                            max={365}
+                            type="number"
+                            value={delayDays}
+                            onChange={(event) => setDelayDays(Number(event.target.value))}
+                        />
+                    </label>
+                    <button disabled={busy} type="submit">Save Settings</button>
+                </form>
+            ) : null}
 
             {queuedEntries.length > 0 ? (
                 <div className="queue-list">
@@ -1297,7 +1330,7 @@ function EntryCard({
     entry: Entry;
     categories: CategoryWithEntries[];
     selectedCategoryId: string;
-    starRating: number;
+    starRating: number | null;
     onDelete: () => void;
     onPickImage: () => void;
     onRename: (name: string) => void;
@@ -1325,9 +1358,11 @@ function EntryCard({
                     <span className="metric">Ordered List {entry.rankPosition + 1}</span>
                     <span className="metric">Elo {Math.round(entry.freeRankElo)}</span>
                     <span className="metric">{entry.freeRankWins}-{entry.freeRankLosses}</span>
-                    <span className="metric" aria-label={`Star rating ${starRating.toFixed(1)} out of 5`}>
-                        <span aria-hidden="true" className="star-symbol">★</span> {starRating.toFixed(1)}/5
-                    </span>
+                    {starRating !== null ? (
+                        <span className="metric" aria-label={`Star rating ${starRating.toFixed(1)} out of 5`}>
+                            <span aria-hidden="true" className="star-symbol">★</span> {starRating.toFixed(1)}/5
+                        </span>
+                    ) : null}
                     {entry.firstConsumedAt ? (
                         <span className="metric">{formatDate(entry.firstConsumedAt)}</span>
                     ) : null}

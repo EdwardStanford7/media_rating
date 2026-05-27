@@ -51,6 +51,7 @@ interface QueueSettingsRow {
     enabled: number;
     delay_days: number;
     prompt_missing_images: number;
+    show_star_ratings: number;
 }
 
 interface QueuedEntryRow {
@@ -297,7 +298,12 @@ export async function createQueuedEntry(
 
 export async function updateQueueSettings(
     userId: string,
-    input: { enabled: boolean; delayDays: number; promptForMissingImages: boolean }
+    input: {
+        enabled: boolean;
+        delayDays: number;
+        promptForMissingImages: boolean;
+        showStarRatings: boolean;
+    }
 ) {
     const delayDays = normalizeQueueDelayDays(input.delayDays);
     const updatedAt = now();
@@ -305,13 +311,14 @@ export async function updateQueueSettings(
     await getDb()
         .prepare(
             `INSERT INTO queue_settings (
-         user_id, enabled, delay_days, prompt_missing_images, created_at, updated_at
+         user_id, enabled, delay_days, prompt_missing_images, show_star_ratings, created_at, updated_at
        )
-       VALUES (?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          enabled = excluded.enabled,
          delay_days = excluded.delay_days,
          prompt_missing_images = excluded.prompt_missing_images,
+         show_star_ratings = excluded.show_star_ratings,
          updated_at = excluded.updated_at`
         )
         .bind(
@@ -319,6 +326,7 @@ export async function updateQueueSettings(
             input.enabled ? 1 : 0,
             delayDays,
             input.promptForMissingImages ? 1 : 0,
+            input.showStarRatings ? 1 : 0,
             updatedAt,
             updatedAt
         )
@@ -978,7 +986,7 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
     const row = await first<QueueSettingsRow>(
         getDb()
             .prepare(
-                `SELECT enabled, delay_days, prompt_missing_images
+                `SELECT enabled, delay_days, prompt_missing_images, show_star_ratings
          FROM queue_settings
          WHERE user_id = ?`
             )
@@ -988,7 +996,8 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
     return {
         enabled: row?.enabled === 1,
         delayDays: normalizeQueueDelayDays(row?.delay_days ?? DEFAULT_QUEUE_DELAY_DAYS),
-        promptForMissingImages: row?.prompt_missing_images !== 0
+        promptForMissingImages: row?.prompt_missing_images !== 0,
+        showStarRatings: row?.show_star_ratings !== 0
     };
 }
 

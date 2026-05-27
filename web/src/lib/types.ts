@@ -19,6 +19,7 @@ export interface QueueSettings {
     enabled: boolean;
     delayDays: number;
     promptForMissingImages: boolean;
+    showStarRatings: boolean;
 }
 
 export interface QueuedEntry {

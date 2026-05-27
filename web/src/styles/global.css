@@ -194,6 +194,23 @@ select {
     margin-bottom: 0;
 }
 
+.queue-summary {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
+.queue-settings-toggle {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.78rem;
+}
+
+.queue-settings-form {
+    border-top: 1px solid var(--line);
+    padding-top: 0.85rem;
+}
+
 .queue-panel {
     min-height: 0;
 }

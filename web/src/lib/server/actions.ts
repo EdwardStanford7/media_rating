@@ -67,6 +67,7 @@ export const updateQueueSettings = createServerFn({ method: "POST" })
         enabled: boolean;
         delayDays: number;
         promptForMissingImages: boolean;
+        showStarRatings: boolean;
     }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
