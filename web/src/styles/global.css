@@ -286,6 +286,12 @@ select {
     min-height: 0;
 }
 
+.queue-rank-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+
 .compact-stack {
     gap: 0.35rem;
 }

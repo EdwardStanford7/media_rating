@@ -449,12 +449,15 @@ export async function markImageUnavailable(
     return { imageKey: NO_IMAGE_KEY };
 }
 
-export async function startQueuedEntryRanking(userId: string, queuedEntryId: string) {
-    const queuedEntry = await getOwnedQueuedEntry(userId, queuedEntryId);
+export async function startQueuedEntryRanking(
+    userId: string,
+    input: { queuedEntryId: string; overrideDelay?: boolean }
+) {
+    const queuedEntry = await getOwnedQueuedEntry(userId, input.queuedEntryId);
     assertOwned(queuedEntry, "Queued entry");
 
     const currentTime = now();
-    if (queuedEntry.availableAt > currentTime) {
+    if (queuedEntry.availableAt > currentTime && !input.overrideDelay) {
         throw new Error("This queued entry is not ready to rank yet");
     }
 

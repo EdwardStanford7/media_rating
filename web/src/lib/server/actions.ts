@@ -92,11 +92,11 @@ export const markImageUnavailable = createServerFn({ method: "POST" })
     });
 
 export const startQueuedEntryRanking = createServerFn({ method: "POST" })
-    .inputValidator((data: { queuedEntryId: string }) => data)
+    .inputValidator((data: { queuedEntryId: string; overrideDelay?: boolean }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
-        return repo.startQueuedEntryRanking(user.id, data.queuedEntryId);
+        return repo.startQueuedEntryRanking(user.id, data);
     });
 
 export const deleteQueuedEntry = createServerFn({ method: "POST" })

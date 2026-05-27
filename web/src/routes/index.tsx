@@ -352,6 +352,8 @@ function Dashboard({
     const [displayMode, setDisplayMode] = useState<DisplayMode>("ordered list");
     const [entrySearch, setEntrySearch] = useState("");
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [queueRankMode, setQueueRankMode] = useState(false);
+    const queueRankModeRef = useRef(false);
     const [busy, setBusy] = useState(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
@@ -391,6 +393,12 @@ function Dashboard({
         const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
         setDashboard(nextDashboard);
         await router.invalidate();
+        return nextDashboard;
+    }
+
+    function setQueueRankingActive(isActive: boolean) {
+        queueRankModeRef.current = isActive;
+        setQueueRankMode(isActive);
     }
 
     function startBusy(label: string) {
@@ -550,24 +558,82 @@ function Dashboard({
         }
     }
 
-    async function handleStartQueuedEntry(entry: QueuedEntry) {
+    function getNextReadyQueuedEntry(queuedEntries: QueuedEntry[]) {
+        const currentTime = Date.now();
+        return queuedEntries
+            .filter((entry) => entry.availableAt <= currentTime)
+            .sort((left, right) => left.availableAt - right.availableAt || left.createdAt - right.createdAt)[0] ?? null;
+    }
+
+    async function beginQueuedEntryRanking(entry: QueuedEntry, overrideDelay: boolean) {
+        const result = await startQueuedEntryRanking({
+            data: {
+                queuedEntryId: entry.id,
+                overrideDelay
+            }
+        });
+
+        setSelectedCategoryId(entry.categoryId);
+        if (result.kind === "session") {
+            setActiveSessionId(result.sessionId);
+        } else {
+            setMessage(`${entry.name} was added as the first ranked entry in ${entry.categoryName}.`);
+        }
+
+        const nextDashboard = await refresh();
+        return { result, nextDashboard };
+    }
+
+    async function startNextQueuedRank(queuedEntries: QueuedEntry[]) {
+        if (!queueRankModeRef.current) {
+            return;
+        }
+
+        const nextEntry = getNextReadyQueuedEntry(queuedEntries);
+        if (!nextEntry) {
+            setQueueRankingActive(false);
+            setMessage("No ready queued entries remain.");
+            return;
+        }
+
         startBusy("Starting queued rank...");
         setMessage(null);
 
         try {
-            const result = await startQueuedEntryRanking({ data: { queuedEntryId: entry.id } });
-            setSelectedCategoryId(entry.categoryId);
-            if (result.kind === "session") {
-                setActiveSessionId(result.sessionId);
-            } else {
-                setMessage(`${entry.name} was added as the first ranked entry in ${entry.categoryName}.`);
+            const { result, nextDashboard } = await beginQueuedEntryRanking(nextEntry, false);
+            if (result.kind !== "session" && queueRankModeRef.current) {
+                await startNextQueuedRank(nextDashboard.queuedEntries);
             }
-            await refresh();
+        } catch (error) {
+            setQueueRankingActive(false);
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
+    async function handleStartQueuedEntry(entry: QueuedEntry) {
+        setQueueRankingActive(false);
+        startBusy("Starting queued rank...");
+        setMessage(null);
+
+        try {
+            await beginQueuedEntryRanking(entry, true);
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
             finishBusy();
         }
+    }
+
+    async function handleStartQueueRank() {
+        setQueueRankingActive(true);
+        await startNextQueuedRank(dashboard.queuedEntries);
+    }
+
+    function handleStopQueueRank() {
+        setQueueRankingActive(false);
+        setMessage(activeSessionId ? "Queue ranking will stop after the current item." : "Queue ranking stopped.");
     }
 
     async function handleDeleteQueuedEntry(entry: QueuedEntry) {
@@ -757,7 +823,9 @@ function Dashboard({
                         item: entry,
                         category
                     })}
-                    onRanked={refresh}
+                    onRanked={async () => {
+                        await refresh();
+                    }}
                 />
             ) : (
                 <>
@@ -801,7 +869,9 @@ function Dashboard({
                         </div>
 
                         <QueuePanel
+                            activeSessionId={activeSessionId}
                             busy={busy}
+                            queueRankMode={queueRankMode}
                             queuedEntries={dashboard.queuedEntries}
                             onDelete={handleDeleteQueuedEntry}
                             onPickImage={(entry) => setImagePickerTarget({
@@ -812,7 +882,9 @@ function Dashboard({
                                     name: entry.categoryName
                                 }
                             })}
+                            onStartQueue={handleStartQueueRank}
                             onStart={handleStartQueuedEntry}
+                            onStopQueue={handleStopQueueRank}
                         />
 
                         <form className="stack panel" onSubmit={handleImport}>
@@ -871,7 +943,10 @@ function Dashboard({
                                 sessionId={activeSessionId}
                                 onComplete={async () => {
                                     setActiveSessionId(null);
-                                    await refresh();
+                                    const nextDashboard = await refresh();
+                                    if (queueRankModeRef.current) {
+                                        await startNextQueuedRank(nextDashboard.queuedEntries);
+                                    }
                                 }}
                                 onNeedImage={requestImageForMatch}
                             />
@@ -1230,17 +1305,25 @@ function UserSettingsMenu({
 }
 
 function QueuePanel({
+    activeSessionId,
     busy,
+    queueRankMode,
     queuedEntries,
     onDelete,
     onPickImage,
-    onStart
+    onStart,
+    onStartQueue,
+    onStopQueue
 }: {
+    activeSessionId: string | null;
     busy: boolean;
+    queueRankMode: boolean;
     queuedEntries: QueuedEntry[];
     onDelete: (entry: QueuedEntry) => Promise<void>;
     onPickImage: (entry: QueuedEntry) => void;
     onStart: (entry: QueuedEntry) => Promise<void>;
+    onStartQueue: () => Promise<void>;
+    onStopQueue: () => void;
 }) {
     const [currentTime, setCurrentTime] = useState(Date.now());
 
@@ -1261,11 +1344,25 @@ function QueuePanel({
                     <span className="metric">{readyEntries.length} ready</span>
                 </div>
             </div>
+            <div className="queue-rank-actions">
+                <button
+                    className="primary"
+                    disabled={busy || Boolean(activeSessionId) || readyEntries.length === 0 || queueRankMode}
+                    type="button"
+                    onClick={() => void onStartQueue()}
+                >
+                    Rank Queue
+                </button>
+                <button disabled={!queueRankMode} type="button" onClick={onStopQueue}>
+                    Stop Queue
+                </button>
+            </div>
 
             {queuedEntries.length > 0 ? (
                 <div className="queue-list">
                     {readyEntries.map((entry) => (
                         <QueuedEntryRow
+                            disabled={busy || Boolean(activeSessionId)}
                             entry={entry}
                             isReady
                             key={entry.id}
@@ -1276,6 +1373,7 @@ function QueuePanel({
                     ))}
                     {pendingEntries.map((entry) => (
                         <QueuedEntryRow
+                            disabled={busy || Boolean(activeSessionId)}
                             entry={entry}
                             isReady={false}
                             key={entry.id}
@@ -1293,12 +1391,14 @@ function QueuePanel({
 }
 
 function QueuedEntryRow({
+    disabled,
     entry,
     isReady,
     onDelete,
     onPickImage,
     onStart
 }: {
+    disabled: boolean;
     entry: QueuedEntry;
     isReady: boolean;
     onDelete: (entry: QueuedEntry) => Promise<void>;
@@ -1316,13 +1416,16 @@ function QueuedEntryRow({
                 <div className="queue-actions">
                     <button
                         className="queue-image-button"
+                        disabled={disabled}
                         type="button"
                         onClick={() => onPickImage(entry)}
                     >
                         {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
-                    <button disabled={!isReady} type="button" onClick={() => void onStart(entry)}>Rank</button>
-                    <button className="danger" type="button" onClick={() => void onDelete(entry)}>Remove</button>
+                    <button disabled={disabled} type="button" onClick={() => void onStart(entry)}>
+                        {isReady ? "Rank" : "Rank Now"}
+                    </button>
+                    <button className="danger" disabled={disabled} type="button" onClick={() => void onDelete(entry)}>Remove</button>
                 </div>
             </div>
         </div>
