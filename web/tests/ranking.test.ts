@@ -83,6 +83,32 @@ describe("free-rank matchup selection", () => {
         const categories = [category("Books", [entry("a", 0)])];
         expect(selectFreeRankMatchup(categories, categories[0].id, () => 0)).toBeNull();
     });
+
+    it("weights Any category selection by possible matchup count", () => {
+        const categories = [
+            category("Small", [entry("a", 0), entry("b", 1)]),
+            category("Large", [entry("c", 0), entry("d", 1), entry("e", 2), entry("f", 3)])
+        ];
+        const random = sequenceRandom([0.2, 0, 0]);
+
+        const matchup = selectFreeRankMatchup(categories, "any", random);
+        expect(matchup?.categoryName).toBe("Large");
+    });
+
+    it("prefers entries with fewer free-rank matches inside the selected category", () => {
+        const categories = [
+            category("Books", [
+                entry("new", 0, 1500, 0, 0),
+                entry("veteran", 1, 1500, 99, 0),
+                entry("middle", 2, 1500, 8, 0)
+            ])
+        ];
+        const random = sequenceRandom([0, 0.4, 0]);
+
+        const matchup = selectFreeRankMatchup(categories, "any", random);
+        expect(matchup?.entryA.id).toBe("new");
+        expect(matchup?.entryB.id).toBe("veteran");
+    });
 });
 
 describe("combined order", () => {
@@ -145,4 +171,9 @@ function entry(
         freeRankWins,
         freeRankLosses
     };
+}
+
+function sequenceRandom(values: number[]) {
+    let index = 0;
+    return () => values[Math.min(index++, values.length - 1)];
 }

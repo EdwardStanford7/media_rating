@@ -235,8 +235,8 @@ function erf(value: number) {
         1 -
         (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t +
             0.254829592) *
-            t *
-            Math.exp(-x * x);
+        t *
+        Math.exp(-x * x);
 
     return sign * y;
 }
@@ -256,19 +256,56 @@ export function selectFreeRankMatchup(
         return null;
     }
 
-    const category =
-        eligibleCategories[Math.floor(random() * eligibleCategories.length)];
-    const firstIndex = Math.floor(random() * category.entries.length);
-    let secondIndex = Math.floor(random() * (category.entries.length - 1));
-
-    if (secondIndex >= firstIndex) {
-        secondIndex += 1;
-    }
+    const category = weightedChoice(
+        eligibleCategories,
+        (candidate) => possiblePairCount(candidate.entries.length),
+        random
+    );
+    const entryA = weightedChoice(category.entries, freeRankEntryWeight, random);
+    const entryB = weightedChoice(
+        category.entries.filter((entry) => entry.id !== entryA.id),
+        freeRankEntryWeight,
+        random
+    );
 
     return {
         categoryId: category.id,
         categoryName: category.name,
-        entryA: category.entries[firstIndex],
-        entryB: category.entries[secondIndex]
+        entryA,
+        entryB
     };
+}
+
+function possiblePairCount(entryCount: number) {
+    return entryCount * (entryCount - 1) / 2;
+}
+
+function freeRankEntryWeight(entry: Pick<Entry, "freeRankWins" | "freeRankLosses">) {
+    return 1 / Math.sqrt(1 + matchCount(entry));
+}
+
+function weightedChoice<T>(
+    items: T[],
+    weightFor: (item: T) => number,
+    random: () => number
+) {
+    const weightedItems = items.map((item) => ({
+        item,
+        weight: Math.max(0, weightFor(item))
+    }));
+    const totalWeight = weightedItems.reduce((total, weightedItem) => total + weightedItem.weight, 0);
+
+    if (totalWeight <= 0) {
+        return items[Math.floor(random() * items.length)];
+    }
+
+    let target = random() * totalWeight;
+    for (const weightedItem of weightedItems) {
+        if (target < weightedItem.weight) {
+            return weightedItem.item;
+        }
+        target -= weightedItem.weight;
+    }
+
+    return weightedItems[weightedItems.length - 1].item;
 }
