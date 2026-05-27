@@ -622,13 +622,6 @@ function Dashboard({
                             ))}
                         </div>
 
-                        <form className="stack panel" onSubmit={handleImport}>
-                            <strong>Import xlsx</strong>
-                            <input disabled={busy} name="firstConsumedAt" type="date" />
-                            <input disabled={busy} name="workbook" type="file" accept=".xlsx" />
-                            <button disabled={busy} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
-                        </form>
-
                         <QueuePanel
                             busy={busy}
                             queuedEntries={dashboard.queuedEntries}
@@ -643,6 +636,13 @@ function Dashboard({
                             })}
                             onStart={handleStartQueuedEntry}
                         />
+
+                        <form className="stack panel" onSubmit={handleImport}>
+                            <strong>Import xlsx</strong>
+                            <input disabled={busy} name="firstConsumedAt" type="date" />
+                            <input disabled={busy} name="workbook" type="file" accept=".xlsx" />
+                            <button disabled={busy} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
+                        </form>
                     </aside>
 
                     <section className="main stack">

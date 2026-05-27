@@ -84,9 +84,16 @@ select {
 .sidebar {
     min-height: 0;
     overflow-y: auto;
+    display: grid;
+    align-content: start;
+    gap: 1.15rem;
     border-right: 1px solid var(--line);
     background: #f0ece3;
     padding: 1rem;
+}
+
+.sidebar>.topbar {
+    margin-bottom: 0;
 }
 
 .main {
@@ -153,7 +160,7 @@ select {
 .category-list {
     display: grid;
     gap: 0.45rem;
-    margin: 1rem 0;
+    margin: 0;
 }
 
 .category-row {
@@ -196,7 +203,6 @@ select {
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    margin-bottom: 1rem;
 }
 
 .user-name {
