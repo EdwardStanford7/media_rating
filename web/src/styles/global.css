@@ -386,6 +386,10 @@ img.match-poster {
     white-space: nowrap;
 }
 
+.star-symbol {
+    color: var(--gold);
+}
+
 .match-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

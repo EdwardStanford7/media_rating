@@ -175,6 +175,72 @@ export function combinedOrder(entries: Entry[]): Entry[] {
         .map(({ entry }) => entry);
 }
 
+export function starRatingForCombinedRank(rankIndex: number, totalEntries: number) {
+    if (totalEntries <= 1 || rankIndex <= 0) {
+        return 5;
+    }
+
+    if (rankIndex >= totalEntries - 1) {
+        return 1;
+    }
+
+    const edgeProbability = 0.5 / totalEntries;
+    const upperProbability = 1 - edgeProbability;
+    const percentile = Math.max(
+        edgeProbability,
+        Math.min(upperProbability, 1 - rankIndex / (totalEntries - 1))
+    );
+    const edgeZ = inverseNormalCdf(upperProbability);
+    const zScore = inverseNormalCdf(percentile);
+    const stars = 3 + (zScore / edgeZ) * 2;
+
+    return Math.round(Math.max(1, Math.min(5, stars)) * 10) / 10;
+}
+
+export function starRatingsByEntryId(entries: Entry[]) {
+    const combinedEntries = combinedOrder(entries);
+    return new Map(
+        combinedEntries.map((entry, index) => [
+            entry.id,
+            starRatingForCombinedRank(index, combinedEntries.length)
+        ])
+    );
+}
+
+function inverseNormalCdf(probability: number) {
+    let lower = -8;
+    let upper = 8;
+
+    for (let index = 0; index < 60; index += 1) {
+        const midpoint = (lower + upper) / 2;
+        if (normalCdf(midpoint) < probability) {
+            lower = midpoint;
+        } else {
+            upper = midpoint;
+        }
+    }
+
+    return (lower + upper) / 2;
+}
+
+function normalCdf(value: number) {
+    return 0.5 * (1 + erf(value / Math.SQRT2));
+}
+
+function erf(value: number) {
+    const sign = value < 0 ? -1 : 1;
+    const x = Math.abs(value);
+    const t = 1 / (1 + 0.3275911 * x);
+    const y =
+        1 -
+        (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t +
+            0.254829592) *
+            t *
+            Math.exp(-x * x);
+
+    return sign * y;
+}
+
 export function selectFreeRankMatchup(
     categories: CategoryWithEntries[],
     categorySelection: string | "any",

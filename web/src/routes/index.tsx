@@ -25,7 +25,7 @@ import {
 } from "@/lib/server/actions";
 import { signIn, signOut } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
-import { orderEntries } from "@/lib/ranking";
+import { orderEntries, starRatingsByEntryId } from "@/lib/ranking";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type {
     BinarySessionView,
@@ -253,6 +253,13 @@ function Dashboard({
 
         return orderEntries(entries, displayMode);
     }, [displayMode, entrySearch, selectedCategory]);
+    const starRatings = useMemo(() => {
+        if (!selectedCategory) {
+            return new Map<string, number>();
+        }
+
+        return starRatingsByEntryId(selectedCategory.entries);
+    }, [selectedCategory]);
 
     async function refresh() {
         const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
@@ -643,10 +650,10 @@ function Dashboard({
                                 <select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as DisplayMode)}>
                                     <option value="ordered list">Ordered List</option>
                                     <option value="combined">Combined</option>
-                                    <option value="free_rank">Free Rank</option>
+                                    <option value="free_rank">Elo</option>
                                 </select>
                                 <button className="primary" type="button" onClick={() => setAppMode("free_rank")}>
-                                    Switch to Free Rank Mode
+                                    Switch to Elo Rank Mode
                                 </button>
                                 <button disabled={busy} type="button" onClick={handleExport}>Export</button>
                             </div>
@@ -694,6 +701,7 @@ function Dashboard({
                                     categories={dashboard.categories}
                                     key={entry.id}
                                     selectedCategoryId={selectedCategory.id}
+                                    starRating={starRatings.get(entry.id) ?? 5}
                                     onDelete={() => handleDelete(entry.id)}
                                     onPickImage={() => setImagePickerTarget({
                                         kind: "entry",
@@ -1279,6 +1287,7 @@ function EntryCard({
     entry,
     categories,
     selectedCategoryId,
+    starRating,
     onDelete,
     onPickImage,
     onRename,
@@ -1288,6 +1297,7 @@ function EntryCard({
     entry: Entry;
     categories: CategoryWithEntries[];
     selectedCategoryId: string;
+    starRating: number;
     onDelete: () => void;
     onPickImage: () => void;
     onRename: (name: string) => void;
@@ -1315,6 +1325,9 @@ function EntryCard({
                     <span className="metric">Ordered List {entry.rankPosition + 1}</span>
                     <span className="metric">Elo {Math.round(entry.freeRankElo)}</span>
                     <span className="metric">{entry.freeRankWins}-{entry.freeRankLosses}</span>
+                    <span className="metric" aria-label={`Star rating ${starRating.toFixed(1)} out of 5`}>
+                        <span aria-hidden="true" className="star-symbol">★</span> {starRating.toFixed(1)}/5
+                    </span>
                     {entry.firstConsumedAt ? (
                         <span className="metric">{formatDate(entry.firstConsumedAt)}</span>
                     ) : null}

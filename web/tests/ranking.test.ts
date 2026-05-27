@@ -5,6 +5,8 @@ import {
     recordBinaryChoice,
     selectFreeRankMatchup,
     startBinaryState,
+    starRatingForCombinedRank,
+    starRatingsByEntryId,
     updateEloPair
 } from "../src/lib/ranking";
 import type { CategoryWithEntries, Entry } from "../src/lib/types";
@@ -93,6 +95,24 @@ describe("combined order", () => {
         const movedEntryIndex = ordered.findIndex((candidate) => candidate.id === "19");
         expect(movedEntryIndex).toBeGreaterThanOrEqual(17);
         expect(movedEntryIndex).toBeLessThan(19);
+    });
+});
+
+describe("derived star ratings", () => {
+    it("maps combined rank to a one-decimal normal-distribution star score", () => {
+        expect(starRatingForCombinedRank(0, 287)).toBe(5);
+        expect(starRatingForCombinedRank(286, 287)).toBe(1);
+        expect(starRatingForCombinedRank(1, 287)).toBeGreaterThanOrEqual(4.8);
+        expect(starRatingForCombinedRank(143, 287)).toBeCloseTo(3, 1);
+    });
+
+    it("uses combined order rather than raw binary position", () => {
+        const entries = Array.from({ length: 20 }, (_, index) =>
+            entry(String(index), index, index === 19 ? 2100 : 1500, 10, 0)
+        );
+
+        const ratings = starRatingsByEntryId(entries);
+        expect(ratings.get("19")).toBeGreaterThan(starRatingForCombinedRank(19, 20));
     });
 });
 
