@@ -346,6 +346,7 @@ function Dashboard({
     userName: string;
 }) {
     const router = useRouter();
+    const initialActiveSessionId = initialDashboard.activeBinarySession?.id ?? null;
     const [dashboard, setDashboard] = useState(initialDashboard);
     const [selectedCategoryId, setSelectedCategoryId] = useState(
         initialDashboard.activeBinarySession?.categoryId ?? initialDashboard.categories[0]?.id ?? ""
@@ -353,9 +354,9 @@ function Dashboard({
     const [appMode, setAppMode] = useState<AppMode>("dashboard");
     const [displayMode, setDisplayMode] = useState<DisplayMode>("ordered list");
     const [entrySearch, setEntrySearch] = useState("");
-    const [activeSessionId, setActiveSessionId] = useState<string | null>(
-        initialDashboard.activeBinarySession?.id ?? null
-    );
+    const [activeSessionId, setActiveSessionIdState] = useState<string | null>(initialActiveSessionId);
+    const activeSessionIdRef = useRef<string | null>(initialActiveSessionId);
+    const closedBinarySessionIdsRef = useRef<Set<string>>(new Set());
     const [queueRankMode, setQueueRankMode] = useState(false);
     const queueRankModeRef = useRef(false);
     const [busy, setBusy] = useState(false);
@@ -393,12 +394,27 @@ function Dashboard({
         return starRatingsByEntryId(selectedCategory.entries);
     }, [dashboard.queueSettings.showStarRatings, selectedCategory]);
 
+    function setActiveBinarySessionId(sessionId: string | null) {
+        activeSessionIdRef.current = sessionId;
+        setActiveSessionIdState(sessionId);
+    }
+
+    function markBinarySessionClosed(sessionId: string | null) {
+        if (sessionId) {
+            closedBinarySessionIdsRef.current.add(sessionId);
+        }
+    }
+
     useEffect(() => {
-        if (!dashboard.activeBinarySession || activeSessionId) {
+        if (
+            !dashboard.activeBinarySession ||
+            activeSessionId ||
+            closedBinarySessionIdsRef.current.has(dashboard.activeBinarySession.id)
+        ) {
             return;
         }
 
-        setActiveSessionId(dashboard.activeBinarySession.id);
+        setActiveBinarySessionId(dashboard.activeBinarySession.id);
         setSelectedCategoryId(dashboard.activeBinarySession.categoryId);
     }, [activeSessionId, dashboard.activeBinarySession]);
 
@@ -546,7 +562,7 @@ function Dashboard({
             formElement.reset();
 
             if (result.kind === "session") {
-                setActiveSessionId(result.sessionId);
+                setActiveBinarySessionId(result.sessionId);
             }
 
             await refresh();
@@ -588,7 +604,7 @@ function Dashboard({
 
         setSelectedCategoryId(entry.categoryId);
         if (result.kind === "session") {
-            setActiveSessionId(result.sessionId);
+            setActiveBinarySessionId(result.sessionId);
         } else {
             setMessage(`${entry.name} was added as the first ranked entry in ${entry.categoryName}.`);
         }
@@ -684,7 +700,7 @@ function Dashboard({
         try {
             const result = await startRerankEntry({ data: { entryId } });
             if (result.kind === "session") {
-                setActiveSessionId(result.sessionId);
+                setActiveBinarySessionId(result.sessionId);
             }
             await refresh();
         } catch (error) {
@@ -743,7 +759,7 @@ function Dashboard({
         try {
             const result = await switchEntryCategory({ data: { entryId, targetCategoryId } });
             if (result.kind === "session") {
-                setActiveSessionId(result.sessionId);
+                setActiveBinarySessionId(result.sessionId);
             }
             setSelectedCategoryId(targetCategoryId);
             await refresh();
@@ -755,14 +771,19 @@ function Dashboard({
     }
 
     async function handleCancelBinarySession(session: BinarySessionView) {
-        startBusy("Cancelling add...");
+        startBusy(session.source === "rerank_entry" ? "Cancelling rerank..." : "Cancelling add...");
         setMessage(null);
         setQueueRankingActive(false);
 
         try {
             await cancelBinarySession({ data: { sessionId: session.id } });
-            setActiveSessionId(null);
-            setMessage(`Cancelled adding ${session.subject.name}.`);
+            markBinarySessionClosed(session.id);
+            setActiveBinarySessionId(null);
+            setMessage(
+                session.source === "rerank_entry"
+                    ? `Cancelled reranking ${session.subject.name}.`
+                    : `Cancelled adding ${session.subject.name}.`
+            );
             await refresh();
         } catch (error) {
             setMessage(errorMessage(error));
@@ -771,12 +792,23 @@ function Dashboard({
         }
     }
 
-    async function handleMissingBinarySession() {
-        setActiveSessionId(null);
+    async function handleMissingBinarySession(sessionId: string) {
+        if (
+            closedBinarySessionIdsRef.current.has(sessionId) ||
+            activeSessionIdRef.current !== sessionId
+        ) {
+            return;
+        }
+
+        markBinarySessionClosed(sessionId);
+        setActiveBinarySessionId(null);
         setQueueRankingActive(false);
         const nextDashboard = await refresh();
-        if (nextDashboard.activeBinarySession) {
-            setActiveSessionId(nextDashboard.activeBinarySession.id);
+        if (
+            nextDashboard.activeBinarySession &&
+            !closedBinarySessionIdsRef.current.has(nextDashboard.activeBinarySession.id)
+        ) {
+            setActiveBinarySessionId(nextDashboard.activeBinarySession.id);
             setSelectedCategoryId(nextDashboard.activeBinarySession.categoryId);
             return;
         }
@@ -918,6 +950,7 @@ function Dashboard({
                                     isActive={category.id === selectedCategory?.id}
                                     key={category.id}
                                     busy={busy}
+                                    listLocked={Boolean(activeSessionId)}
                                     onDelete={() => setCategoryDeleteTarget(category)}
                                     onRename={(name) => handleRenameCategory(category.id, name)}
                                     onSelect={() => setSelectedCategoryId(category.id)}
@@ -947,9 +980,9 @@ function Dashboard({
 
                         <form className="stack panel" onSubmit={handleImport}>
                             <strong>Import xlsx</strong>
-                            <input disabled={busy} name="firstConsumedAt" type="date" />
-                            <input disabled={busy} name="workbook" type="file" accept=".xlsx" />
-                            <button disabled={busy} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
+                            <input disabled={busy || Boolean(activeSessionId)} name="firstConsumedAt" type="date" />
+                            <input disabled={busy || Boolean(activeSessionId)} name="workbook" type="file" accept=".xlsx" />
+                            <button disabled={busy || Boolean(activeSessionId)} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
                         </form>
                     </aside>
 
@@ -1000,8 +1033,11 @@ function Dashboard({
                                 imageRefreshVersion={imageRefreshVersion}
                                 sessionId={activeSessionId}
                                 onCancel={handleCancelBinarySession}
-                                onComplete={async () => {
-                                    setActiveSessionId(null);
+                                onComplete={async (sessionId) => {
+                                    markBinarySessionClosed(sessionId);
+                                    if (activeSessionIdRef.current === sessionId) {
+                                        setActiveBinarySessionId(null);
+                                    }
                                     const nextDashboard = await refresh();
                                     if (queueRankModeRef.current) {
                                         await startNextQueuedRank(nextDashboard.queuedEntries);
@@ -1020,6 +1056,7 @@ function Dashboard({
                                     key={entry.id}
                                     canMoveDown={entry.rankPosition < selectedCategory.entries.length - 1}
                                     canMoveUp={entry.rankPosition > 0}
+                                    listLocked={Boolean(activeSessionId)}
                                     selectedCategoryId={selectedCategory.id}
                                     starRating={dashboard.queueSettings.showStarRatings
                                         ? starRatings.get(entry.id) ?? 5
@@ -1149,6 +1186,7 @@ function CategoryListItem({
     category,
     isActive,
     busy,
+    listLocked,
     onDelete,
     onRename,
     onSelect
@@ -1156,6 +1194,7 @@ function CategoryListItem({
     category: CategoryWithEntries;
     isActive: boolean;
     busy: boolean;
+    listLocked: boolean;
     onDelete: () => void;
     onRename: (name: string) => Promise<void>;
     onSelect: () => void;
@@ -1238,6 +1277,7 @@ function CategoryListItem({
                         </button>
                         <button
                             className="danger menu-danger"
+                            disabled={busy || listLocked}
                             type="button"
                             onClick={() => {
                                 setMenuOpen(false);
@@ -1903,6 +1943,7 @@ function EntryCard({
     categories,
     canMoveDown,
     canMoveUp,
+    listLocked,
     selectedCategoryId,
     starRating,
     onDelete,
@@ -1917,6 +1958,7 @@ function EntryCard({
     categories: CategoryWithEntries[];
     canMoveDown: boolean;
     canMoveUp: boolean;
+    listLocked: boolean;
     selectedCategoryId: string;
     starRating: number | null;
     onDelete: () => void;
@@ -1991,12 +2033,12 @@ function EntryCard({
                     ) : null}
                 </div>
                 <div className="entry-actions card-actions">
-                    <button type="button" onClick={onRerank}>Rerank</button>
+                    <button disabled={listLocked} type="button" onClick={onRerank}>Rerank</button>
                     <div className="rank-step-group">
                         <button
                             aria-label={`Move ${entry.name} up one spot`}
                             className="rank-step-button"
-                            disabled={!canMoveUp}
+                            disabled={listLocked || !canMoveUp}
                             type="button"
                             onClick={onMoveUp}
                         >
@@ -2005,7 +2047,7 @@ function EntryCard({
                         <button
                             aria-label={`Move ${entry.name} down one spot`}
                             className="rank-step-button"
-                            disabled={!canMoveDown}
+                            disabled={listLocked || !canMoveDown}
                             type="button"
                             onClick={onMoveDown}
                         >
@@ -2028,6 +2070,7 @@ function EntryCard({
                         {menuOpen ? (
                             <div className="entry-overflow-panel">
                                 <button
+                                    disabled={listLocked}
                                     type="button"
                                     onClick={() => {
                                         setMoveControlsOpen(false);
@@ -2048,6 +2091,7 @@ function EntryCard({
                                 </button>
                                 <button
                                     className="danger menu-danger"
+                                    disabled={listLocked}
                                     type="button"
                                     onClick={() => {
                                         setMenuOpen(false);
@@ -2083,7 +2127,7 @@ function EntryCard({
                                     Cancel
                                 </button>
                                 <button
-                                    disabled={targetCategoryId === selectedCategoryId}
+                                    disabled={listLocked || targetCategoryId === selectedCategoryId}
                                     type="button"
                                     onClick={() => onSwitch(targetCategoryId)}
                                 >
@@ -2137,8 +2181,8 @@ function BinaryRankPanel({
     sessionId: string;
     imageRefreshVersion: number;
     onCancel: (session: BinarySessionView) => Promise<void>;
-    onComplete: () => Promise<void>;
-    onUnavailable: () => Promise<void>;
+    onComplete: (sessionId: string) => Promise<void>;
+    onUnavailable: (sessionId: string) => Promise<void>;
     onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
 }) {
     const [session, setSession] = useState<BinarySessionView | null>(null);
@@ -2156,7 +2200,7 @@ function BinaryRankPanel({
                 }
 
                 if (!nextSession) {
-                    void onUnavailable();
+                    void onUnavailable(sessionId);
                     return;
                 }
 
@@ -2198,13 +2242,13 @@ function BinaryRankPanel({
         try {
             const result = await submitBinaryWinner({ data: { sessionId, winnerId } });
             if (result.kind === "completed") {
-                await onComplete();
+                await onComplete(sessionId);
                 return;
             }
 
             const nextSession = await getBinarySession({ data: { sessionId } });
             if (!nextSession) {
-                await onUnavailable();
+                await onUnavailable(sessionId);
                 return;
             }
 
@@ -2216,7 +2260,7 @@ function BinaryRankPanel({
         }
     }
 
-    async function cancelAdd() {
+    async function cancelRanking() {
         if (!session) {
             return;
         }
@@ -2249,14 +2293,14 @@ function BinaryRankPanel({
                         Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} matches
                     </p>
                 </div>
-                {session.source === "new_entry" ? (
+                {session.source === "new_entry" || session.source === "rerank_entry" ? (
                     <button
                         className="small-button"
                         disabled={submitting}
                         type="button"
-                        onClick={() => void cancelAdd()}
+                        onClick={() => void cancelRanking()}
                     >
-                        Cancel Add
+                        {session.source === "rerank_entry" ? "Cancel Rerank" : "Cancel Add"}
                     </button>
                 ) : null}
             </div>
