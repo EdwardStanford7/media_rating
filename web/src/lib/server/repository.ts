@@ -502,6 +502,28 @@ export async function deleteQueuedEntry(userId: string, queuedEntryId: string) {
     }
 }
 
+export async function renameQueuedEntry(userId: string, queuedEntryId: string, name: string) {
+    const queuedEntry = await getOwnedQueuedEntry(userId, queuedEntryId);
+    assertOwned(queuedEntry, "Queued entry");
+
+    const cleanName = name.trim();
+    if (!cleanName) {
+        throw new Error("Entry name is required");
+    }
+
+    await assertEntryNameAvailable(userId, queuedEntry.categoryId, cleanName, queuedEntry.id);
+
+    const updatedAt = now();
+    await getDb()
+        .prepare(
+            `UPDATE entry_queue
+       SET name = ?, updated_at = ?
+       WHERE user_id = ? AND id = ? AND status = 'queued'`
+        )
+        .bind(cleanName, updatedAt, userId, queuedEntryId)
+        .run();
+}
+
 export async function startRerankEntry(userId: string, entryId: string) {
     const db = getDb();
     const entry = await getOwnedEntry(userId, entryId);

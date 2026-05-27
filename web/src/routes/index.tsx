@@ -18,6 +18,7 @@ import {
     moveEntryOnePosition,
     renameCategory,
     renameEntry,
+    renameQueuedEntry,
     startRerankEntry,
     startQueuedEntryRanking,
     submitBinaryWinner,
@@ -650,6 +651,20 @@ function Dashboard({
         }
     }
 
+    async function handleRenameQueuedEntry(entry: QueuedEntry, name: string) {
+        startBusy("Renaming queued entry...");
+        setMessage(null);
+
+        try {
+            await renameQueuedEntry({ data: { queuedEntryId: entry.id, name } });
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
     async function handleRerank(entryId: string) {
         startBusy("Preparing rerank...");
         setMessage(null);
@@ -883,6 +898,7 @@ function Dashboard({
                                 }
                             })}
                             onStartQueue={handleStartQueueRank}
+                            onRename={handleRenameQueuedEntry}
                             onStart={handleStartQueuedEntry}
                             onStopQueue={handleStopQueueRank}
                         />
@@ -1311,6 +1327,7 @@ function QueuePanel({
     queuedEntries,
     onDelete,
     onPickImage,
+    onRename,
     onStart,
     onStartQueue,
     onStopQueue
@@ -1321,6 +1338,7 @@ function QueuePanel({
     queuedEntries: QueuedEntry[];
     onDelete: (entry: QueuedEntry) => Promise<void>;
     onPickImage: (entry: QueuedEntry) => void;
+    onRename: (entry: QueuedEntry, name: string) => Promise<void>;
     onStart: (entry: QueuedEntry) => Promise<void>;
     onStartQueue: () => Promise<void>;
     onStopQueue: () => void;
@@ -1368,6 +1386,7 @@ function QueuePanel({
                             key={entry.id}
                             onDelete={onDelete}
                             onPickImage={onPickImage}
+                            onRename={onRename}
                             onStart={onStart}
                         />
                     ))}
@@ -1379,6 +1398,7 @@ function QueuePanel({
                             key={entry.id}
                             onDelete={onDelete}
                             onPickImage={onPickImage}
+                            onRename={onRename}
                             onStart={onStart}
                         />
                     ))}
@@ -1396,6 +1416,7 @@ function QueuedEntryRow({
     isReady,
     onDelete,
     onPickImage,
+    onRename,
     onStart
 }: {
     disabled: boolean;
@@ -1403,17 +1424,62 @@ function QueuedEntryRow({
     isReady: boolean;
     onDelete: (entry: QueuedEntry) => Promise<void>;
     onPickImage: (entry: QueuedEntry) => void;
+    onRename: (entry: QueuedEntry, name: string) => Promise<void>;
     onStart: (entry: QueuedEntry) => Promise<void>;
 }) {
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [name, setName] = useState(entry.name);
+    const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
+
+    useEffect(() => {
+        setName(entry.name);
+        setIsRenaming(false);
+        setMenuOpen(false);
+    }, [entry.name]);
+
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        await onRename(entry, name);
+        setIsRenaming(false);
+    }
+
     return (
         <div className={`queue-item ${isReady ? "ready" : ""}`}>
             <QueuedPoster entry={entry} />
             <div className="queue-item-body">
-                <div>
-                    <strong>{entry.name}</strong>
-                    <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
-                </div>
+                {isRenaming ? (
+                    <form className="queue-rename-form" onSubmit={handleSubmit}>
+                        <input
+                            autoFocus
+                            disabled={disabled}
+                            value={name}
+                            onChange={(event) => setName(event.target.value)}
+                        />
+                        <div className="queue-rename-actions">
+                            <button disabled={disabled} type="submit">Save</button>
+                            <button
+                                disabled={disabled}
+                                type="button"
+                                onClick={() => {
+                                    setName(entry.name);
+                                    setIsRenaming(false);
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                ) : (
+                    <div>
+                        <strong>{entry.name}</strong>
+                        <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
+                    </div>
+                )}
                 <div className="queue-actions">
+                    <button disabled={disabled} type="button" onClick={() => void onStart(entry)}>
+                        Rank Now
+                    </button>
                     <button
                         className="queue-image-button"
                         disabled={disabled}
@@ -1422,10 +1488,41 @@ function QueuedEntryRow({
                     >
                         {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
-                    <button disabled={disabled} type="button" onClick={() => void onStart(entry)}>
-                        {isReady ? "Rank" : "Rank Now"}
-                    </button>
-                    <button className="danger" disabled={disabled} type="button" onClick={() => void onDelete(entry)}>Remove</button>
+                    <div className="queue-menu" ref={menuRef}>
+                        <button
+                            aria-expanded={menuOpen}
+                            aria-label={`More actions for ${entry.name}`}
+                            className="queue-menu-button"
+                            disabled={disabled}
+                            type="button"
+                            onClick={() => setMenuOpen((isOpen) => !isOpen)}
+                        >
+                            ...
+                        </button>
+                        {menuOpen ? (
+                            <div className="queue-overflow-panel">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMenuOpen(false);
+                                        setIsRenaming(true);
+                                    }}
+                                >
+                                    Rename
+                                </button>
+                                <button
+                                    className="danger menu-danger"
+                                    type="button"
+                                    onClick={() => {
+                                        setMenuOpen(false);
+                                        void onDelete(entry);
+                                    }}
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        ) : null}
+                    </div>
                 </div>
             </div>
         </div>
@@ -1782,10 +1879,11 @@ function EntryCard({
     onMoveDown: () => void;
     onMoveUp: () => void;
     onPickImage: () => void;
-    onRename: (name: string) => void;
+    onRename: (name: string) => Promise<void>;
     onRerank: () => void;
     onSwitch: (targetCategoryId: string) => void;
 }) {
+    const [isRenaming, setIsRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState(entry.name);
     const [targetCategoryId, setTargetCategoryId] = useState(selectedCategoryId);
     const [menuOpen, setMenuOpen] = useState(false);
@@ -1793,17 +1891,48 @@ function EntryCard({
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
 
     useEffect(() => {
+        setIsRenaming(false);
         setRenameValue(entry.name);
         setTargetCategoryId(selectedCategoryId);
         setMenuOpen(false);
         setMoveControlsOpen(false);
     }, [entry.name, selectedCategoryId]);
 
+    async function handleRenameSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        await onRename(renameValue);
+        setIsRenaming(false);
+    }
+
     return (
         <article className="entry-card">
             <EntryPoster entry={entry} />
             <div className="entry-card-body">
-                <strong className="entry-title">#{entry.rankPosition + 1} {entry.name}</strong>
+                {isRenaming ? (
+                    <form className="entry-rename-form" onSubmit={handleRenameSubmit}>
+                        <span className="muted">#{entry.rankPosition + 1}</span>
+                        <input
+                            autoFocus
+                            aria-label={`Rename ${entry.name}`}
+                            value={renameValue}
+                            onChange={(event) => setRenameValue(event.target.value)}
+                        />
+                        <div className="entry-rename-actions">
+                            <button type="submit">Save</button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setRenameValue(entry.name);
+                                    setIsRenaming(false);
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                ) : (
+                    <strong className="entry-title">#{entry.rankPosition + 1} {entry.name}</strong>
+                )}
                 <div className="metric-row">
                     <span className="metric">Ordered List {entry.rankPosition + 1}</span>
                     <span className="metric">Elo {Math.round(entry.freeRankElo)}</span>
@@ -1857,23 +1986,35 @@ function EntryCard({
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        setMoveControlsOpen(false);
+                                        setMenuOpen(false);
+                                        setIsRenaming(true);
+                                    }}
+                                >
+                                    Rename
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
                                         setMoveControlsOpen(true);
                                         setMenuOpen(false);
                                     }}
                                 >
                                     Change Category
                                 </button>
+                                <button
+                                    className="danger menu-danger"
+                                    type="button"
+                                    onClick={() => {
+                                        setMenuOpen(false);
+                                        onDelete();
+                                    }}
+                                >
+                                    Delete
+                                </button>
                             </div>
                         ) : null}
                     </div>
-                </div>
-                <div className="entry-actions stacked-action">
-                    <input
-                        aria-label={`Rename ${entry.name}`}
-                        value={renameValue}
-                        onChange={(event) => setRenameValue(event.target.value)}
-                    />
-                    <button type="button" onClick={() => onRename(renameValue)}>Rename</button>
                 </div>
                 {moveControlsOpen ? (
                     <div className="entry-move-panel">
@@ -1908,7 +2049,6 @@ function EntryCard({
                         </div>
                     </div>
                 ) : null}
-                <button className="danger" type="button" onClick={onDelete}>Delete</button>
             </div>
         </article>
     );

@@ -107,6 +107,14 @@ export const deleteQueuedEntry = createServerFn({ method: "POST" })
         return repo.deleteQueuedEntry(user.id, data.queuedEntryId);
     });
 
+export const renameQueuedEntry = createServerFn({ method: "POST" })
+    .inputValidator((data: { queuedEntryId: string; name: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.renameQueuedEntry(user.id, data.queuedEntryId, data.name);
+    });
+
 export const startRerankEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string }) => data)
     .handler(async ({ data }) => {
