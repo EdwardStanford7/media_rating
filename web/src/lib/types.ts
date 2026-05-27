@@ -45,12 +45,22 @@ export interface DashboardData {
     categories: CategoryWithEntries[];
     queueSettings: QueueSettings;
     queuedEntries: QueuedEntry[];
+    activeBinarySession: ActiveBinarySession | null;
+}
+
+export interface ActiveBinarySession {
+    id: string;
+    categoryId: string;
+    categoryName: string;
+    subjectName: string;
+    source: RankingSource;
 }
 
 export interface BinarySessionView {
     id: string;
     categoryId: string;
     categoryName: string;
+    source: RankingSource;
     subject: Entry;
     opponent: Entry;
     lowerBound: number;

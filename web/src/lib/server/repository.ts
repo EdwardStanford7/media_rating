@@ -6,6 +6,7 @@ import {
     updateEloPair
 } from "@/lib/ranking";
 import type {
+    ActiveBinarySession,
     BinarySessionView,
     CategoryWithEntries,
     DashboardData,
@@ -71,10 +72,20 @@ interface SessionRow {
     category_id: string;
     subject_entry_id: string;
     source: RankingSource;
+    from_category_id: string | null;
     lower_bound: number;
     upper_bound: number;
     pivot_entry_id: string | null;
     pivot_rank_position: number | null;
+    created_at: number;
+}
+
+interface ActiveBinarySessionRow {
+    id: string;
+    category_id: string;
+    category_name: string;
+    subject_name: string;
+    source: RankingSource;
 }
 
 const IMPORT_BATCH_SIZE = 100;
@@ -87,8 +98,10 @@ export async function loadDashboard(
     displayMode: DisplayMode
 ): Promise<DashboardData> {
     const db = getDb();
+    await recoverInterruptedRankingEntries(userId);
     const queueSettings = await getQueueSettings(userId);
     const queuedEntries = await listQueuedEntries(userId);
+    const activeBinarySession = await getActiveBinarySession(userId);
     const categories = await all<CategoryRow>(
         db
             .prepare(
@@ -101,7 +114,7 @@ export async function loadDashboard(
     );
 
     if (categories.length === 0) {
-        return { categories: [], queueSettings, queuedEntries };
+        return { categories: [], queueSettings, queuedEntries, activeBinarySession };
     }
 
     const entryRows = await all<EntryRow>(
@@ -131,7 +144,8 @@ export async function loadDashboard(
             entries: orderEntries(entriesByCategory.get(category.id) ?? [], displayMode)
         })),
         queueSettings,
-        queuedEntries
+        queuedEntries,
+        activeBinarySession
     };
 }
 
@@ -245,6 +259,8 @@ export async function createEntryWithBinaryRanking(
         firstConsumedAt: number | null;
         ignoredQueuedEntryId?: string;
         imageKey?: string | null;
+        queuedEntryId?: string;
+        queueStartedAt?: number;
     }
 ) {
     const db = getDb();
@@ -256,48 +272,97 @@ export async function createEntryWithBinaryRanking(
         throw new Error("Entry name is required");
     }
 
+    const activeSession = await getActiveSessionRow(userId);
+    if (activeSession) {
+        const activeSubject = await getOwnedEntry(userId, activeSession.subject_entry_id);
+        if (
+            activeSession.source === "new_entry" &&
+            activeSession.category_id === input.categoryId &&
+            activeSubject?.name === cleanName
+        ) {
+            if (input.queuedEntryId) {
+                await markQueuedEntryStarted(
+                    userId,
+                    input.queuedEntryId,
+                    input.queueStartedAt ?? now()
+                );
+            }
+
+            return {
+                kind: "session" as const,
+                entryId: activeSession.subject_entry_id,
+                sessionId: activeSession.id
+            };
+        }
+
+        throw new Error("Finish or cancel the active ranking before starting another one");
+    }
+
     await assertEntryNameAvailable(userId, input.categoryId, cleanName, input.ignoredQueuedEntryId);
 
     const activeCount = await getActiveEntryCount(userId, input.categoryId);
     const createdAt = now();
     const entryId = newId("entry");
     const status = activeCount === 0 ? "active" : "ranking";
+    const statements = [
+        db
+            .prepare(
+                `INSERT INTO entries (
+           id, user_id, category_id, name, rank_position, status, image_key,
+           created_at, first_consumed_at, free_rank_elo, free_rank_wins,
+           free_rank_losses, updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`
+            )
+            .bind(
+                entryId,
+                userId,
+                input.categoryId,
+                cleanName,
+                activeCount,
+                status,
+                input.imageKey ?? null,
+                createdAt,
+                input.firstConsumedAt,
+                DEFAULT_ELO,
+                createdAt
+            )
+    ];
 
-    await db
-        .prepare(
-            `INSERT INTO entries (
-         id, user_id, category_id, name, rank_position, status, image_key,
-         created_at, first_consumed_at, free_rank_elo, free_rank_wins,
-         free_rank_losses, updated_at
-       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`
-        )
-        .bind(
-            entryId,
+    let sessionId: string | null = null;
+    if (activeCount > 0) {
+        const session = await prepareBinarySession(db, {
             userId,
-            input.categoryId,
-            cleanName,
-            activeCount,
-            status,
-            input.imageKey ?? null,
-            createdAt,
-            input.firstConsumedAt,
-            DEFAULT_ELO,
+            categoryId: input.categoryId,
+            subjectEntryId: entryId,
+            source: "new_entry",
+            opponentCount: activeCount,
             createdAt
-        )
-        .run();
+        });
+        sessionId = session.sessionId;
+        statements.push(session.statement);
+    }
+
+    if (input.queuedEntryId) {
+        statements.push(
+            queuedEntryStartedStatement(
+                db,
+                userId,
+                input.queuedEntryId,
+                input.queueStartedAt ?? createdAt
+            )
+        );
+    }
+
+    await db.batch(statements);
 
     if (activeCount === 0) {
         return { kind: "completed" as const, entryId, sessionId: null };
     }
 
-    const sessionId = await createBinarySession({
-        userId,
-        categoryId: input.categoryId,
-        subjectEntryId: entryId,
-        source: "new_entry",
-        opponentCount: activeCount
-    });
+    if (!sessionId) {
+        throw new Error("Ranking session was not created");
+    }
 
     return { kind: "session" as const, entryId, sessionId };
 }
@@ -468,17 +533,10 @@ export async function startQueuedEntryRanking(
         name: queuedEntry.name,
         firstConsumedAt: queuedEntry.firstConsumedAt,
         ignoredQueuedEntryId: queuedEntry.id,
-        imageKey: queuedEntry.imageKey
+        imageKey: queuedEntry.imageKey,
+        queuedEntryId: queuedEntry.id,
+        queueStartedAt: currentTime
     });
-
-    await getDb()
-        .prepare(
-            `UPDATE entry_queue
-       SET status = 'started', updated_at = ?
-       WHERE id = ? AND user_id = ? AND status = 'queued'`
-        )
-        .bind(currentTime, queuedEntry.id, userId)
-        .run();
 
     return result;
 }
@@ -526,7 +584,8 @@ export async function renameQueuedEntry(userId: string, queuedEntryId: string, n
 
 export async function startRerankEntry(userId: string, entryId: string) {
     const db = getDb();
-    const entry = await getOwnedEntry(userId, entryId);
+    await assertNoActiveBinarySession(userId);
+    const entry = await getOwnedActiveEntry(userId, entryId);
     assertOwned(entry, "Entry");
 
     const activeCount = await getActiveEntryCount(userId, entry.categoryId);
@@ -535,32 +594,34 @@ export async function startRerankEntry(userId: string, entryId: string) {
     }
 
     const updatedAt = now();
-    await db
-        .prepare(
-            `UPDATE entries
-       SET rank_position = rank_position - 1, updated_at = ?
-       WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position > ?`
-        )
-        .bind(updatedAt, userId, entry.categoryId, entry.rankPosition)
-        .run();
-    await db
-        .prepare(
-            `UPDATE entries
-       SET status = 'ranking', rank_position = ?, updated_at = ?
-       WHERE user_id = ? AND id = ?`
-        )
-        .bind(activeCount - 1, updatedAt, userId, entryId)
-        .run();
-
-    const sessionId = await createBinarySession({
+    const session = await prepareBinarySession(db, {
         userId,
         categoryId: entry.categoryId,
         subjectEntryId: entryId,
         source: "rerank_entry",
-        opponentCount: activeCount - 1
+        opponentCount: activeCount - 1,
+        excludedEntryId: entryId,
+        createdAt: updatedAt
     });
+    await db.batch([
+        db
+            .prepare(
+                `UPDATE entries
+         SET rank_position = rank_position - 1, updated_at = ?
+         WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position > ?`
+            )
+            .bind(updatedAt, userId, entry.categoryId, entry.rankPosition),
+        db
+            .prepare(
+                `UPDATE entries
+         SET status = 'ranking', rank_position = ?, updated_at = ?
+         WHERE user_id = ? AND id = ?`
+            )
+            .bind(activeCount - 1, updatedAt, userId, entryId),
+        session.statement
+    ]);
 
-    return { kind: "session" as const, entryId, sessionId };
+    return { kind: "session" as const, entryId, sessionId: session.sessionId };
 }
 
 export async function moveEntryOnePosition(
@@ -660,6 +721,8 @@ export async function switchEntryCategory(
     userId: string,
     input: { entryId: string; targetCategoryId: string }
 ) {
+    const db = getDb();
+    await assertNoActiveBinarySession(userId);
     const entry = await getOwnedActiveEntry(userId, input.entryId);
     assertOwned(entry, "Entry");
     const targetCategory = await getOwnedCategory(userId, input.targetCategoryId);
@@ -684,44 +747,48 @@ export async function switchEntryCategory(
 
     const targetCount = await getActiveEntryCount(userId, input.targetCategoryId);
     const updatedAt = now();
-    await getDb()
-        .prepare(
-            `UPDATE entries
-       SET rank_position = rank_position - 1, updated_at = ?
-       WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position > ?`
-        )
-        .bind(updatedAt, userId, entry.categoryId, entry.rankPosition)
-        .run();
-    await getDb()
-        .prepare(
-            `UPDATE entries
-       SET category_id = ?, rank_position = ?, status = ?, updated_at = ?
-       WHERE user_id = ? AND id = ?`
-        )
-        .bind(
-            input.targetCategoryId,
-            targetCount,
-            targetCount === 0 ? "active" : "ranking",
-            updatedAt,
-            userId,
-            entry.id
-        )
-        .run();
+    const statements: D1PreparedStatement[] = [
+        db
+            .prepare(
+                `UPDATE entries
+         SET rank_position = rank_position - 1, updated_at = ?
+         WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position > ?`
+            )
+            .bind(updatedAt, userId, entry.categoryId, entry.rankPosition),
+        db
+            .prepare(
+                `UPDATE entries
+         SET category_id = ?, rank_position = ?, status = ?, updated_at = ?
+         WHERE user_id = ? AND id = ?`
+            )
+            .bind(
+                input.targetCategoryId,
+                targetCount,
+                targetCount === 0 ? "active" : "ranking",
+                updatedAt,
+                userId,
+                entry.id
+            )
+    ];
 
     if (targetCount === 0) {
+        await db.batch(statements);
         return { kind: "completed" as const, entryId: entry.id, sessionId: null };
     }
 
-    const sessionId = await createBinarySession({
+    const session = await prepareBinarySession(db, {
         userId,
         categoryId: input.targetCategoryId,
         subjectEntryId: entry.id,
         source: "switch_category",
         fromCategoryId: entry.categoryId,
-        opponentCount: targetCount
+        opponentCount: targetCount,
+        createdAt: updatedAt
     });
+    statements.push(session.statement);
+    await db.batch(statements);
 
-    return { kind: "session" as const, entryId: entry.id, sessionId };
+    return { kind: "session" as const, entryId: entry.id, sessionId: session.sessionId };
 }
 
 export async function getBinarySession(
@@ -733,7 +800,7 @@ export async function getBinarySession(
         db
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
-                upper_bound, pivot_entry_id, pivot_rank_position
+                upper_bound, pivot_entry_id, pivot_rank_position, from_category_id, created_at
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -765,12 +832,97 @@ export async function getBinarySession(
         id: session.id,
         categoryId: session.category_id,
         categoryName: category.name,
+        source: session.source,
         subject,
         opponent,
         lowerBound: session.lower_bound,
         upperBound: session.upper_bound,
         comparisonCount: comparisonCount?.count ?? 0
     };
+}
+
+export async function cancelBinarySession(userId: string, sessionId: string) {
+    const db = getDb();
+    const session = await first<SessionRow>(
+        db
+            .prepare(
+                `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
+                upper_bound, pivot_entry_id, pivot_rank_position, from_category_id, created_at
+         FROM ranking_sessions
+         WHERE id = ? AND user_id = ? AND status = 'active'`
+            )
+            .bind(sessionId, userId)
+    );
+    assertOwned(session, "Ranking session");
+
+    if (session.source !== "new_entry") {
+        throw new Error("Only new-entry rankings can be cancelled");
+    }
+
+    const entry = await getOwnedEntry(userId, session.subject_entry_id);
+    assertOwned(entry, "Entry");
+
+    const updatedAt = now();
+    const startedQueuedEntry = await first<{ id: string }>(
+        db
+            .prepare(
+                `SELECT id
+         FROM entry_queue
+         WHERE user_id = ? AND category_id = ? AND name = ? AND status = 'started'
+         ORDER BY updated_at DESC
+         LIMIT 1`
+            )
+            .bind(userId, session.category_id, entry.name)
+    );
+    const statements: D1PreparedStatement[] = [
+        db
+            .prepare(
+                `DELETE FROM matches
+         WHERE user_id = ? AND ranking_session_id = ?`
+            )
+            .bind(userId, session.id),
+        db
+            .prepare(
+                `UPDATE ranking_sessions
+         SET status = 'cancelled', completed_at = ?,
+             pivot_entry_id = NULL, pivot_rank_position = NULL
+         WHERE id = ? AND user_id = ? AND status = 'active'`
+            )
+            .bind(updatedAt, session.id, userId),
+        db
+            .prepare(
+                `UPDATE entries
+         SET status = 'deleted', updated_at = ?
+         WHERE id = ? AND user_id = ? AND status = 'ranking'`
+            )
+            .bind(updatedAt, session.subject_entry_id, userId)
+    ];
+
+    if (startedQueuedEntry) {
+        statements.push(
+            db
+                .prepare(
+                    `UPDATE entry_queue
+           SET status = 'queued', updated_at = ?
+           WHERE id = ? AND user_id = ? AND status = 'started'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM entry_queue existing
+               WHERE existing.user_id = ?
+                 AND existing.category_id = ?
+                 AND existing.name = ?
+                 AND existing.status = 'queued'
+             )`
+                )
+                .bind(updatedAt, startedQueuedEntry.id, userId, userId, session.category_id, entry.name)
+        );
+    }
+
+    await db.batch(statements);
+
+    if (!startedQueuedEntry && hasStoredImage(entry.imageKey)) {
+        await env.IMAGES.delete(entry.imageKey);
+    }
 }
 
 export async function submitBinaryWinner(
@@ -782,7 +934,7 @@ export async function submitBinaryWinner(
         db
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
-                upper_bound, pivot_entry_id, pivot_rank_position
+                upper_bound, pivot_entry_id, pivot_rank_position, from_category_id, created_at
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -802,7 +954,7 @@ export async function submitBinaryWinner(
     }
 
     const createdAt = now();
-    await db
+    const matchStatement = db
         .prepare(
             `INSERT INTO matches (
          id, user_id, category_id, entry_a_id, entry_b_id, winner_id,
@@ -819,8 +971,7 @@ export async function submitBinaryWinner(
             input.winnerId,
             session.id,
             createdAt
-        )
-        .run();
+        );
 
     const subjectWon = input.winnerId === session.subject_entry_id;
     const lowerBound = subjectWon
@@ -836,29 +987,40 @@ export async function submitBinaryWinner(
         const pivot = opponents[pivotIndex];
         assertOwned(pivot, "Pivot entry");
 
-        await db
-            .prepare(
-                `UPDATE ranking_sessions
+        await db.batch([
+            matchStatement,
+            db
+                .prepare(
+                    `UPDATE ranking_sessions
          SET lower_bound = ?, upper_bound = ?, pivot_entry_id = ?,
              pivot_rank_position = ?
          WHERE id = ? AND user_id = ?`
-            )
-            .bind(lowerBound, upperBound, pivot.id, pivot.rankPosition, session.id, userId)
-            .run();
+                )
+                .bind(lowerBound, upperBound, pivot.id, pivot.rankPosition, session.id, userId)
+        ]);
 
         return { kind: "session" as const, sessionId: session.id };
     }
 
-    await placeRankedEntry(userId, session.subject_entry_id, session.category_id, lowerBound);
-    await db
-        .prepare(
-            `UPDATE ranking_sessions
+    await db.batch([
+        matchStatement,
+        ...placeRankedEntryStatements(
+            db,
+            userId,
+            session.subject_entry_id,
+            session.category_id,
+            lowerBound,
+            createdAt
+        ),
+        db
+            .prepare(
+                `UPDATE ranking_sessions
        SET status = 'completed', final_rank_position = ?, completed_at = ?,
            pivot_entry_id = NULL, pivot_rank_position = NULL
        WHERE id = ? AND user_id = ?`
-        )
-        .bind(lowerBound, createdAt, session.id, userId)
-        .run();
+            )
+            .bind(lowerBound, createdAt, session.id, userId)
+    ]);
 
     return { kind: "completed" as const, sessionId: session.id, finalRankPosition: lowerBound };
 }
@@ -1169,6 +1331,8 @@ async function assertEntryNameAvailable(
     name: string,
     ignoredQueuedEntryId?: string
 ) {
+    await recoverInterruptedRankingEntries(userId);
+
     const existingEntry = await first<{ id: string }>(
         getDb()
             .prepare(
@@ -1205,70 +1369,194 @@ function normalizeQueueDelayDays(value: number) {
     return Math.max(0, Math.min(MAX_QUEUE_DELAY_DAYS, Math.floor(value)));
 }
 
-async function createBinarySession(input: {
-    userId: string;
-    categoryId: string;
-    subjectEntryId: string;
-    source: RankingSource;
-    fromCategoryId?: string;
-    opponentCount: number;
-}) {
-    const opponents = await listActiveEntries(input.userId, input.categoryId);
+async function getActiveBinarySession(userId: string): Promise<ActiveBinarySession | null> {
+    const row = await first<ActiveBinarySessionRow>(
+        getDb()
+            .prepare(
+                `SELECT ranking_sessions.id, ranking_sessions.category_id,
+                categories.name AS category_name, entries.name AS subject_name,
+                ranking_sessions.source
+         FROM ranking_sessions
+         INNER JOIN categories ON categories.id = ranking_sessions.category_id
+         INNER JOIN entries ON entries.id = ranking_sessions.subject_entry_id
+         WHERE ranking_sessions.user_id = ? AND ranking_sessions.status = 'active'
+         ORDER BY ranking_sessions.created_at DESC
+         LIMIT 1`
+            )
+            .bind(userId)
+    );
+
+    return row
+        ? {
+            id: row.id,
+            categoryId: row.category_id,
+            categoryName: row.category_name,
+            subjectName: row.subject_name,
+            source: row.source
+        }
+        : null;
+}
+
+async function getActiveSessionRow(userId: string) {
+    return first<SessionRow>(
+        getDb()
+            .prepare(
+                `SELECT id, user_id, category_id, subject_entry_id, source, from_category_id,
+                lower_bound, upper_bound, pivot_entry_id, pivot_rank_position, created_at
+         FROM ranking_sessions
+         WHERE user_id = ? AND status = 'active'
+         ORDER BY created_at DESC
+         LIMIT 1`
+            )
+            .bind(userId)
+    );
+}
+
+async function assertNoActiveBinarySession(userId: string) {
+    const activeSession = await getActiveSessionRow(userId);
+    if (activeSession) {
+        throw new Error("Finish or cancel the active ranking before starting another one");
+    }
+}
+
+async function recoverInterruptedRankingEntries(userId: string) {
+    const db = getDb();
+    const orphanedEntries = await all<{ id: string; category_id: string }>(
+        db
+            .prepare(
+                `SELECT entries.id, entries.category_id
+         FROM entries
+         LEFT JOIN ranking_sessions
+           ON ranking_sessions.user_id = entries.user_id
+          AND ranking_sessions.subject_entry_id = entries.id
+          AND ranking_sessions.status = 'active'
+         WHERE entries.user_id = ? AND entries.status = 'ranking'
+           AND ranking_sessions.id IS NULL
+         ORDER BY entries.created_at ASC`
+            )
+            .bind(userId)
+    );
+
+    if (orphanedEntries.length === 0) {
+        return;
+    }
+
+    const updatedAt = now();
+    const nextRankByCategory = new Map<string, number>();
+    const statements: D1PreparedStatement[] = [];
+
+    for (const entry of orphanedEntries) {
+        let nextRank = nextRankByCategory.get(entry.category_id);
+        if (nextRank === undefined) {
+            nextRank = await getActiveEntryCount(userId, entry.category_id);
+        }
+
+        statements.push(
+            db
+                .prepare(
+                    `UPDATE entries
+           SET status = 'active', rank_position = ?, updated_at = ?
+           WHERE user_id = ? AND id = ? AND status = 'ranking'`
+                )
+                .bind(nextRank, updatedAt, userId, entry.id)
+        );
+        nextRankByCategory.set(entry.category_id, nextRank + 1);
+    }
+
+    await runBatches(db, statements);
+}
+
+function queuedEntryStartedStatement(
+    db: D1Database,
+    userId: string,
+    queuedEntryId: string,
+    updatedAt: number
+) {
+    return db
+        .prepare(
+            `UPDATE entry_queue
+       SET status = 'started', updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'queued'`
+        )
+        .bind(updatedAt, queuedEntryId, userId);
+}
+
+async function markQueuedEntryStarted(userId: string, queuedEntryId: string, updatedAt: number) {
+    await queuedEntryStartedStatement(getDb(), userId, queuedEntryId, updatedAt).run();
+}
+
+async function prepareBinarySession(
+    db: D1Database,
+    input: {
+        userId: string;
+        categoryId: string;
+        subjectEntryId: string;
+        source: RankingSource;
+        fromCategoryId?: string;
+        opponentCount: number;
+        excludedEntryId?: string;
+        createdAt: number;
+    }
+) {
+    const opponents = await listActiveEntries(
+        input.userId,
+        input.categoryId,
+        input.excludedEntryId
+    );
     const pivotIndex = chooseBinaryPivot(0, input.opponentCount);
     const pivot = opponents[pivotIndex];
     assertOwned(pivot, "Pivot entry");
 
-    const createdAt = now();
     const sessionId = newId("rank");
-    await getDb()
-        .prepare(
-            `INSERT INTO ranking_sessions (
-         id, user_id, category_id, subject_entry_id, source, from_category_id, lower_bound,
-         upper_bound, pivot_entry_id, pivot_rank_position, status, created_at
-       )
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'active', ?)`
-        )
-        .bind(
-            sessionId,
-            input.userId,
-            input.categoryId,
-            input.subjectEntryId,
-            input.source,
-            input.fromCategoryId ?? null,
-            input.opponentCount,
-            pivot.id,
-            pivot.rankPosition,
-            createdAt
-        )
-        .run();
-
-    return sessionId;
+    return {
+        sessionId,
+        statement: db
+            .prepare(
+                `INSERT INTO ranking_sessions (
+           id, user_id, category_id, subject_entry_id, source, from_category_id, lower_bound,
+           upper_bound, pivot_entry_id, pivot_rank_position, status, created_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'active', ?)`
+            )
+            .bind(
+                sessionId,
+                input.userId,
+                input.categoryId,
+                input.subjectEntryId,
+                input.source,
+                input.fromCategoryId ?? null,
+                input.opponentCount,
+                pivot.id,
+                pivot.rankPosition,
+                input.createdAt
+            )
+    };
 }
 
-async function placeRankedEntry(
+function placeRankedEntryStatements(
+    db: D1Database,
     userId: string,
     entryId: string,
     categoryId: string,
-    rankPosition: number
+    rankPosition: number,
+    updatedAt: number
 ) {
-    const db = getDb();
-    const updatedAt = now();
-    await db
-        .prepare(
-            `UPDATE entries
+    return [
+        db
+            .prepare(
+                `UPDATE entries
        SET rank_position = rank_position + 1, updated_at = ?
        WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position >= ?`
-        )
-        .bind(updatedAt, userId, categoryId, rankPosition)
-        .run();
-    await db
-        .prepare(
-            `UPDATE entries
+            )
+            .bind(updatedAt, userId, categoryId, rankPosition),
+        db
+            .prepare(
+                `UPDATE entries
        SET status = 'active', rank_position = ?, updated_at = ?
        WHERE user_id = ? AND id = ?`
-        )
-        .bind(rankPosition, updatedAt, userId, entryId)
-        .run();
+            )
+            .bind(rankPosition, updatedAt, userId, entryId)
+    ];
 }
 
 async function getOwnedCategory(userId: string, categoryId: string) {
@@ -1313,7 +1601,7 @@ async function getOwnedActiveEntry(userId: string, entryId: string) {
     return row ? mapEntry(row) : null;
 }
 
-async function listActiveEntries(userId: string, categoryId: string) {
+async function listActiveEntries(userId: string, categoryId: string, excludedEntryId?: string) {
     const rows = await all<EntryRow>(
         getDb()
             .prepare(
@@ -1321,9 +1609,10 @@ async function listActiveEntries(userId: string, categoryId: string) {
                 first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
          FROM entries
          WHERE user_id = ? AND category_id = ? AND status = 'active'
+           AND (? IS NULL OR id != ?)
          ORDER BY rank_position ASC`
             )
-            .bind(userId, categoryId)
+            .bind(userId, categoryId, excludedEntryId ?? null, excludedEntryId ?? null)
     );
 
     return rows.map(mapEntry);

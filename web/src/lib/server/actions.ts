@@ -163,6 +163,14 @@ export const getBinarySession = createServerFn({ method: "GET" })
         return repo.getBinarySession(user.id, data.sessionId);
     });
 
+export const cancelBinarySession = createServerFn({ method: "POST" })
+    .inputValidator((data: { sessionId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.cancelBinarySession(user.id, data.sessionId);
+    });
+
 export const submitBinaryWinner = createServerFn({ method: "POST" })
     .inputValidator((data: { sessionId: string; winnerId: string }) => data)
     .handler(async ({ data }) => {

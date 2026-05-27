@@ -2,6 +2,7 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+    cancelBinarySession,
     createCategory,
     createEntryWithBinaryRanking,
     createQueuedEntry,
@@ -347,12 +348,14 @@ function Dashboard({
     const router = useRouter();
     const [dashboard, setDashboard] = useState(initialDashboard);
     const [selectedCategoryId, setSelectedCategoryId] = useState(
-        initialDashboard.categories[0]?.id ?? ""
+        initialDashboard.activeBinarySession?.categoryId ?? initialDashboard.categories[0]?.id ?? ""
     );
     const [appMode, setAppMode] = useState<AppMode>("dashboard");
     const [displayMode, setDisplayMode] = useState<DisplayMode>("ordered list");
     const [entrySearch, setEntrySearch] = useState("");
-    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(
+        initialDashboard.activeBinarySession?.id ?? null
+    );
     const [queueRankMode, setQueueRankMode] = useState(false);
     const queueRankModeRef = useRef(false);
     const [busy, setBusy] = useState(false);
@@ -389,6 +392,15 @@ function Dashboard({
 
         return starRatingsByEntryId(selectedCategory.entries);
     }, [dashboard.queueSettings.showStarRatings, selectedCategory]);
+
+    useEffect(() => {
+        if (!dashboard.activeBinarySession || activeSessionId) {
+            return;
+        }
+
+        setActiveSessionId(dashboard.activeBinarySession.id);
+        setSelectedCategoryId(dashboard.activeBinarySession.categoryId);
+    }, [activeSessionId, dashboard.activeBinarySession]);
 
     async function refresh() {
         const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
@@ -742,6 +754,23 @@ function Dashboard({
         }
     }
 
+    async function handleCancelBinarySession(session: BinarySessionView) {
+        startBusy("Cancelling add...");
+        setMessage(null);
+        setQueueRankingActive(false);
+
+        try {
+            await cancelBinarySession({ data: { sessionId: session.id } });
+            setActiveSessionId(null);
+            setMessage(`Cancelled adding ${session.subject.name}.`);
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
     async function handleImport(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         const formElement = event.currentTarget;
@@ -935,9 +964,9 @@ function Dashboard({
                         {selectedCategory ? (
                             <>
                                 <form className="panel form-row" onSubmit={handleCreateEntry}>
-                                    <input name="name" placeholder="New entry" required />
-                                    <input name="firstConsumedAt" type="date" />
-                                    <button className="primary" disabled={busy} type="submit">
+                                    <input disabled={busy || Boolean(activeSessionId)} name="name" placeholder="New entry" required />
+                                    <input disabled={busy || Boolean(activeSessionId)} name="firstConsumedAt" type="date" />
+                                    <button className="primary" disabled={busy || Boolean(activeSessionId)} type="submit">
                                         {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
                                     </button>
                                 </form>
@@ -957,6 +986,7 @@ function Dashboard({
                             <BinaryRankPanel
                                 imageRefreshVersion={imageRefreshVersion}
                                 sessionId={activeSessionId}
+                                onCancel={handleCancelBinarySession}
                                 onComplete={async () => {
                                     setActiveSessionId(null);
                                     const nextDashboard = await refresh();
@@ -2085,16 +2115,19 @@ function EntryPoster({ entry }: { entry: Entry }) {
 function BinaryRankPanel({
     sessionId,
     imageRefreshVersion,
+    onCancel,
     onComplete,
     onNeedImage
 }: {
     sessionId: string;
     imageRefreshVersion: number;
+    onCancel: (session: BinarySessionView) => Promise<void>;
     onComplete: () => Promise<void>;
     onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
 }) {
     const [session, setSession] = useState<BinarySessionView | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
         getBinarySession({ data: { sessionId } })
@@ -2123,6 +2156,7 @@ function BinaryRankPanel({
 
     async function chooseWinner(winnerId: string) {
         setError(null);
+        setSubmitting(true);
         try {
             const result = await submitBinaryWinner({ data: { sessionId, winnerId } });
             if (result.kind === "completed") {
@@ -2133,6 +2167,24 @@ function BinaryRankPanel({
             setSession(await getBinarySession({ data: { sessionId } }));
         } catch (submitError) {
             setError(errorMessage(submitError));
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    async function cancelAdd() {
+        if (!session) {
+            return;
+        }
+
+        setError(null);
+        setSubmitting(true);
+        try {
+            await onCancel(session);
+        } catch (cancelError) {
+            setError(errorMessage(cancelError));
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -2147,17 +2199,39 @@ function BinaryRankPanel({
     return (
         <section className="rank-panel stack">
             <div className="toolbar">
-                <strong>Binary Rank · {session.categoryName}</strong>
-                <span className="muted">
-                    Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} matches
-                </span>
+                <div>
+                    <strong>Binary Rank · {session.categoryName}</strong>
+                    <p className="muted rank-meta">
+                        Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} matches
+                    </p>
+                </div>
+                {session.source === "new_entry" ? (
+                    <button
+                        className="small-button"
+                        disabled={submitting}
+                        type="button"
+                        onClick={() => void cancelAdd()}
+                    >
+                        Cancel Add
+                    </button>
+                ) : null}
             </div>
             <div className="match-grid">
-                <button className="match-choice" type="button" onClick={() => chooseWinner(session.subject.id)}>
+                <button
+                    className="match-choice"
+                    disabled={submitting}
+                    type="button"
+                    onClick={() => void chooseWinner(session.subject.id)}
+                >
                     <MatchPoster entry={session.subject} />
                     <strong>{session.subject.name}</strong>
                 </button>
-                <button className="match-choice" type="button" onClick={() => chooseWinner(session.opponent.id)}>
+                <button
+                    className="match-choice"
+                    disabled={submitting}
+                    type="button"
+                    onClick={() => void chooseWinner(session.opponent.id)}
+                >
                     <MatchPoster entry={session.opponent} />
                     <strong>{session.opponent.name}</strong>
                 </button>

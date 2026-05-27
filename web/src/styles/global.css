@@ -262,6 +262,11 @@ select {
     font-size: 0.85rem;
 }
 
+.small-button {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.85rem;
+}
+
 .user-settings-popover {
     position: absolute;
     top: calc(100% + 0.5rem);
@@ -564,6 +569,10 @@ img.match-poster {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
+}
+
+.rank-meta {
+    margin: 0.2rem 0 0;
 }
 
 .match-choice {
