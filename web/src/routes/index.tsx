@@ -97,10 +97,28 @@ function AuthPage({
     };
 }) {
     const [error, setError] = useState<string | null>(null);
+    const [statusMessage, setStatusMessage] = useState<string | null>(null);
+    const [resetToken, setResetToken] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const token = searchParams.get("token");
+        const resetError = searchParams.get("error");
+        if (token) {
+            setResetToken(token);
+        } else if (resetError) {
+            setError("That password reset link is invalid or expired.");
+        }
+    }, []);
 
     async function handleEmailAuth(event: FormEvent<HTMLFormElement>, mode: "signin" | "signup") {
         event.preventDefault();
         setError(null);
+        setStatusMessage(null);
         const form = new FormData(event.currentTarget);
         const email = String(form.get("email") ?? "");
         const password = String(form.get("password") ?? "");
@@ -119,6 +137,40 @@ function AuthPage({
         }
     }
 
+    async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!resetToken) {
+            setError("That password reset link is invalid or expired.");
+            return;
+        }
+
+        setError(null);
+        setStatusMessage(null);
+        const form = new FormData(event.currentTarget);
+        const newPassword = String(form.get("newPassword") ?? "");
+        const confirmPassword = String(form.get("confirmPassword") ?? "");
+        if (newPassword.length < authOptions.minPasswordLength) {
+            setError(`Password must be at least ${authOptions.minPasswordLength} characters.`);
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            setError("Passwords do not match.");
+            return;
+        }
+
+        try {
+            await resetPasswordWithToken({ token: resetToken, newPassword });
+            setResetToken(null);
+            setStatusMessage("Password updated. Sign in with your new password.");
+            if (typeof window !== "undefined") {
+                window.history.replaceState(null, "", "/");
+            }
+        } catch (authError) {
+            setError(authError instanceof Error ? authError.message : "Password reset failed");
+        }
+    }
+
     return (
         <main className="auth-page">
             <section className="auth-panel">
@@ -128,54 +180,129 @@ function AuthPage({
                         <p className="muted">Personal ranking for anything you want, such as books, movies, shows, games, etc.</p>
                     </div>
                     {error ? <div className="status">{error}</div> : null}
+                    {statusMessage ? <div className="status">{statusMessage}</div> : null}
                 </div>
 
-                <div className="stack">
-                    <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signin")}>
-                        <h2>Sign In</h2>
-                        <input name="email" type="email" placeholder="Email" autoComplete="email" required />
+                {resetToken ? (
+                    <form className="stack" onSubmit={handleResetPassword}>
+                        <h2>Reset Password</h2>
                         <input
-                            name="password"
+                            name="newPassword"
                             type="password"
-                            placeholder="Password"
-                            autoComplete="current-password"
+                            placeholder="New password"
+                            autoComplete="new-password"
                             minLength={authOptions.minPasswordLength}
                             required
                         />
-                        <button className="primary" type="submit">Sign In</button>
+                        <input
+                            name="confirmPassword"
+                            type="password"
+                            placeholder="Confirm new password"
+                            autoComplete="new-password"
+                            minLength={authOptions.minPasswordLength}
+                            required
+                        />
+                        <button className="primary" type="submit">Update Password</button>
                     </form>
-
-                    {authOptions.enabled ? (
-                        <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signup")}>
-                            <h2>Create Account</h2>
-                            <input name="name" placeholder="Name" autoComplete="name" required />
+                ) : (
+                    <div className="stack">
+                        <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signin")}>
+                            <h2>Sign In</h2>
                             <input name="email" type="email" placeholder="Email" autoComplete="email" required />
                             <input
                                 name="password"
                                 type="password"
                                 placeholder="Password"
-                                autoComplete="new-password"
+                                autoComplete="current-password"
                                 minLength={authOptions.minPasswordLength}
                                 required
                             />
-                            {authOptions.inviteCodeRequired ? (
+                            <button className="primary" type="submit">Sign In</button>
+                        </form>
+
+                        {authOptions.enabled ? (
+                            <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signup")}>
+                                <h2>Create Account</h2>
+                                <input name="name" placeholder="Name" autoComplete="name" required />
+                                <input name="email" type="email" placeholder="Email" autoComplete="email" required />
                                 <input
-                                    name="inviteCode"
+                                    name="password"
                                     type="password"
-                                    placeholder="Invite code"
-                                    autoComplete="off"
+                                    placeholder="Password"
+                                    autoComplete="new-password"
+                                    minLength={authOptions.minPasswordLength}
                                     required
                                 />
-                            ) : null}
-                            <button type="submit">Create Account</button>
-                        </form>
-                    ) : (
-                        <div className="status">Sign up is closed for this deployment.</div>
-                    )}
-                </div>
+                                {authOptions.inviteCodeRequired ? (
+                                    <input
+                                        name="inviteCode"
+                                        type="password"
+                                        placeholder="Invite code"
+                                        autoComplete="off"
+                                        required
+                                    />
+                                ) : null}
+                                <button type="submit">Create Account</button>
+                            </form>
+                        ) : (
+                            <div className="status">Sign up is closed for this deployment.</div>
+                        )}
+                    </div>
+                )}
             </section>
         </main>
     );
+}
+
+async function resetPasswordWithToken({
+    token,
+    newPassword
+}: {
+    token: string;
+    newPassword: string;
+}) {
+    const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: {
+            "content-type": "application/json"
+        },
+        body: JSON.stringify({
+            token,
+            newPassword
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(await readAuthError(response, "Password reset failed"));
+    }
+}
+
+async function readAuthError(response: Response, fallback: string) {
+    const text = await response.text().catch(() => "");
+    const body = text ? safeJsonParse(text) : null;
+    if (body && typeof body === "object") {
+        if ("message" in body && typeof body.message === "string") {
+            return body.message;
+        }
+
+        if ("code" in body && typeof body.code === "string") {
+            return body.code.replaceAll("_", " ").toLowerCase();
+        }
+    }
+
+    if (text.trim()) {
+        return text.trim();
+    }
+
+    return `${fallback} (${response.status})`;
+}
+
+function safeJsonParse(text: string) {
+    try {
+        return JSON.parse(text) as unknown;
+    } catch {
+        return null;
+    }
 }
 
 async function signUpWithEmail({
@@ -204,11 +331,7 @@ async function signUpWithEmail({
     });
 
     if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        const message = body && typeof body === "object" && "message" in body && typeof body.message === "string"
-            ? body.message
-            : "Account creation failed";
-        throw new Error(message);
+        throw new Error(await readAuthError(response, "Account creation failed"));
     }
 }
 

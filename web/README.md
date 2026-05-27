@@ -44,6 +44,22 @@ make cf-secret-signup-invite
 
 The command prints the generated invite code once after uploading it to Wrangler.
 
+Password reset uses Better Auth reset tokens and sends email through Resend. Create a Resend API key and verified sender or domain, then run:
+
+```sh
+make cf-secret-password-reset
+```
+
+Set `RESEND_API_KEY` to the API key and `PASSWORD_RESET_FROM_EMAIL` to the sender address, such as `Media Rating <reset@your-domain.com>`. If those values are missing, reset links are written to Worker logs for local/dev testing but no email is sent.
+
+For one-off admin recovery before email sending is configured, generate a reset link directly from D1:
+
+```sh
+make password-reset-link EMAIL=user@example.com
+```
+
+Passwords are stored as hashes in the `account` table, so they cannot be viewed or recovered manually.
+
 ## Verification
 
 ```sh
@@ -63,6 +79,8 @@ make check
 make cf-migrate-local
 make deploy-first
 make deploy
+make cf-secret-password-reset
+make password-reset-link EMAIL=user@example.com
 ```
 
 `make deploy-first` handles Wrangler login, D1/R2 creation, and auth secret setup. Before `make deploy`, set `BETTER_AUTH_URL` in `wrangler.jsonc` to the production HTTPS URL.

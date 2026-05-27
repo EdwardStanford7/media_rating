@@ -2,8 +2,9 @@ APP_NAME = media-rating-web
 D1_NAME = media-rating
 R2_BUCKET = media-rating-images
 
-.PHONY: help install check test typecheck build dev preview audit \
+.PHONY: help install check test typecheck build dev preview audit password-reset-link password-reset-link-local \
 	cf-login cf-whoami cf-create-d1 cf-create-r2 cf-secret-auth cf-secret-signup-invite \
+	cf-secret-password-reset \
 	cf-migrate-local cf-migrate-remote cf-reset-free-rank-remote \
 	verify-deploy-config deploy deploy-first
 
@@ -15,6 +16,8 @@ help:
 	@echo "  make check                Run tests, typecheck, audit, and build"
 	@echo "  make dev                  Start local dev server"
 	@echo "  make cf-migrate-local     Apply D1 migrations to local Wrangler D1"
+	@echo "  make password-reset-link EMAIL=user@example.com Generate a one-hour remote reset link"
+	@echo "  make password-reset-link-local EMAIL=user@example.com Generate a local D1 reset link"
 	@echo ""
 	@echo "Cloudflare setup:"
 	@echo "  make cf-login             Authenticate Wrangler"
@@ -22,6 +25,7 @@ help:
 	@echo "  make cf-create-r2         Create R2 bucket and update wrangler.jsonc"
 	@echo "  make cf-secret-auth       Generate and set BETTER_AUTH_SECRET"
 	@echo "  make cf-secret-signup-invite Generate and set optional signup invite code"
+	@echo "  make cf-secret-password-reset Set Resend password reset email secrets"
 	@echo "  make cf-reset-free-rank-remote Reset remote free-rank Elo/matches after confirmation"
 	@echo ""
 	@echo "Deploy:"
@@ -52,6 +56,14 @@ dev:
 preview:
 	npm run preview
 
+password-reset-link:
+	@test -n "$(EMAIL)" || (echo "Usage: make password-reset-link EMAIL=user@example.com"; exit 1)
+	node scripts/create-password-reset-link.mjs "$(EMAIL)"
+
+password-reset-link-local:
+	@test -n "$(EMAIL)" || (echo "Usage: make password-reset-link-local EMAIL=user@example.com"; exit 1)
+	node scripts/create-password-reset-link.mjs "$(EMAIL)" http://localhost:5173 --local
+
 cf-login:
 	npx wrangler login
 
@@ -75,6 +87,11 @@ cf-secret-signup-invite:
 	echo ""; \
 	echo "Generated SIGNUP_INVITE_CODE: $$code"; \
 	echo "Save this code now. Wrangler will not show it again."
+
+cf-secret-password-reset:
+	@echo "Set these after creating a Resend API key and verified sender/domain."
+	npx wrangler secret put RESEND_API_KEY
+	npx wrangler secret put PASSWORD_RESET_FROM_EMAIL
 
 cf-migrate-local:
 	npm run db:migrate:local
