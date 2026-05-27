@@ -190,6 +190,41 @@ select {
     gap: 0.45rem;
 }
 
+.user-settings-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.user-name {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-settings-menu {
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.settings-toggle {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.85rem;
+}
+
+.user-settings-popover {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 20;
+    width: min(300px, calc(100vw - 2rem));
+    padding: 0.85rem;
+}
+
 .queue-toolbar {
     margin-bottom: 0;
 }
@@ -199,16 +234,6 @@ select {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.4rem;
-}
-
-.queue-settings-toggle {
-    padding: 0.25rem 0.55rem;
-    font-size: 0.78rem;
-}
-
-.queue-settings-form {
-    border-top: 1px solid var(--line);
-    padding-top: 0.85rem;
 }
 
 .queue-panel {

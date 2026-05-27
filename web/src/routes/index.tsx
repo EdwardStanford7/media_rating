@@ -595,7 +595,14 @@ function Dashboard({
                                 Sign Out
                             </button>
                         </div>
-                        <p className="muted">{userName}</p>
+                        <div className="user-settings-row">
+                            <p className="muted user-name">{userName}</p>
+                            <UserSettingsMenu
+                                busy={busy}
+                                settings={dashboard.queueSettings}
+                                onSave={handleQueueSettings}
+                            />
+                        </div>
 
                         <form className="form-row" onSubmit={handleCreateCategory}>
                             <input disabled={busy} name="name" placeholder="New category" required />
@@ -625,7 +632,6 @@ function Dashboard({
                         <QueuePanel
                             busy={busy}
                             queuedEntries={dashboard.queuedEntries}
-                            settings={dashboard.queueSettings}
                             onDelete={handleDeleteQueuedEntry}
                             onPickImage={(entry) => setImagePickerTarget({
                                 kind: "queue",
@@ -635,7 +641,6 @@ function Dashboard({
                                     name: entry.categoryName
                                 }
                             })}
-                            onSave={handleQueueSettings}
                             onStart={handleStartQueuedEntry}
                         />
                     </aside>
@@ -816,29 +821,20 @@ function BusyOverlay({ label }: { label: string }) {
     );
 }
 
-function QueuePanel({
+function UserSettingsMenu({
     busy,
-    queuedEntries,
     settings,
-    onDelete,
-    onPickImage,
-    onSave,
-    onStart
+    onSave
 }: {
     busy: boolean;
-    queuedEntries: QueuedEntry[];
     settings: QueueSettings;
-    onDelete: (entry: QueuedEntry) => Promise<void>;
-    onPickImage: (entry: QueuedEntry) => void;
     onSave: (settings: QueueSettings) => Promise<void>;
-    onStart: (entry: QueuedEntry) => Promise<void>;
 }) {
     const [enabled, setEnabled] = useState(settings.enabled);
     const [delayDays, setDelayDays] = useState(settings.delayDays);
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
     const [showStarRatings, setShowStarRatings] = useState(settings.showStarRatings);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [currentTime, setCurrentTime] = useState(Date.now());
 
     useEffect(() => {
         setEnabled(settings.enabled);
@@ -852,14 +848,6 @@ function QueuePanel({
         settings.showStarRatings
     ]);
 
-    useEffect(() => {
-        const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
-        return () => window.clearInterval(interval);
-    }, []);
-
-    const readyEntries = queuedEntries.filter((entry) => entry.availableAt <= currentTime);
-    const pendingEntries = queuedEntries.filter((entry) => entry.availableAt > currentTime);
-
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         await onSave({
@@ -871,25 +859,18 @@ function QueuePanel({
     }
 
     return (
-        <section className="stack panel queue-panel">
-            <div className="toolbar queue-toolbar">
-                <strong>Queue</strong>
-                <div className="queue-summary">
-                    <span className="metric">{queuedEntries.length} queued</span>
-                    <span className="metric">{readyEntries.length} ready</span>
-                    <button
-                        aria-expanded={settingsOpen}
-                        className="queue-settings-toggle"
-                        type="button"
-                        onClick={() => setSettingsOpen((isOpen) => !isOpen)}
-                    >
-                        Settings
-                    </button>
-                </div>
-            </div>
+        <div className="user-settings-menu">
+            <button
+                aria-expanded={settingsOpen}
+                className="settings-toggle"
+                type="button"
+                onClick={() => setSettingsOpen((isOpen) => !isOpen)}
+            >
+                Settings
+            </button>
 
             {settingsOpen ? (
-                <form className="stack queue-settings-form" onSubmit={handleSubmit}>
+                <form className="stack panel user-settings-popover" onSubmit={handleSubmit}>
                     <label className="checkbox-row">
                         <input
                             checked={enabled}
@@ -918,7 +899,7 @@ function QueuePanel({
                         <span>Show star ratings</span>
                     </label>
                     <label className="stack compact-stack">
-                        <span className="muted">Delay days</span>
+                        <span className="muted">Queue delay (days)</span>
                         <input
                             disabled={busy}
                             min={0}
@@ -931,6 +912,42 @@ function QueuePanel({
                     <button disabled={busy} type="submit">Save Settings</button>
                 </form>
             ) : null}
+        </div>
+    );
+}
+
+function QueuePanel({
+    busy,
+    queuedEntries,
+    onDelete,
+    onPickImage,
+    onStart
+}: {
+    busy: boolean;
+    queuedEntries: QueuedEntry[];
+    onDelete: (entry: QueuedEntry) => Promise<void>;
+    onPickImage: (entry: QueuedEntry) => void;
+    onStart: (entry: QueuedEntry) => Promise<void>;
+}) {
+    const [currentTime, setCurrentTime] = useState(Date.now());
+
+    useEffect(() => {
+        const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+        return () => window.clearInterval(interval);
+    }, []);
+
+    const readyEntries = queuedEntries.filter((entry) => entry.availableAt <= currentTime);
+    const pendingEntries = queuedEntries.filter((entry) => entry.availableAt > currentTime);
+
+    return (
+        <section className="stack panel queue-panel">
+            <div className="toolbar queue-toolbar">
+                <strong>Queue</strong>
+                <div className="queue-summary">
+                    <span className="metric">{queuedEntries.length} queued</span>
+                    <span className="metric">{readyEntries.length} ready</span>
+                </div>
+            </div>
 
             {queuedEntries.length > 0 ? (
                 <div className="queue-list">
