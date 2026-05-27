@@ -486,6 +486,56 @@ export async function startRerankEntry(userId: string, entryId: string) {
     return { kind: "session" as const, entryId, sessionId };
 }
 
+export async function moveEntryOnePosition(
+    userId: string,
+    input: { entryId: string; direction: "up" | "down" }
+) {
+    const entry = await getOwnedActiveEntry(userId, input.entryId);
+    assertOwned(entry, "Entry");
+
+    const targetRankPosition = input.direction === "up"
+        ? entry.rankPosition - 1
+        : entry.rankPosition + 1;
+    if (targetRankPosition < 0) {
+        return { moved: false };
+    }
+
+    const db = getDb();
+    const neighbor = await first<EntryRow>(
+        db
+            .prepare(
+                `SELECT id, category_id, name, rank_position, image_key, created_at,
+                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+         FROM entries
+         WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position = ?`
+            )
+            .bind(userId, entry.categoryId, targetRankPosition)
+    );
+    if (!neighbor) {
+        return { moved: false };
+    }
+
+    const updatedAt = now();
+    await db.batch([
+        db
+            .prepare(
+                `UPDATE entries
+         SET rank_position = ?, updated_at = ?
+         WHERE user_id = ? AND id = ? AND status = 'active'`
+            )
+            .bind(targetRankPosition, updatedAt, userId, entry.id),
+        db
+            .prepare(
+                `UPDATE entries
+         SET rank_position = ?, updated_at = ?
+         WHERE user_id = ? AND id = ? AND status = 'active'`
+            )
+            .bind(entry.rankPosition, updatedAt, userId, neighbor.id)
+    ]);
+
+    return { moved: true };
+}
+
 export async function renameEntry(userId: string, entryId: string, name: string) {
     const entry = await getOwnedEntry(userId, entryId);
     assertOwned(entry, "Entry");

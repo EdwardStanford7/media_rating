@@ -107,6 +107,14 @@ export const startRerankEntry = createServerFn({ method: "POST" })
         return repo.startRerankEntry(user.id, data.entryId);
     });
 
+export const moveEntryOnePosition = createServerFn({ method: "POST" })
+    .inputValidator((data: { entryId: string; direction: "up" | "down" }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.moveEntryOnePosition(user.id, data);
+    });
+
 export const renameEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string; name: string }) => data)
     .handler(async ({ data }) => {

@@ -14,6 +14,7 @@ import {
     importLegacyEntries,
     loadDashboard,
     markImageUnavailable,
+    moveEntryOnePosition,
     renameCategory,
     renameEntry,
     startRerankEntry,
@@ -458,6 +459,20 @@ function Dashboard({
         }
     }
 
+    async function handleMoveEntry(entryId: string, direction: "up" | "down") {
+        startBusy(direction === "up" ? "Moving entry up..." : "Moving entry down...");
+        setMessage(null);
+
+        try {
+            await moveEntryOnePosition({ data: { entryId, direction } });
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
     async function handleRename(entryId: string, name: string) {
         startBusy("Renaming entry...");
         setMessage(null);
@@ -705,11 +720,15 @@ function Dashboard({
                                     entry={entry}
                                     categories={dashboard.categories}
                                     key={entry.id}
+                                    canMoveDown={entry.rankPosition < selectedCategory.entries.length - 1}
+                                    canMoveUp={entry.rankPosition > 0}
                                     selectedCategoryId={selectedCategory.id}
                                     starRating={dashboard.queueSettings.showStarRatings
                                         ? starRatings.get(entry.id) ?? 5
                                         : null}
                                     onDelete={() => handleDelete(entry.id)}
+                                    onMoveDown={() => handleMoveEntry(entry.id, "down")}
+                                    onMoveUp={() => handleMoveEntry(entry.id, "up")}
                                     onPickImage={() => setImagePickerTarget({
                                         kind: "entry",
                                         item: entry,
@@ -1336,9 +1355,13 @@ function ImagePickerModal({
 function EntryCard({
     entry,
     categories,
+    canMoveDown,
+    canMoveUp,
     selectedCategoryId,
     starRating,
     onDelete,
+    onMoveDown,
+    onMoveUp,
     onPickImage,
     onRename,
     onRerank,
@@ -1346,9 +1369,13 @@ function EntryCard({
 }: {
     entry: Entry;
     categories: CategoryWithEntries[];
+    canMoveDown: boolean;
+    canMoveUp: boolean;
     selectedCategoryId: string;
     starRating: number | null;
     onDelete: () => void;
+    onMoveDown: () => void;
+    onMoveUp: () => void;
     onPickImage: () => void;
     onRename: (name: string) => void;
     onRerank: () => void;
@@ -1386,6 +1413,26 @@ function EntryCard({
                 </div>
                 <div className="entry-actions card-actions">
                     <button type="button" onClick={onRerank}>Rerank</button>
+                    <div className="rank-step-group">
+                        <button
+                            aria-label={`Move ${entry.name} up one spot`}
+                            className="rank-step-button"
+                            disabled={!canMoveUp}
+                            type="button"
+                            onClick={onMoveUp}
+                        >
+                            ↑
+                        </button>
+                        <button
+                            aria-label={`Move ${entry.name} down one spot`}
+                            className="rank-step-button"
+                            disabled={!canMoveDown}
+                            type="button"
+                            onClick={onMoveDown}
+                        >
+                            ↓
+                        </button>
+                    </div>
                     <button type="button" onClick={onPickImage}>
                         {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
