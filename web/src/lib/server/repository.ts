@@ -185,6 +185,58 @@ export async function renameCategory(userId: string, categoryId: string, name: s
         .run();
 }
 
+export async function deleteCategory(userId: string, categoryId: string) {
+    const category = await getOwnedCategory(userId, categoryId);
+    assertOwned(category, "Category");
+
+    const db = getDb();
+    const imageRows = await all<{ image_key: string | null }>(
+        db
+            .prepare(
+                `SELECT image_key
+         FROM entries
+         WHERE user_id = ? AND category_id = ? AND image_key IS NOT NULL
+         UNION ALL
+         SELECT image_key
+         FROM entry_queue
+         WHERE user_id = ? AND category_id = ? AND image_key IS NOT NULL`
+            )
+            .bind(userId, categoryId, userId, categoryId)
+    );
+    const imageKeys = Array.from(new Set(
+        imageRows
+            .map((row) => row.image_key)
+            .filter((imageKey): imageKey is string => hasStoredImage(imageKey))
+    ));
+
+    await db.batch([
+        db
+            .prepare(`DELETE FROM matches WHERE user_id = ? AND category_id = ?`)
+            .bind(userId, categoryId),
+        db
+            .prepare(`DELETE FROM ranking_sessions WHERE user_id = ? AND category_id = ?`)
+            .bind(userId, categoryId),
+        db
+            .prepare(`DELETE FROM entry_queue WHERE user_id = ? AND category_id = ?`)
+            .bind(userId, categoryId),
+        db
+            .prepare(`DELETE FROM entries WHERE user_id = ? AND category_id = ?`)
+            .bind(userId, categoryId),
+        db
+            .prepare(`DELETE FROM categories WHERE user_id = ? AND id = ?`)
+            .bind(userId, categoryId),
+        db
+            .prepare(
+                `UPDATE categories
+         SET sort_order = sort_order - 1, updated_at = ?
+         WHERE user_id = ? AND sort_order > ?`
+            )
+            .bind(now(), userId, category.sort_order)
+    ]);
+
+    await Promise.all(imageKeys.map((imageKey) => env.IMAGES.delete(imageKey)));
+}
+
 export async function createEntryWithBinaryRanking(
     userId: string,
     input: {

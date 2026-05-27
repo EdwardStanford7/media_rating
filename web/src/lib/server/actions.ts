@@ -34,6 +34,14 @@ export const renameCategory = createServerFn({ method: "POST" })
         return repo.renameCategory(user.id, data.categoryId, data.name);
     });
 
+export const deleteCategory = createServerFn({ method: "POST" })
+    .inputValidator((data: { categoryId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.deleteCategory(user.id, data.categoryId);
+    });
+
 export const createEntryWithBinaryRanking = createServerFn({ method: "POST" })
     .inputValidator(
         (data: {

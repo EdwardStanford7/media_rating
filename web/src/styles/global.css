@@ -96,6 +96,21 @@ select {
     margin-bottom: 0;
 }
 
+.brand-row {
+    display: flex;
+    align-items: center;
+}
+
+.brand-title {
+    font-size: 1.35rem;
+    line-height: 1.1;
+}
+
+.sign-out-button {
+    justify-self: start;
+    padding: 0.4rem 0.7rem;
+}
+
 .main {
     min-height: 0;
     overflow-y: auto;
@@ -178,10 +193,6 @@ select {
     background: #e0ebe8;
 }
 
-.category-edit-button {
-    padding-inline: 0.55rem;
-}
-
 .category-rename-form {
     display: grid;
     gap: 0.45rem;
@@ -195,6 +206,35 @@ select {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.45rem;
+}
+
+.category-menu {
+    position: relative;
+}
+
+.category-menu-button {
+    width: 2.4rem;
+    padding-inline: 0;
+}
+
+.category-menu-panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 25;
+    display: grid;
+    gap: 0.35rem;
+    min-width: 9rem;
+    padding: 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+
+.category-menu-panel button {
+    width: 100%;
+    text-align: left;
 }
 
 .user-settings-row {
@@ -337,7 +377,7 @@ img.queue-poster {
 }
 
 .entry-card {
-    overflow: hidden;
+    overflow: visible;
 }
 
 .entry-poster,
@@ -431,6 +471,10 @@ img.match-poster {
     padding-inline: 0;
 }
 
+.entry-menu {
+    position: relative;
+}
+
 .entry-overflow-panel,
 .entry-move-panel {
     display: grid;
@@ -439,6 +483,16 @@ img.match-poster {
     border-radius: 6px;
     background: #fbfaf7;
     padding: 0.65rem;
+}
+
+.entry-overflow-panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 25;
+    min-width: 11rem;
+    background: var(--panel);
+    box-shadow: var(--shadow);
 }
 
 .entry-overflow-panel button {
@@ -591,6 +645,28 @@ img.match-poster {
     border-radius: 8px;
     box-shadow: var(--shadow);
     padding: 1rem;
+}
+
+.confirm-modal {
+    width: min(420px, 100%);
+    display: grid;
+    gap: 1rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 1rem;
+}
+
+.confirm-modal h2,
+.confirm-modal p {
+    margin: 0;
+}
+
+.confirm-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
 }
 
 .image-picker-modal h2,

@@ -1,10 +1,11 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     createCategory,
     createEntryWithBinaryRanking,
     createQueuedEntry,
+    deleteCategory,
     deleteEntry,
     deleteQueuedEntry,
     getAuthOptions,
@@ -355,6 +356,7 @@ function Dashboard({
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
+    const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
 
@@ -448,6 +450,23 @@ function Dashboard({
 
         try {
             await renameCategory({ data: { categoryId, name } });
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
+    async function handleDeleteCategory(category: CategoryWithEntries) {
+        const nextCategory = dashboard.categories.find((candidate) => candidate.id !== category.id);
+        setCategoryDeleteTarget(null);
+        startBusy("Deleting category...");
+        setMessage(null);
+
+        try {
+            await deleteCategory({ data: { categoryId: category.id } });
+            setSelectedCategoryId(nextCategory?.id ?? "");
             await refresh();
         } catch (error) {
             setMessage(errorMessage(error));
@@ -712,6 +731,22 @@ function Dashboard({
                     onSaved={handleImageSaved}
                 />
             ) : null}
+            {categoryDeleteTarget ? (
+                <ConfirmDialog
+                    confirmLabel="Delete Category"
+                    title={`Delete ${categoryDeleteTarget.name}?`}
+                    variant="danger"
+                    onCancel={() => setCategoryDeleteTarget(null)}
+                    onConfirm={() => void handleDeleteCategory(categoryDeleteTarget)}
+                >
+                    <p>
+                        This permanently removes {categoryDeleteTarget.entries.length} ranked {categoryDeleteTarget.entries.length === 1 ? "entry" : "entries"},
+                        {" "}
+                        {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length} queued {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length === 1 ? "entry" : "entries"},
+                        {" "}match history, and stored images for this category.
+                    </p>
+                </ConfirmDialog>
+            ) : null}
             {appMode === "free_rank" ? (
                 <FreeRankScreen
                     categories={dashboard.categories}
@@ -727,11 +762,8 @@ function Dashboard({
             ) : (
                 <>
                     <aside className="sidebar">
-                        <div className="topbar">
-                            <strong>Media Rating</strong>
-                            <button type="button" onClick={() => signOut().then(() => window.location.assign("/"))}>
-                                Sign Out
-                            </button>
+                        <div className="brand-row">
+                            <strong className="brand-title">Media Rating</strong>
                         </div>
                         <div className="user-settings-row">
                             <p className="muted user-name">{userName}</p>
@@ -741,6 +773,13 @@ function Dashboard({
                                 onSave={handleQueueSettings}
                             />
                         </div>
+                        <button
+                            className="sign-out-button"
+                            type="button"
+                            onClick={() => signOut().then(() => window.location.assign("/"))}
+                        >
+                            Sign Out
+                        </button>
 
                         <form className="form-row" onSubmit={handleCreateCategory}>
                             <input disabled={busy} name="name" placeholder="New category" required />
@@ -754,6 +793,7 @@ function Dashboard({
                                     isActive={category.id === selectedCategory?.id}
                                     key={category.id}
                                     busy={busy}
+                                    onDelete={() => setCategoryDeleteTarget(category)}
                                     onRename={(name) => handleRenameCategory(category.id, name)}
                                     onSelect={() => setSelectedCategoryId(category.id)}
                                 />
@@ -873,25 +913,127 @@ function Dashboard({
     );
 }
 
+function useEscapeKey(isActive: boolean, onEscape: () => void) {
+    useEffect(() => {
+        if (!isActive) {
+            return;
+        }
+
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key === "Escape") {
+                onEscape();
+            }
+        }
+
+        document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [isActive, onEscape]);
+}
+
+function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: () => void) {
+    const ref = useRef<T | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+
+        function handlePointerDown(event: PointerEvent) {
+            const element = ref.current;
+            const target = event.target;
+            if (!element || !(target instanceof Node) || element.contains(target)) {
+                return;
+            }
+
+            onDismiss();
+        }
+
+        document.addEventListener("pointerdown", handlePointerDown);
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown);
+        };
+    }, [isOpen, onDismiss]);
+
+    useEscapeKey(isOpen, onDismiss);
+
+    return ref;
+}
+
+function ConfirmDialog({
+    children,
+    confirmLabel,
+    title,
+    variant = "default",
+    onCancel,
+    onConfirm
+}: {
+    children: ReactNode;
+    confirmLabel: string;
+    title: string;
+    variant?: "default" | "danger";
+    onCancel: () => void;
+    onConfirm: () => void;
+}) {
+    useEscapeKey(true, onCancel);
+
+    return (
+        <div
+            className="modal-backdrop"
+            onPointerDown={(event) => {
+                if (event.target === event.currentTarget) {
+                    onCancel();
+                }
+            }}
+        >
+            <section
+                aria-labelledby="confirm-dialog-title"
+                aria-modal="true"
+                className="confirm-modal"
+                role="dialog"
+            >
+                <div>
+                    <h2 id="confirm-dialog-title">{title}</h2>
+                    <div className="muted">{children}</div>
+                </div>
+                <div className="confirm-actions">
+                    <button type="button" onClick={onCancel}>Cancel</button>
+                    <button
+                        className={variant === "danger" ? "danger" : "primary"}
+                        type="button"
+                        onClick={onConfirm}
+                    >
+                        {confirmLabel}
+                    </button>
+                </div>
+            </section>
+        </div>
+    );
+}
+
 function CategoryListItem({
     category,
     isActive,
     busy,
+    onDelete,
     onRename,
     onSelect
 }: {
     category: CategoryWithEntries;
     isActive: boolean;
     busy: boolean;
+    onDelete: () => void;
     onRename: (name: string) => Promise<void>;
     onSelect: () => void;
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
     const [name, setName] = useState(category.name);
+    const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
 
     useEffect(() => {
         setName(category.name);
         setIsRenaming(false);
+        setMenuOpen(false);
     }, [category.name]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -937,14 +1079,41 @@ function CategoryListItem({
                 <strong>{category.name}</strong>
                 <span className="muted"> · {category.entries.length}</span>
             </button>
-            <button
-                className="category-edit-button"
-                disabled={busy}
-                type="button"
-                onClick={() => setIsRenaming(true)}
-            >
-                Rename
-            </button>
+            <div className="category-menu" ref={menuRef}>
+                <button
+                    aria-expanded={menuOpen}
+                    aria-label={`Category actions for ${category.name}`}
+                    className="category-menu-button"
+                    disabled={busy}
+                    type="button"
+                    onClick={() => setMenuOpen((isOpen) => !isOpen)}
+                >
+                    ...
+                </button>
+                {menuOpen ? (
+                    <div className="category-menu-panel">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                setIsRenaming(true);
+                            }}
+                        >
+                            Rename
+                        </button>
+                        <button
+                            className="danger menu-danger"
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                onDelete();
+                            }}
+                        >
+                            Delete
+                        </button>
+                    </div>
+                ) : null}
+            </div>
         </div>
     );
 }
@@ -977,6 +1146,7 @@ function UserSettingsMenu({
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
     const [showStarRatings, setShowStarRatings] = useState(settings.showStarRatings);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const menuRef = useDismissibleMenu<HTMLDivElement>(settingsOpen, () => setSettingsOpen(false));
 
     useEffect(() => {
         setEnabled(settings.enabled);
@@ -998,10 +1168,11 @@ function UserSettingsMenu({
             promptForMissingImages,
             showStarRatings
         });
+        setSettingsOpen(false);
     }
 
     return (
-        <div className="user-settings-menu">
+        <div className="user-settings-menu" ref={menuRef}>
             <button
                 aria-expanded={settingsOpen}
                 className="settings-toggle"
@@ -1206,6 +1377,7 @@ function ImagePickerModal({
     const thumbnailPosterBlobsRef = useRef<Map<string, Blob>>(new Map());
     const displayedQueryRef = useRef<string | null>(null);
     const searchRequestIdRef = useRef(0);
+    useEscapeKey(true, onClose);
 
     const search = useCallback(async (searchQuery: string) => {
         const requestId = searchRequestIdRef.current + 1;
@@ -1376,7 +1548,14 @@ function ImagePickerModal({
     }
 
     return (
-        <div className="modal-backdrop">
+        <div
+            className="modal-backdrop"
+            onPointerDown={(event) => {
+                if (event.target === event.currentTarget) {
+                    onClose();
+                }
+            }}
+        >
             <section className="image-picker-modal">
                 <div className="toolbar">
                     <div>
@@ -1508,6 +1687,7 @@ function EntryCard({
     const [targetCategoryId, setTargetCategoryId] = useState(selectedCategoryId);
     const [menuOpen, setMenuOpen] = useState(false);
     const [moveControlsOpen, setMoveControlsOpen] = useState(false);
+    const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
 
     useEffect(() => {
         setRenameValue(entry.name);
@@ -1559,29 +1739,31 @@ function EntryCard({
                     <button type="button" onClick={onPickImage}>
                         {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
-                    <button
-                        aria-expanded={menuOpen}
-                        aria-label={`More actions for ${entry.name}`}
-                        className="entry-menu-button"
-                        type="button"
-                        onClick={() => setMenuOpen((isOpen) => !isOpen)}
-                    >
-                        ...
-                    </button>
-                </div>
-                {menuOpen ? (
-                    <div className="entry-overflow-panel">
+                    <div className="entry-menu" ref={menuRef}>
                         <button
+                            aria-expanded={menuOpen}
+                            aria-label={`More actions for ${entry.name}`}
+                            className="entry-menu-button"
                             type="button"
-                            onClick={() => {
-                                setMoveControlsOpen(true);
-                                setMenuOpen(false);
-                            }}
+                            onClick={() => setMenuOpen((isOpen) => !isOpen)}
                         >
-                            Change Category
+                            ...
                         </button>
+                        {menuOpen ? (
+                            <div className="entry-overflow-panel">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMoveControlsOpen(true);
+                                        setMenuOpen(false);
+                                    }}
+                                >
+                                    Change Category
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
-                ) : null}
+                </div>
                 <div className="entry-actions stacked-action">
                     <input
                         aria-label={`Rename ${entry.name}`}
