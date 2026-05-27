@@ -88,6 +88,25 @@ interface ActiveBinarySessionRow {
     source: RankingSource;
 }
 
+interface ActiveSessionRepairRow {
+    id: string;
+    category_id: string;
+    subject_entry_id: string;
+    source: RankingSource;
+    lower_bound: number;
+    upper_bound: number;
+    pivot_entry_id: string | null;
+    pivot_rank_position: number | null;
+    created_at: number;
+    category_exists: string | null;
+    subject_id: string | null;
+    subject_category_id: string | null;
+    subject_status: string | null;
+    pivot_id: string | null;
+    pivot_category_id: string | null;
+    pivot_status: string | null;
+}
+
 const IMPORT_BATCH_SIZE = 100;
 const DEFAULT_QUEUE_DELAY_DAYS = 3;
 const MAX_QUEUE_DELAY_DAYS = 365;
@@ -98,7 +117,7 @@ export async function loadDashboard(
     displayMode: DisplayMode
 ): Promise<DashboardData> {
     const db = getDb();
-    await recoverInterruptedRankingEntries(userId);
+    await repairInterruptedRankingState(userId);
     const queueSettings = await getQueueSettings(userId);
     const queuedEntries = await listQueuedEntries(userId);
     const activeBinarySession = await getActiveBinarySession(userId);
@@ -272,6 +291,7 @@ export async function createEntryWithBinaryRanking(
         throw new Error("Entry name is required");
     }
 
+    await repairInterruptedRankingState(userId);
     const activeSession = await getActiveSessionRow(userId);
     if (activeSession) {
         const activeSubject = await getOwnedEntry(userId, activeSession.subject_entry_id);
@@ -796,6 +816,7 @@ export async function getBinarySession(
     sessionId: string
 ): Promise<BinarySessionView | null> {
     const db = getDb();
+    await repairInterruptedRankingState(userId);
     const session = await first<SessionRow>(
         db
             .prepare(
@@ -1331,7 +1352,7 @@ async function assertEntryNameAvailable(
     name: string,
     ignoredQueuedEntryId?: string
 ) {
-    await recoverInterruptedRankingEntries(userId);
+    await repairInterruptedRankingState(userId);
 
     const existingEntry = await first<{ id: string }>(
         getDb()
@@ -1413,10 +1434,122 @@ async function getActiveSessionRow(userId: string) {
 }
 
 async function assertNoActiveBinarySession(userId: string) {
+    await repairInterruptedRankingState(userId);
     const activeSession = await getActiveSessionRow(userId);
     if (activeSession) {
         throw new Error("Finish or cancel the active ranking before starting another one");
     }
+}
+
+async function repairInterruptedRankingState(userId: string) {
+    await cancelStaleActiveRankingSessions(userId);
+    await recoverInterruptedRankingEntries(userId);
+}
+
+async function cancelStaleActiveRankingSessions(userId: string) {
+    const db = getDb();
+    const activeSessions = await all<ActiveSessionRepairRow>(
+        db
+            .prepare(
+                `SELECT ranking_sessions.id, ranking_sessions.category_id,
+                ranking_sessions.subject_entry_id, ranking_sessions.source,
+                ranking_sessions.lower_bound, ranking_sessions.upper_bound,
+                ranking_sessions.pivot_entry_id, ranking_sessions.pivot_rank_position,
+                ranking_sessions.created_at,
+                categories.id AS category_exists,
+                subject.id AS subject_id, subject.category_id AS subject_category_id,
+                subject.status AS subject_status,
+                pivot.id AS pivot_id, pivot.category_id AS pivot_category_id,
+                pivot.status AS pivot_status
+         FROM ranking_sessions
+         LEFT JOIN categories
+           ON categories.id = ranking_sessions.category_id
+          AND categories.user_id = ranking_sessions.user_id
+         LEFT JOIN entries subject
+           ON subject.id = ranking_sessions.subject_entry_id
+          AND subject.user_id = ranking_sessions.user_id
+         LEFT JOIN entries pivot
+           ON pivot.id = ranking_sessions.pivot_entry_id
+          AND pivot.user_id = ranking_sessions.user_id
+         WHERE ranking_sessions.user_id = ? AND ranking_sessions.status = 'active'
+         ORDER BY ranking_sessions.created_at DESC`
+            )
+            .bind(userId)
+    );
+
+    if (activeSessions.length === 0) {
+        return;
+    }
+
+    const updatedAt = now();
+    const nextRankByCategory = new Map<string, number>();
+    const statements: D1PreparedStatement[] = [];
+    let keptActiveSessionId: string | null = null;
+
+    for (const session of activeSessions) {
+        const canResume = canResumeActiveSession(session);
+        if (canResume && keptActiveSessionId === null) {
+            keptActiveSessionId = session.id;
+            continue;
+        }
+
+        statements.push(
+            db
+                .prepare(
+                    `DELETE FROM matches
+           WHERE user_id = ? AND ranking_session_id = ?`
+                )
+                .bind(userId, session.id),
+            db
+                .prepare(
+                    `UPDATE ranking_sessions
+           SET status = 'cancelled', completed_at = ?,
+               pivot_entry_id = NULL, pivot_rank_position = NULL
+           WHERE id = ? AND user_id = ? AND status = 'active'`
+                )
+                .bind(updatedAt, session.id, userId)
+        );
+
+        if (
+            session.subject_id &&
+            session.subject_status === "ranking" &&
+            session.subject_category_id
+        ) {
+            let nextRank = nextRankByCategory.get(session.subject_category_id);
+            if (nextRank === undefined) {
+                nextRank = await getNextActiveRankPosition(userId, session.subject_category_id);
+            }
+
+            statements.push(
+                db
+                    .prepare(
+                        `UPDATE entries
+             SET status = 'active', rank_position = ?, updated_at = ?
+             WHERE user_id = ? AND id = ? AND status = 'ranking'`
+                    )
+                    .bind(nextRank, updatedAt, userId, session.subject_entry_id)
+            );
+            nextRankByCategory.set(session.subject_category_id, nextRank + 1);
+        }
+    }
+
+    await runBatches(db, statements);
+}
+
+function canResumeActiveSession(session: ActiveSessionRepairRow) {
+    return Boolean(
+        session.category_exists &&
+        session.subject_id &&
+        session.subject_category_id === session.category_id &&
+        session.subject_status === "ranking" &&
+        session.pivot_entry_id &&
+        session.pivot_id &&
+        session.pivot_category_id === session.category_id &&
+        session.pivot_status === "active" &&
+        session.pivot_rank_position !== null &&
+        session.lower_bound >= 0 &&
+        session.upper_bound > session.lower_bound
+    );
 }
 
 async function recoverInterruptedRankingEntries(userId: string) {
@@ -1448,7 +1581,7 @@ async function recoverInterruptedRankingEntries(userId: string) {
     for (const entry of orphanedEntries) {
         let nextRank = nextRankByCategory.get(entry.category_id);
         if (nextRank === undefined) {
-            nextRank = await getActiveEntryCount(userId, entry.category_id);
+            nextRank = await getNextActiveRankPosition(userId, entry.category_id);
         }
 
         statements.push(
@@ -1630,6 +1763,20 @@ async function getActiveEntryCount(userId: string, categoryId: string) {
     );
 
     return count?.count ?? 0;
+}
+
+async function getNextActiveRankPosition(userId: string, categoryId: string) {
+    const row = await first<{ next_rank: number }>(
+        getDb()
+            .prepare(
+                `SELECT COALESCE(MAX(rank_position) + 1, 0) AS next_rank
+         FROM entries
+         WHERE user_id = ? AND category_id = ? AND status = 'active'`
+            )
+            .bind(userId, categoryId)
+    );
+
+    return row?.next_rank ?? 0;
 }
 
 function mapEntry(row: EntryRow): Entry {

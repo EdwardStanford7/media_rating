@@ -771,6 +771,19 @@ function Dashboard({
         }
     }
 
+    async function handleMissingBinarySession() {
+        setActiveSessionId(null);
+        setQueueRankingActive(false);
+        const nextDashboard = await refresh();
+        if (nextDashboard.activeBinarySession) {
+            setActiveSessionId(nextDashboard.activeBinarySession.id);
+            setSelectedCategoryId(nextDashboard.activeBinarySession.categoryId);
+            return;
+        }
+
+        setMessage("That ranking is no longer active.");
+    }
+
     async function handleImport(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         const formElement = event.currentTarget;
@@ -994,6 +1007,7 @@ function Dashboard({
                                         await startNextQueuedRank(nextDashboard.queuedEntries);
                                     }
                                 }}
+                                onUnavailable={handleMissingBinarySession}
                                 onNeedImage={requestImageForMatch}
                             />
                         ) : null}
@@ -2117,12 +2131,14 @@ function BinaryRankPanel({
     imageRefreshVersion,
     onCancel,
     onComplete,
+    onUnavailable,
     onNeedImage
 }: {
     sessionId: string;
     imageRefreshVersion: number;
     onCancel: (session: BinarySessionView) => Promise<void>;
     onComplete: () => Promise<void>;
+    onUnavailable: () => Promise<void>;
     onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
 }) {
     const [session, setSession] = useState<BinarySessionView | null>(null);
@@ -2130,9 +2146,31 @@ function BinaryRankPanel({
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
+        let isCurrent = true;
+        setSession(null);
+        setError(null);
         getBinarySession({ data: { sessionId } })
-            .then(setSession)
-            .catch((loadError) => setError(errorMessage(loadError)));
+            .then((nextSession) => {
+                if (!isCurrent) {
+                    return;
+                }
+
+                if (!nextSession) {
+                    void onUnavailable();
+                    return;
+                }
+
+                setSession(nextSession);
+            })
+            .catch((loadError) => {
+                if (isCurrent) {
+                    setError(errorMessage(loadError));
+                }
+            });
+
+        return () => {
+            isCurrent = false;
+        };
     }, [sessionId, imageRefreshVersion]);
 
     useEffect(() => {
@@ -2164,7 +2202,13 @@ function BinaryRankPanel({
                 return;
             }
 
-            setSession(await getBinarySession({ data: { sessionId } }));
+            const nextSession = await getBinarySession({ data: { sessionId } });
+            if (!nextSession) {
+                await onUnavailable();
+                return;
+            }
+
+            setSession(nextSession);
         } catch (submitError) {
             setError(errorMessage(submitError));
         } finally {
