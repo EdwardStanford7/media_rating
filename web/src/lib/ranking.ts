@@ -19,8 +19,8 @@ export const DEFAULT_STAR_RATING_CURVE: StarRatingCurvePoint[] = [
     { percentile: 0.25, stars: 4.5 },
     { percentile: 0.5, stars: 4 },
     { percentile: 0.75, stars: 3.3 },
-    { percentile: 0.9, stars: 2.5 },
-    { percentile: 1, stars: 1.5 }
+    { percentile: 0.9, stars: 2.2 },
+    { percentile: 1, stars: 1.0 }
 ];
 
 export interface BinaryComparison {

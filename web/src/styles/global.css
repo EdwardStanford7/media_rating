@@ -473,8 +473,22 @@ img.queue-poster {
     gap: 0.35rem;
 }
 
+.image-placeholder span {
+    font-size: 1rem;
+    line-height: 1.25;
+}
+
 .image-placeholder small {
     color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.25;
+}
+
+.queue-poster.image-placeholder {
+    font-size: 0.8rem;
+}
+
+.queue-poster.image-placeholder small {
     font-size: 0.78rem;
 }
 

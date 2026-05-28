@@ -175,7 +175,7 @@ describe("combined order", () => {
 describe("derived star ratings", () => {
     it("maps combined rank to the default skewed percentile star curve", () => {
         expect(starRatingForCombinedRank(0, 287)).toBe(5);
-        expect(starRatingForCombinedRank(286, 287)).toBe(1.5);
+        expect(starRatingForCombinedRank(286, 287)).toBe(1);
         expect(starRatingForCombinedRank(29, 287)).toBeCloseTo(4.8, 1);
         expect(starRatingForCombinedRank(143, 287)).toBeCloseTo(4, 1);
     });

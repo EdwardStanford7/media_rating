@@ -372,6 +372,7 @@ function Dashboard({
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
+    const mainRef = useRef<HTMLElement | null>(null);
 
     const selectedCategory = useMemo(
         () =>
@@ -448,6 +449,13 @@ function Dashboard({
     function finishBusy() {
         setBusy(false);
         setBusyLabel(null);
+    }
+
+    function scrollMainToTop() {
+        window.requestAnimationFrame(() => {
+            mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
     }
 
     const requestImageForMatch = useCallback(
@@ -711,6 +719,7 @@ function Dashboard({
             const result = await startRerankEntry({ data: { entryId } });
             if (result.kind === "session") {
                 setActiveBinarySessionId(result.sessionId);
+                scrollMainToTop();
             }
             await refresh();
         } catch (error) {
@@ -996,7 +1005,7 @@ function Dashboard({
                         </form>
                     </aside>
 
-                    <section className="main stack">
+                    <section className="main stack" ref={mainRef}>
                         <div className="topbar">
                             <div>
                                 <h1>{selectedCategory?.name ?? "Categories"}</h1>
@@ -1717,7 +1726,15 @@ function ImagePickerModal({
     const thumbnailPosterBlobsRef = useRef<Map<string, Blob>>(new Map());
     const displayedQueryRef = useRef<string | null>(null);
     const searchRequestIdRef = useRef(0);
+    const activeSearchControllerRef = useRef<AbortController | null>(null);
     useEscapeKey(true, onClose);
+
+    function interruptSearch() {
+        searchRequestIdRef.current += 1;
+        activeSearchControllerRef.current?.abort();
+        activeSearchControllerRef.current = null;
+        setLoading(false);
+    }
 
     const search = useCallback(async (searchQuery: string) => {
         const requestId = searchRequestIdRef.current + 1;
@@ -1743,7 +1760,9 @@ function ImagePickerModal({
         setLoading(true);
         setError(null);
         const cacheBust = crypto.randomUUID();
+        activeSearchControllerRef.current?.abort();
         const controller = new AbortController();
+        activeSearchControllerRef.current = controller;
         const timeoutId = window.setTimeout(() => controller.abort(), IMAGE_SEARCH_TIMEOUT_MS);
 
         try {
@@ -1801,6 +1820,9 @@ function ImagePickerModal({
         } finally {
             window.clearTimeout(timeoutId);
             if (requestId === searchRequestIdRef.current) {
+                if (activeSearchControllerRef.current === controller) {
+                    activeSearchControllerRef.current = null;
+                }
                 setLoading(false);
             }
         }
@@ -1815,6 +1837,11 @@ function ImagePickerModal({
         setCandidates([]);
         void search(defaultQuery);
     }, [defaultQuery, search]);
+
+    useEffect(() => () => {
+        searchRequestIdRef.current += 1;
+        activeSearchControllerRef.current?.abort();
+    }, []);
 
     async function selectCandidate(
         candidate: ImageSearchCandidate,
@@ -1849,6 +1876,7 @@ function ImagePickerModal({
     }
 
     async function uploadLocalFile(file: File) {
+        interruptSearch();
         setSavingCandidateId("local");
         setError(null);
 
@@ -1869,6 +1897,7 @@ function ImagePickerModal({
     }
 
     async function saveNoImage() {
+        interruptSearch();
         setSavingCandidateId("none");
         setError(null);
 
@@ -1940,7 +1969,7 @@ function ImagePickerModal({
                         <span>Upload File</span>
                         <input
                             accept="image/*"
-                            disabled={loading || Boolean(savingCandidateId)}
+                            disabled={Boolean(savingCandidateId)}
                             type="file"
                             onChange={(event) => {
                                 const file = event.currentTarget.files?.[0];
@@ -1951,7 +1980,7 @@ function ImagePickerModal({
                         />
                     </label>
                     <button
-                        disabled={loading || Boolean(savingCandidateId)}
+                        disabled={Boolean(savingCandidateId)}
                         type="button"
                         onClick={() => void saveNoImage()}
                     >
