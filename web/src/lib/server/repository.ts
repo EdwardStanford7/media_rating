@@ -1,7 +1,12 @@
 import {
     DEFAULT_ELO,
     chooseBinaryPivot,
+    eloKFactorForMatchCount,
+    matchCount,
+    normalizeStarRatingCurve,
     orderEntries,
+    rankPriorElo,
+    rebaseEloForRankChange,
     selectFreeRankMatchup,
     updateEloPair
 } from "@/lib/ranking";
@@ -53,6 +58,7 @@ interface QueueSettingsRow {
     delay_days: number;
     prompt_missing_images: number;
     show_star_ratings: number;
+    star_rating_curve: string | null;
 }
 
 interface QueuedEntryRow {
@@ -452,22 +458,26 @@ export async function updateQueueSettings(
         delayDays: number;
         promptForMissingImages: boolean;
         showStarRatings: boolean;
+        starRatingCurve: QueueSettings["starRatingCurve"];
     }
 ) {
     const delayDays = normalizeQueueDelayDays(input.delayDays);
+    const starRatingCurve = normalizeStarRatingCurve(input.starRatingCurve);
     const updatedAt = now();
 
     await getDb()
         .prepare(
             `INSERT INTO queue_settings (
-         user_id, enabled, delay_days, prompt_missing_images, show_star_ratings, created_at, updated_at
+         user_id, enabled, delay_days, prompt_missing_images, show_star_ratings,
+         star_rating_curve, created_at, updated_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          enabled = excluded.enabled,
          delay_days = excluded.delay_days,
          prompt_missing_images = excluded.prompt_missing_images,
          show_star_ratings = excluded.show_star_ratings,
+         star_rating_curve = excluded.star_rating_curve,
          updated_at = excluded.updated_at`
         )
         .bind(
@@ -476,6 +486,7 @@ export async function updateQueueSettings(
             delayDays,
             input.promptForMissingImages ? 1 : 0,
             input.showStarRatings ? 1 : 0,
+            JSON.stringify(starRatingCurve),
             updatedAt,
             updatedAt
         )
@@ -688,21 +699,36 @@ export async function moveEntryOnePosition(
     }
 
     const updatedAt = now();
+    const categorySize = await getActiveEntryCount(userId, entry.categoryId);
+    const entryElo = rebaseEloForRankChange(
+        entry.freeRankElo,
+        entry.rankPosition,
+        categorySize,
+        targetRankPosition,
+        categorySize
+    );
+    const neighborElo = rebaseEloForRankChange(
+        neighbor.free_rank_elo,
+        neighbor.rank_position,
+        categorySize,
+        entry.rankPosition,
+        categorySize
+    );
     await db.batch([
         db
             .prepare(
                 `UPDATE entries
-         SET rank_position = ?, updated_at = ?
+         SET rank_position = ?, free_rank_elo = ?, updated_at = ?
          WHERE user_id = ? AND id = ? AND status = 'active'`
             )
-            .bind(targetRankPosition, updatedAt, userId, entry.id),
+            .bind(targetRankPosition, entryElo, updatedAt, userId, entry.id),
         db
             .prepare(
                 `UPDATE entries
-         SET rank_position = ?, updated_at = ?
+         SET rank_position = ?, free_rank_elo = ?, updated_at = ?
          WHERE user_id = ? AND id = ? AND status = 'active'`
             )
-            .bind(entry.rankPosition, updatedAt, userId, neighbor.id)
+            .bind(entry.rankPosition, neighborElo, updatedAt, userId, neighbor.id)
     ]);
 
     return { moved: true };
@@ -1057,6 +1083,16 @@ export async function submitBinaryWinner(
         return { kind: "session" as const, sessionId: session.id };
     }
 
+    const subject = await getOwnedEntry(userId, session.subject_entry_id);
+    assertOwned(subject, "Entry");
+    const finalCategorySize = await getActiveEntryCount(userId, session.category_id) + 1;
+    const freeRankElo = freeRankEloForBinaryPlacement(
+        session,
+        subject,
+        lowerBound,
+        finalCategorySize
+    );
+
     await db.batch([
         matchStatement,
         ...placeRankedEntryStatements(
@@ -1065,7 +1101,8 @@ export async function submitBinaryWinner(
             session.subject_entry_id,
             session.category_id,
             lowerBound,
-            createdAt
+            createdAt,
+            freeRankElo
         ),
         db
             .prepare(
@@ -1117,8 +1154,18 @@ export async function submitFreeRankWinner(
 
     const entryAWon = input.winnerId === entryA.id;
     const elo = entryAWon
-        ? updateEloPair(entryA.freeRankElo, entryB.freeRankElo)
-        : updateEloPair(entryB.freeRankElo, entryA.freeRankElo);
+        ? updateEloPair(
+            entryA.freeRankElo,
+            entryB.freeRankElo,
+            eloKFactorForMatchCount(matchCount(entryA)),
+            eloKFactorForMatchCount(matchCount(entryB))
+        )
+        : updateEloPair(
+            entryB.freeRankElo,
+            entryA.freeRankElo,
+            eloKFactorForMatchCount(matchCount(entryB)),
+            eloKFactorForMatchCount(matchCount(entryA))
+        );
     const entryAEloAfter = entryAWon ? elo.winnerElo : elo.loserElo;
     const entryBEloAfter = entryAWon ? elo.loserElo : elo.winnerElo;
     const updatedAt = now();
@@ -1278,15 +1325,19 @@ export async function importLegacyEntries(userId: string, parsedImport: ParsedIm
         const knownNames = namesByCategory.get(categoryId) ?? new Set<string>();
         namesByCategory.set(categoryId, knownNames);
         let rankPosition = activeCountsByCategory.get(categoryId) ?? 0;
-
-        for (const entry of entries) {
+        const insertableEntries = entries.filter((entry) => {
             if (knownNames.has(entry.name)) {
                 skippedCount += 1;
-                continue;
+                return false;
             }
 
-            const entryId = newId("entry");
             knownNames.add(entry.name);
+            return true;
+        });
+        const finalCategorySize = rankPosition + insertableEntries.length;
+
+        for (const entry of insertableEntries) {
+            const entryId = newId("entry");
             entryInsertStatements.push(
                 db.prepare(
                     `INSERT OR IGNORE INTO entries (
@@ -1305,7 +1356,7 @@ export async function importLegacyEntries(userId: string, parsedImport: ParsedIm
                         null,
                         createdAt,
                         entry.firstConsumedAt,
-                        DEFAULT_ELO,
+                        rankPriorElo(rankPosition, finalCategorySize),
                         createdAt
                     )
             );
@@ -1331,7 +1382,8 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
     const row = await first<QueueSettingsRow>(
         getDb()
             .prepare(
-                `SELECT enabled, delay_days, prompt_missing_images, show_star_ratings
+                `SELECT enabled, delay_days, prompt_missing_images, show_star_ratings,
+                star_rating_curve
          FROM queue_settings
          WHERE user_id = ?`
             )
@@ -1342,8 +1394,21 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
         enabled: row?.enabled === 1,
         delayDays: normalizeQueueDelayDays(row?.delay_days ?? DEFAULT_QUEUE_DELAY_DAYS),
         promptForMissingImages: row?.prompt_missing_images !== 0,
-        showStarRatings: row?.show_star_ratings !== 0
+        showStarRatings: row?.show_star_ratings !== 0,
+        starRatingCurve: parseStoredStarRatingCurve(row?.star_rating_curve)
     };
+}
+
+function parseStoredStarRatingCurve(value: string | null | undefined) {
+    if (!value) {
+        return normalizeStarRatingCurve(null);
+    }
+
+    try {
+        return normalizeStarRatingCurve(JSON.parse(value));
+    } catch {
+        return normalizeStarRatingCurve(null);
+    }
 }
 
 async function listQueuedEntries(userId: string): Promise<QueuedEntry[]> {
@@ -1841,7 +1906,8 @@ function placeRankedEntryStatements(
     entryId: string,
     categoryId: string,
     rankPosition: number,
-    updatedAt: number
+    updatedAt: number,
+    freeRankElo: number | null = null
 ) {
     return [
         db
@@ -1854,11 +1920,41 @@ function placeRankedEntryStatements(
         db
             .prepare(
                 `UPDATE entries
-       SET status = 'active', rank_position = ?, updated_at = ?
+       SET status = 'active',
+           rank_position = ?,
+           free_rank_elo = COALESCE(?, free_rank_elo),
+           updated_at = ?
        WHERE user_id = ? AND id = ?`
             )
-            .bind(rankPosition, updatedAt, userId, entryId)
+            .bind(rankPosition, freeRankElo, updatedAt, userId, entryId)
     ];
+}
+
+function freeRankEloForBinaryPlacement(
+    session: SessionRow,
+    entry: Entry,
+    finalRankPosition: number,
+    finalCategorySize: number
+) {
+    if (session.source === "new_entry") {
+        return rankPriorElo(finalRankPosition, finalCategorySize);
+    }
+
+    if (session.source === "rerank_entry") {
+        return rebaseEloForRankChange(
+            entry.freeRankElo,
+            session.final_rank_position ?? entry.rankPosition,
+            finalCategorySize,
+            finalRankPosition,
+            finalCategorySize
+        );
+    }
+
+    if (session.source === "switch_category" && matchCount(entry) === 0) {
+        return rankPriorElo(finalRankPosition, finalCategorySize);
+    }
+
+    return null;
 }
 
 async function getOwnedCategory(userId: string, categoryId: string) {

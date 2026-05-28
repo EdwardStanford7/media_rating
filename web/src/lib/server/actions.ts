@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { auth, getEmailSignUpOptions } from "./auth";
-import type { DisplayMode, ParsedImport } from "@/lib/types";
+import type { DisplayMode, ParsedImport, StarRatingCurvePoint } from "@/lib/types";
 
 export const getAuthOptions = createServerFn({ method: "GET" }).handler(getEmailSignUpOptions);
 
@@ -76,6 +76,7 @@ export const updateQueueSettings = createServerFn({ method: "POST" })
         delayDays: number;
         promptForMissingImages: boolean;
         showStarRatings: boolean;
+        starRatingCurve: StarRatingCurvePoint[];
     }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();

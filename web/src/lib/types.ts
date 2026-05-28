@@ -20,6 +20,12 @@ export interface QueueSettings {
     delayDays: number;
     promptForMissingImages: boolean;
     showStarRatings: boolean;
+    starRatingCurve: StarRatingCurvePoint[];
+}
+
+export interface StarRatingCurvePoint {
+    percentile: number;
+    stars: number;
 }
 
 export interface QueuedEntry {

@@ -29,7 +29,13 @@ import {
 } from "@/lib/server/actions";
 import { signIn, signOut } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
-import { orderEntries, starRatingsByEntryId } from "@/lib/ranking";
+import {
+    DEFAULT_STAR_RATING_CURVE,
+    orderEntries,
+    parseStarRatingCurveText,
+    starRatingCurveToText,
+    starRatingsByEntryId
+} from "@/lib/ranking";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type {
     BinarySessionView,
@@ -391,8 +397,12 @@ function Dashboard({
             return new Map<string, number>();
         }
 
-        return starRatingsByEntryId(selectedCategory.entries);
-    }, [dashboard.queueSettings.showStarRatings, selectedCategory]);
+        return starRatingsByEntryId(selectedCategory.entries, dashboard.queueSettings.starRatingCurve);
+    }, [
+        dashboard.queueSettings.showStarRatings,
+        dashboard.queueSettings.starRatingCurve,
+        selectedCategory
+    ]);
 
     function setActiveBinarySessionId(sessionId: string | null) {
         activeSessionIdRef.current = sessionId;
@@ -1320,6 +1330,8 @@ function UserSettingsMenu({
     const [delayDays, setDelayDays] = useState(settings.delayDays);
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
     const [showStarRatings, setShowStarRatings] = useState(settings.showStarRatings);
+    const [starCurveText, setStarCurveText] = useState(starRatingCurveToText(settings.starRatingCurve));
+    const [starCurveError, setStarCurveError] = useState<string | null>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const menuRef = useDismissibleMenu<HTMLDivElement>(settingsOpen, () => setSettingsOpen(false));
 
@@ -1328,20 +1340,36 @@ function UserSettingsMenu({
         setDelayDays(settings.delayDays);
         setPromptForMissingImages(settings.promptForMissingImages);
         setShowStarRatings(settings.showStarRatings);
+        setStarCurveText(starRatingCurveToText(settings.starRatingCurve));
+        setStarCurveError(null);
     }, [
         settings.delayDays,
         settings.enabled,
         settings.promptForMissingImages,
+        settings.starRatingCurve,
         settings.showStarRatings
     ]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        let starRatingCurve: QueueSettings["starRatingCurve"];
+        if (showStarRatings) {
+            try {
+                starRatingCurve = parseStarRatingCurveText(starCurveText);
+            } catch (error) {
+                setStarCurveError(errorMessage(error));
+                return;
+            }
+        } else {
+            starRatingCurve = settings.starRatingCurve;
+        }
+
         await onSave({
             enabled,
             delayDays,
             promptForMissingImages,
-            showStarRatings
+            showStarRatings,
+            starRatingCurve
         });
         setSettingsOpen(false);
     }
@@ -1397,6 +1425,34 @@ function UserSettingsMenu({
                             onChange={(event) => setDelayDays(Number(event.target.value))}
                         />
                     </label>
+                    {showStarRatings ? (
+                        <details className="stack compact-stack star-curve-editor">
+                            <summary>Star curve</summary>
+                            <textarea
+                                aria-label="Star curve"
+                                disabled={busy}
+                                rows={9}
+                                spellCheck={false}
+                                value={starCurveText}
+                                onChange={(event) => {
+                                    setStarCurveText(event.target.value);
+                                    setStarCurveError(null);
+                                }}
+                            />
+                            {starCurveError ? <div className="status">{starCurveError}</div> : null}
+                            <button
+                                className="small-button"
+                                disabled={busy}
+                                type="button"
+                                onClick={() => {
+                                    setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
+                                    setStarCurveError(null);
+                                }}
+                            >
+                                Reset Curve
+                            </button>
+                        </details>
+                    ) : null}
                     <button disabled={busy} type="submit">Save Settings</button>
                 </form>
             ) : null}

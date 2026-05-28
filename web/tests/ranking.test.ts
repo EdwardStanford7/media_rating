@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
     chooseBinaryPivot,
     combinedOrder,
+    eloKFactorForMatchCount,
+    parseStarRatingCurveText,
+    rankPriorElo,
     recordBinaryChoice,
+    rebaseEloForRankChange,
     selectFreeRankMatchup,
     startBinaryState,
     starRatingForCombinedRank,
@@ -64,6 +68,33 @@ describe("free-rank Elo", () => {
         expect(result.winnerElo).toBe(1516);
         expect(result.loserElo).toBe(1484);
     });
+
+    it("can update new entries faster with a higher early K-factor", () => {
+        expect(eloKFactorForMatchCount(0)).toBeGreaterThan(eloKFactorForMatchCount(40));
+
+        const result = updateEloPair(
+            1500,
+            1500,
+            eloKFactorForMatchCount(0),
+            eloKFactorForMatchCount(0)
+        );
+        expect(result.winnerElo).toBe(1532);
+        expect(result.loserElo).toBe(1468);
+    });
+});
+
+describe("rank prior Elo", () => {
+    it("seeds top, middle, and bottom entries from binary rank", () => {
+        expect(rankPriorElo(0, 101)).toBe(1900);
+        expect(rankPriorElo(50, 101)).toBe(1500);
+        expect(rankPriorElo(100, 101)).toBe(1100);
+    });
+
+    it("preserves free-rank residual when binary rank changes", () => {
+        const currentElo = rankPriorElo(40, 101) + 75;
+        const rebased = rebaseEloForRankChange(currentElo, 40, 101, 20, 101);
+        expect(rebased).toBe(rankPriorElo(20, 101) + 75);
+    });
 });
 
 describe("free-rank matchup selection", () => {
@@ -114,7 +145,13 @@ describe("free-rank matchup selection", () => {
 describe("combined order", () => {
     it("keeps binary order dominant with bounded Elo movement", () => {
         const entries = Array.from({ length: 20 }, (_, index) =>
-            entry(String(index), index, index === 19 ? 2100 : 1500, 10, 0)
+            entry(
+                String(index),
+                index,
+                index === 19 ? rankPriorElo(index, 20) + 600 : rankPriorElo(index, 20),
+                10,
+                0
+            )
         );
 
         const ordered = combinedOrder(entries);
@@ -122,19 +159,42 @@ describe("combined order", () => {
         expect(movedEntryIndex).toBeGreaterThanOrEqual(17);
         expect(movedEntryIndex).toBeLessThan(19);
     });
+
+    it("uses residual Elo against binary rank prior", () => {
+        const entries = Array.from({ length: 20 }, (_, index) =>
+            entry(String(index), index, rankPriorElo(index, 20), 20, 0)
+        );
+
+        const ordered = combinedOrder(entries);
+        expect(ordered.map((candidate) => candidate.id)).toEqual(
+            entries.map((candidate) => candidate.id)
+        );
+    });
 });
 
 describe("derived star ratings", () => {
-    it("maps combined rank to a one-decimal normal-distribution star score", () => {
+    it("maps combined rank to the default skewed percentile star curve", () => {
         expect(starRatingForCombinedRank(0, 287)).toBe(5);
-        expect(starRatingForCombinedRank(286, 287)).toBe(1);
-        expect(starRatingForCombinedRank(1, 287)).toBeGreaterThanOrEqual(4.8);
-        expect(starRatingForCombinedRank(143, 287)).toBeCloseTo(3, 1);
+        expect(starRatingForCombinedRank(286, 287)).toBe(1.5);
+        expect(starRatingForCombinedRank(29, 287)).toBeCloseTo(4.8, 1);
+        expect(starRatingForCombinedRank(143, 287)).toBeCloseTo(4, 1);
+    });
+
+    it("supports a configurable star curve", () => {
+        const curve = parseStarRatingCurveText("0 5\n50 3\n100 1");
+        expect(starRatingForCombinedRank(5, 11, curve)).toBe(3);
+        expect(starRatingForCombinedRank(10, 11, curve)).toBe(1);
     });
 
     it("uses combined order rather than raw binary position", () => {
         const entries = Array.from({ length: 20 }, (_, index) =>
-            entry(String(index), index, index === 19 ? 2100 : 1500, 10, 0)
+            entry(
+                String(index),
+                index,
+                index === 19 ? rankPriorElo(index, 20) + 600 : rankPriorElo(index, 20),
+                10,
+                0
+            )
         );
 
         const ratings = starRatingsByEntryId(entries);

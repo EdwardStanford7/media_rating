@@ -28,7 +28,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
     font: inherit;
 }
 
@@ -58,7 +59,8 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
     width: 100%;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -67,12 +69,16 @@ select {
     color: var(--ink);
 }
 
+textarea {
+    resize: vertical;
+}
+
 .app-shell {
     min-height: 100vh;
     height: 100dvh;
     overflow: hidden;
     display: grid;
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    grid-template-columns: clamp(340px, 28vw, 440px) minmax(0, 1fr);
 }
 
 .free-rank-shell {
@@ -176,6 +182,10 @@ select {
     display: grid;
     gap: 0.45rem;
     margin: 0;
+    max-height: min(30vh, 22rem);
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.15rem;
 }
 
 .category-row {
@@ -253,7 +263,7 @@ select {
 }
 
 .user-settings-menu {
-    position: relative;
+    position: static;
     flex: 0 0 auto;
 }
 
@@ -272,8 +282,16 @@ select {
     top: calc(100% + 0.5rem);
     right: 0;
     z-index: 20;
-    width: min(300px, calc(100vw - 2rem));
+    width: min(420px, 100%);
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
     padding: 0.85rem;
+}
+
+.star-curve-editor textarea {
+    min-height: 11rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.85rem;
 }
 
 .queue-toolbar {
@@ -367,14 +385,23 @@ img.queue-poster {
 }
 
 .queue-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.45rem;
 }
 
 .queue-actions button {
     min-width: 0;
     padding-inline: 0.55rem;
+    white-space: normal;
+}
+
+.queue-actions>button {
+    flex: 1 1 7rem;
+}
+
+.queue-actions>.queue-menu {
+    flex: 0 0 2.4rem;
 }
 
 .queue-menu {
@@ -853,9 +880,32 @@ img.match-poster {
         padding-right: 0;
     }
 
+    .category-list {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+    }
+
     .sidebar {
         border-right: 0;
         border-bottom: 1px solid var(--line);
+    }
+
+    .user-settings-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .user-settings-menu,
+    .settings-toggle {
+        width: 100%;
+    }
+
+    .user-settings-popover {
+        position: static;
+        width: 100%;
+        max-height: none;
+        margin-top: 0.5rem;
     }
 
     .topbar,
