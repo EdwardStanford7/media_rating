@@ -34,6 +34,10 @@ interface CategoryRow {
     created_at: number;
 }
 
+interface CategoryCountRow extends CategoryRow {
+    entry_count: number;
+}
+
 interface EntryRow {
     id: string;
     category_id: string;
@@ -1121,8 +1125,47 @@ export async function getFreeRankMatchup(
     userId: string,
     categorySelection: string | "any"
 ): Promise<FreeRankMatchup | null> {
-    const dashboard = await loadDashboard(userId, "ordered list");
-    return selectFreeRankMatchup(dashboard.categories, categorySelection);
+    const db = getDb();
+    let category: CategoryRow | null = null;
+
+    if (categorySelection === "any") {
+        const eligibleCategories = await all<CategoryCountRow>(
+            db
+                .prepare(
+                    `SELECT categories.id, categories.name, categories.sort_order, categories.created_at,
+                COUNT(entries.id) AS entry_count
+         FROM categories
+         INNER JOIN entries
+           ON entries.category_id = categories.id
+          AND entries.user_id = categories.user_id
+          AND entries.status = 'active'
+         WHERE categories.user_id = ?
+         GROUP BY categories.id, categories.name, categories.sort_order, categories.created_at
+         HAVING COUNT(entries.id) >= 2`
+                )
+                .bind(userId)
+        );
+
+        if (eligibleCategories.length === 0) {
+            return null;
+        }
+
+        category = weightedRandomCategory(eligibleCategories);
+    } else {
+        category = await getOwnedCategory(userId, categorySelection);
+        assertOwned(category, "Category");
+    }
+
+    const entries = await listActiveEntries(userId, category.id);
+    return selectFreeRankMatchup([
+        {
+            id: category.id,
+            name: category.name,
+            sortOrder: category.sort_order,
+            createdAt: category.created_at,
+            entries
+        }
+    ], category.id);
 }
 
 export async function submitFreeRankWinner(
@@ -1409,6 +1452,28 @@ function parseStoredStarRatingCurve(value: string | null | undefined) {
     } catch {
         return normalizeStarRatingCurve(null);
     }
+}
+
+function weightedRandomCategory(categories: CategoryCountRow[]) {
+    const weightedCategories = categories.map((category) => ({
+        category,
+        weight: category.entry_count * (category.entry_count - 1) / 2
+    }));
+    const totalWeight = weightedCategories.reduce((total, item) => total + item.weight, 0);
+
+    if (totalWeight <= 0) {
+        return categories[Math.floor(Math.random() * categories.length)];
+    }
+
+    let target = Math.random() * totalWeight;
+    for (const item of weightedCategories) {
+        if (target < item.weight) {
+            return item.category;
+        }
+        target -= item.weight;
+    }
+
+    return weightedCategories[weightedCategories.length - 1].category;
 }
 
 async function listQueuedEntries(userId: string): Promise<QueuedEntry[]> {

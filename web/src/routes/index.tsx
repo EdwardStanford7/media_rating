@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -351,7 +351,6 @@ function Dashboard({
     initialDashboard: DashboardData;
     userName: string;
 }) {
-    const router = useRouter();
     const initialActiveSessionId = initialDashboard.activeBinarySession?.id ?? null;
     const [dashboard, setDashboard] = useState(initialDashboard);
     const [selectedCategoryId, setSelectedCategoryId] = useState(
@@ -432,7 +431,6 @@ function Dashboard({
     async function refresh() {
         const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
         setDashboard(nextDashboard);
-        await router.invalidate();
         return nextDashboard;
     }
 

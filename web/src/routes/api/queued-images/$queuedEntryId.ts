@@ -55,7 +55,7 @@ export const Route = createFileRoute("/api/queued-images/$queuedEntryId")({
                 return new Response(image.body, {
                     headers: {
                         "content-type": image.httpMetadata?.contentType ?? "image/png",
-                        "cache-control": "private, no-cache"
+                        "cache-control": "private, max-age=31536000, immutable"
                     }
                 });
             },
