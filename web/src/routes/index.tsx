@@ -33,6 +33,7 @@ import {
     DEFAULT_STAR_RATING_CURVE,
     orderEntries,
     parseStarRatingCurveText,
+    starRatingScaleMax,
     starRatingCurveToText,
     starRatingsByEntryId
 } from "@/lib/ranking";
@@ -403,6 +404,10 @@ function Dashboard({
         dashboard.queueSettings.starRatingCurve,
         selectedCategory
     ]);
+    const starRatingScale = useMemo(
+        () => starRatingScaleMax(dashboard.queueSettings.starRatingCurve),
+        [dashboard.queueSettings.starRatingCurve]
+    );
 
     function setActiveBinarySessionId(sessionId: string | null) {
         activeSessionIdRef.current = sessionId;
@@ -1076,8 +1081,9 @@ function Dashboard({
                                     listLocked={Boolean(activeSessionId)}
                                     selectedCategoryId={selectedCategory.id}
                                     starRating={dashboard.queueSettings.showStarRatings
-                                        ? starRatings.get(entry.id) ?? 5
+                                        ? starRatings.get(entry.id) ?? starRatingScale
                                         : null}
+                                    starRatingScale={starRatingScale}
                                     onDelete={() => handleDelete(entry.id)}
                                     onMoveDown={() => handleMoveEntry(entry.id, "down")}
                                     onMoveUp={() => handleMoveEntry(entry.id, "up")}
@@ -2029,6 +2035,7 @@ function EntryCard({
     listLocked,
     selectedCategoryId,
     starRating,
+    starRatingScale,
     onDelete,
     onMoveDown,
     onMoveUp,
@@ -2044,6 +2051,7 @@ function EntryCard({
     listLocked: boolean;
     selectedCategoryId: string;
     starRating: number | null;
+    starRatingScale: number;
     onDelete: () => void;
     onMoveDown: () => void;
     onMoveUp: () => void;
@@ -2107,8 +2115,12 @@ function EntryCard({
                     <span className="metric">Elo {Math.round(entry.freeRankElo)}</span>
                     <span className="metric">{entry.freeRankWins}-{entry.freeRankLosses}</span>
                     {starRating !== null ? (
-                        <span className="metric" aria-label={`Star rating ${starRating.toFixed(1)} out of 5`}>
-                            <span aria-hidden="true" className="star-symbol">★</span> {starRating.toFixed(1)}/5
+                        <span
+                            className="metric"
+                            aria-label={`Star rating ${formatRatingNumber(starRating)} out of ${formatRatingNumber(starRatingScale)}`}
+                        >
+                            <span aria-hidden="true" className="star-symbol">★</span>{" "}
+                            {formatRatingNumber(starRating)}/{formatRatingNumber(starRatingScale)}
                         </span>
                     ) : null}
                     {entry.firstConsumedAt ? (
@@ -2650,6 +2662,10 @@ function formatDate(timestamp: number) {
         month: "short",
         day: "numeric"
     }).format(new Date(timestamp));
+}
+
+function formatRatingNumber(value: number) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function formatDateTime(timestamp: number) {

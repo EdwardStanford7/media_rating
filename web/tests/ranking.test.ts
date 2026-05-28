@@ -10,6 +10,7 @@ import {
     selectFreeRankMatchup,
     startBinaryState,
     starRatingForCombinedRank,
+    starRatingScaleMax,
     starRatingsByEntryId,
     updateEloPair
 } from "../src/lib/ranking";
@@ -176,13 +177,14 @@ describe("derived star ratings", () => {
     it("maps combined rank to the default skewed percentile star curve", () => {
         expect(starRatingForCombinedRank(0, 287)).toBe(5);
         expect(starRatingForCombinedRank(286, 287)).toBe(1);
-        expect(starRatingForCombinedRank(29, 287)).toBeCloseTo(4.8, 1);
-        expect(starRatingForCombinedRank(143, 287)).toBeCloseTo(4, 1);
+        expect(starRatingForCombinedRank(29, 287)).toBeCloseTo(4.7, 1);
+        expect(starRatingForCombinedRank(143, 287)).toBeCloseTo(3.7, 1);
     });
 
     it("supports a configurable star curve", () => {
-        const curve = parseStarRatingCurveText("0 5\n50 3\n100 1");
-        expect(starRatingForCombinedRank(5, 11, curve)).toBe(3);
+        const curve = parseStarRatingCurveText("0 10\n50 7\n100 1");
+        expect(starRatingScaleMax(curve)).toBe(10);
+        expect(starRatingForCombinedRank(5, 11, curve)).toBe(7);
         expect(starRatingForCombinedRank(10, 11, curve)).toBe(1);
     });
 

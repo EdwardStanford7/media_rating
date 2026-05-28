@@ -11,15 +11,16 @@ export const ELO_K_FACTOR = 32;
 export const EARLY_ELO_K_FACTOR = 64;
 export const COMBINED_MIN_MATCHES = 10;
 export const RANK_PRIOR_ELO_RANGE = 400;
+export const MAX_STAR_RATING_SCALE = 100;
 export const DEFAULT_STAR_RATING_CURVE: StarRatingCurvePoint[] = [
     { percentile: 0, stars: 5 },
     { percentile: 0.01, stars: 5 },
-    { percentile: 0.05, stars: 4.9 },
-    { percentile: 0.1, stars: 4.8 },
-    { percentile: 0.25, stars: 4.5 },
-    { percentile: 0.5, stars: 4 },
-    { percentile: 0.75, stars: 3.3 },
-    { percentile: 0.9, stars: 2.2 },
+    { percentile: 0.06, stars: 4.9 },
+    { percentile: 0.12, stars: 4.6 },
+    { percentile: 0.25, stars: 4.2 },
+    { percentile: 0.5, stars: 3.7 },
+    { percentile: 0.75, stars: 3.0 },
+    { percentile: 0.9, stars: 2.1 },
     { percentile: 1, stars: 1.0 }
 ];
 
@@ -275,6 +276,11 @@ export function starRatingsByEntryId(
     );
 }
 
+export function starRatingScaleMax(curve: StarRatingCurvePoint[] = DEFAULT_STAR_RATING_CURVE) {
+    const stars = normalizeStarRatingCurve(curve).map((point) => point.stars);
+    return roundStarRating(Math.max(1, ...stars));
+}
+
 export function normalizeStarRatingCurve(
     curve: StarRatingCurvePoint[] | null | undefined
 ): StarRatingCurvePoint[] {
@@ -283,7 +289,7 @@ export function normalizeStarRatingCurve(
         .filter((point) => Number.isFinite(point.percentile) && Number.isFinite(point.stars))
         .map((point) => ({
             percentile: Math.max(0, Math.min(1, point.percentile)),
-            stars: Math.max(1, Math.min(5, point.stars))
+            stars: Math.max(0, Math.min(MAX_STAR_RATING_SCALE, point.stars))
         }))
         .sort((left, right) => left.percentile - right.percentile);
 
@@ -329,8 +335,13 @@ export function parseStarRatingCurveText(text: string): StarRatingCurvePoint[] {
                 throw new Error("Star curve values must be numbers");
             }
 
-            if (percentile < 0 || percentile > 100 || stars < 1 || stars > 5) {
-                throw new Error("Star curve percentiles must be 0-100 and stars must be 1-5");
+            if (
+                percentile < 0 ||
+                percentile > 100 ||
+                stars < 0 ||
+                stars > MAX_STAR_RATING_SCALE
+            ) {
+                throw new Error(`Star curve percentiles must be 0-100 and stars must be 0-${MAX_STAR_RATING_SCALE}`);
             }
 
             return { percentile: percentile / 100, stars };
@@ -350,7 +361,7 @@ export function starRatingCurveToText(curve: StarRatingCurvePoint[] = DEFAULT_ST
 }
 
 function roundStarRating(stars: number) {
-    return Math.round(Math.max(1, Math.min(5, stars)) * 10) / 10;
+    return Math.round(Math.max(0, Math.min(MAX_STAR_RATING_SCALE, stars)) * 10) / 10;
 }
 
 function formatCurveNumber(value: number) {
