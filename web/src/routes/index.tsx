@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { FormEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     cancelBinarySession,
@@ -67,8 +67,10 @@ const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
+const THEME_STORAGE_KEY = "media-rating-theme";
 
 type AppMode = "dashboard" | "free_rank";
+type ThemeMode = "light" | "dark";
 
 export const Route = createFileRoute("/")({
     loader: async () => {
@@ -89,6 +91,10 @@ export const Route = createFileRoute("/")({
 
 function Home() {
     const { session, dashboard, authOptions } = Route.useLoaderData();
+
+    useEffect(() => {
+        document.documentElement.dataset.theme = readInitialThemeMode();
+    }, []);
 
     if (!session?.user || !dashboard) {
         return <AuthPage authOptions={authOptions} />;
@@ -372,6 +378,7 @@ function Dashboard({
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
+    const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialThemeMode());
     const mainRef = useRef<HTMLElement | null>(null);
 
     const selectedCategory = useMemo(
@@ -419,6 +426,11 @@ function Dashboard({
             closedBinarySessionIdsRef.current.add(sessionId);
         }
     }
+
+    useEffect(() => {
+        document.documentElement.dataset.theme = themeMode;
+        window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    }, [themeMode]);
 
     useEffect(() => {
         if (
@@ -951,6 +963,8 @@ function Dashboard({
                                 onExport={handleExport}
                                 onImport={handleImport}
                                 onSaveSettings={handleQueueSettings}
+                                onThemeChange={setThemeMode}
+                                themeMode={themeMode}
                                 userName={userName}
                             />
                         </div>
@@ -1113,6 +1127,19 @@ function useEscapeKey(isActive: boolean, onEscape: () => void) {
     }, [isActive, onEscape]);
 }
 
+function readInitialThemeMode(): ThemeMode {
+    if (typeof window === "undefined") {
+        return "light";
+    }
+
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (savedTheme === "light" || savedTheme === "dark") {
+        return savedTheme;
+    }
+
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: () => void) {
     const ref = useRef<T | null>(null);
 
@@ -1140,6 +1167,79 @@ function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: (
     useEscapeKey(isOpen, onDismiss);
 
     return ref;
+}
+
+function useFloatingMenu(isOpen: boolean) {
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const [style, setStyle] = useState<CSSProperties>({
+        left: 0,
+        position: "fixed",
+        top: 0,
+        visibility: "hidden"
+    });
+
+    const updatePosition = useCallback(() => {
+        if (!isOpen || typeof window === "undefined") {
+            return;
+        }
+
+        const trigger = triggerRef.current;
+        const panel = panelRef.current;
+        if (!trigger || !panel) {
+            return;
+        }
+
+        const margin = 8;
+        const gap = 6;
+        const triggerRect = trigger.getBoundingClientRect();
+        const panelWidth = panel.offsetWidth;
+        const panelHeight = panel.offsetHeight;
+
+        const maxLeft = Math.max(margin, window.innerWidth - panelWidth - margin);
+        const maxTop = Math.max(margin, window.innerHeight - panelHeight - margin);
+        const preferredLeft = triggerRect.right - panelWidth;
+        const preferredTop = triggerRect.bottom + gap;
+        const flippedTop = triggerRect.top - panelHeight - gap;
+
+        const left = Math.max(margin, Math.min(preferredLeft, maxLeft));
+        const topCandidate =
+            preferredTop + panelHeight + margin > window.innerHeight ? flippedTop : preferredTop;
+        const top = Math.max(margin, Math.min(topCandidate, maxTop));
+
+        setStyle({
+            left,
+            position: "fixed",
+            top,
+            visibility: "visible",
+            zIndex: 80
+        });
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setStyle({
+                left: 0,
+                position: "fixed",
+                top: 0,
+                visibility: "hidden"
+            });
+            return;
+        }
+
+        updatePosition();
+        const frameId = window.requestAnimationFrame(updatePosition);
+        window.addEventListener("resize", updatePosition);
+        window.addEventListener("scroll", updatePosition, true);
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.removeEventListener("resize", updatePosition);
+            window.removeEventListener("scroll", updatePosition, true);
+        };
+    }, [isOpen, updatePosition]);
+
+    return { panelRef, style, triggerRef };
 }
 
 function ConfirmDialog({
@@ -1214,6 +1314,7 @@ function CategoryListItem({
     const [menuOpen, setMenuOpen] = useState(false);
     const [name, setName] = useState(category.name);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
+    const floatingMenu = useFloatingMenu(menuOpen);
 
     useEffect(() => {
         setName(category.name);
@@ -1270,13 +1371,18 @@ function CategoryListItem({
                     aria-label={`Category actions for ${category.name}`}
                     className="category-menu-button"
                     disabled={busy}
+                    ref={floatingMenu.triggerRef}
                     type="button"
                     onClick={() => setMenuOpen((isOpen) => !isOpen)}
                 >
                     ...
                 </button>
                 {menuOpen ? (
-                    <div className="category-menu-panel">
+                    <div
+                        className="category-menu-panel floating-menu-panel"
+                        ref={floatingMenu.panelRef}
+                        style={floatingMenu.style}
+                    >
                         <button
                             type="button"
                             onClick={() => {
@@ -1326,6 +1432,8 @@ function AccountMenu({
     onExport,
     onImport,
     onSaveSettings,
+    onThemeChange,
+    themeMode,
     userName
 }: {
     busy: boolean;
@@ -1335,6 +1443,8 @@ function AccountMenu({
     onExport: () => Promise<void>;
     onImport: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onSaveSettings: (settings: QueueSettings) => Promise<void>;
+    onThemeChange: (themeMode: ThemeMode) => void;
+    themeMode: ThemeMode;
     userName: string;
 }) {
     const [enabled, setEnabled] = useState(settings.enabled);
@@ -1346,6 +1456,7 @@ function AccountMenu({
     const [menuOpen, setMenuOpen] = useState(false);
     const [activePanel, setActivePanel] = useState<"settings" | "import" | null>(null);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
+    const floatingMenu = useFloatingMenu(menuOpen);
     const importDisabled = busy || listLocked;
 
     useEffect(() => {
@@ -1402,6 +1513,7 @@ function AccountMenu({
             <button
                 aria-expanded={menuOpen}
                 className="account-menu-toggle"
+                ref={floatingMenu.triggerRef}
                 type="button"
                 onClick={() => setMenuOpen((isOpen) => !isOpen)}
             >
@@ -1409,7 +1521,11 @@ function AccountMenu({
             </button>
 
             {menuOpen ? (
-                <div className="stack panel account-menu-panel">
+                <div
+                    className="stack account-menu-panel floating-menu-panel"
+                    ref={floatingMenu.panelRef}
+                    style={floatingMenu.style}
+                >
                     <div className="account-menu-header">
                         <span className="account-avatar large" aria-hidden="true" />
                         <div>
@@ -1421,6 +1537,12 @@ function AccountMenu({
                         onClick={() => setActivePanel((panel) => panel === "settings" ? null : "settings")}
                     >
                         Settings
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onThemeChange(themeMode === "dark" ? "light" : "dark")}
+                    >
+                        Switch to {themeMode === "dark" ? "Light" : "Dark"} Mode
                     </button>
                     <button
                         disabled={importDisabled}
@@ -1636,6 +1758,7 @@ function QueuedEntryRow({
     const [menuOpen, setMenuOpen] = useState(false);
     const [name, setName] = useState(entry.name);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
+    const floatingMenu = useFloatingMenu(menuOpen);
 
     useEffect(() => {
         setName(entry.name);
@@ -1699,13 +1822,18 @@ function QueuedEntryRow({
                             aria-label={`More actions for ${entry.name}`}
                             className="queue-menu-button"
                             disabled={disabled}
+                            ref={floatingMenu.triggerRef}
                             type="button"
                             onClick={() => setMenuOpen((isOpen) => !isOpen)}
                         >
                             ...
                         </button>
                         {menuOpen ? (
-                            <div className="queue-overflow-panel">
+                            <div
+                                className="queue-overflow-panel floating-menu-panel"
+                                ref={floatingMenu.panelRef}
+                                style={floatingMenu.style}
+                            >
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -2118,6 +2246,7 @@ function EntryCard({
     const [menuOpen, setMenuOpen] = useState(false);
     const [moveControlsOpen, setMoveControlsOpen] = useState(false);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
+    const floatingMenu = useFloatingMenu(menuOpen);
 
     useEffect(() => {
         setIsRenaming(false);
@@ -2209,13 +2338,18 @@ function EntryCard({
                             aria-expanded={menuOpen}
                             aria-label={`More actions for ${entry.name}`}
                             className="entry-menu-button"
+                            ref={floatingMenu.triggerRef}
                             type="button"
                             onClick={() => setMenuOpen((isOpen) => !isOpen)}
                         >
                             ...
                         </button>
                         {menuOpen ? (
-                            <div className="entry-overflow-panel">
+                            <div
+                                className="entry-overflow-panel floating-menu-panel"
+                                ref={floatingMenu.panelRef}
+                                style={floatingMenu.style}
+                            >
                                 <button
                                     disabled={listLocked}
                                     type="button"
