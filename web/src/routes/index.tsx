@@ -941,24 +941,19 @@ function Dashboard({
             ) : (
                 <>
                     <aside className="sidebar">
-                        <div className="brand-row">
+                        <div className="sidebar-header">
                             <strong className="brand-title">Media Rating</strong>
-                        </div>
-                        <div className="user-settings-row">
-                            <p className="muted user-name">{userName}</p>
-                            <UserSettingsMenu
+                            <AccountMenu
                                 busy={busy}
+                                busyLabel={busyLabel}
+                                listLocked={Boolean(activeSessionId)}
                                 settings={dashboard.queueSettings}
-                                onSave={handleQueueSettings}
+                                onExport={handleExport}
+                                onImport={handleImport}
+                                onSaveSettings={handleQueueSettings}
+                                userName={userName}
                             />
                         </div>
-                        <button
-                            className="sign-out-button"
-                            type="button"
-                            onClick={() => signOut().then(() => window.location.assign("/"))}
-                        >
-                            Sign Out
-                        </button>
 
                         <form className="form-row" onSubmit={handleCreateCategory}>
                             <input disabled={busy} name="name" placeholder="New category" required />
@@ -1000,12 +995,6 @@ function Dashboard({
                             onStopQueue={handleStopQueueRank}
                         />
 
-                        <form className="stack panel" onSubmit={handleImport}>
-                            <strong>Import xlsx</strong>
-                            <input disabled={busy || Boolean(activeSessionId)} name="firstConsumedAt" type="date" />
-                            <input disabled={busy || Boolean(activeSessionId)} name="workbook" type="file" accept=".xlsx" />
-                            <button disabled={busy || Boolean(activeSessionId)} type="submit">{busyLabel?.startsWith("Import") ? "Importing..." : "Import"}</button>
-                        </form>
                     </aside>
 
                     <section className="main stack" ref={mainRef}>
@@ -1023,7 +1012,6 @@ function Dashboard({
                                 <button className="primary" type="button" onClick={() => setAppMode("free_rank")}>
                                     Switch to Elo Rank Mode
                                 </button>
-                                <button disabled={busy} type="button" onClick={handleExport}>Export</button>
                             </div>
                         </div>
 
@@ -1330,14 +1318,24 @@ function BusyOverlay({ label }: { label: string }) {
     );
 }
 
-function UserSettingsMenu({
+function AccountMenu({
     busy,
+    busyLabel,
+    listLocked,
     settings,
-    onSave
+    onExport,
+    onImport,
+    onSaveSettings,
+    userName
 }: {
     busy: boolean;
+    busyLabel: string | null;
+    listLocked: boolean;
     settings: QueueSettings;
-    onSave: (settings: QueueSettings) => Promise<void>;
+    onExport: () => Promise<void>;
+    onImport: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+    onSaveSettings: (settings: QueueSettings) => Promise<void>;
+    userName: string;
 }) {
     const [enabled, setEnabled] = useState(settings.enabled);
     const [delayDays, setDelayDays] = useState(settings.delayDays);
@@ -1345,8 +1343,10 @@ function UserSettingsMenu({
     const [showStarRatings, setShowStarRatings] = useState(settings.showStarRatings);
     const [starCurveText, setStarCurveText] = useState(starRatingCurveToText(settings.starRatingCurve));
     const [starCurveError, setStarCurveError] = useState<string | null>(null);
-    const [settingsOpen, setSettingsOpen] = useState(false);
-    const menuRef = useDismissibleMenu<HTMLDivElement>(settingsOpen, () => setSettingsOpen(false));
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [activePanel, setActivePanel] = useState<"settings" | "import" | null>(null);
+    const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
+    const importDisabled = busy || listLocked;
 
     useEffect(() => {
         setEnabled(settings.enabled);
@@ -1363,6 +1363,16 @@ function UserSettingsMenu({
         settings.showStarRatings
     ]);
 
+    async function handleExportClick() {
+        await onExport();
+        setMenuOpen(false);
+    }
+
+    async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
+        await onImport(event);
+        setMenuOpen(false);
+    }
+
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         let starRatingCurve: QueueSettings["starRatingCurve"];
@@ -1377,97 +1387,139 @@ function UserSettingsMenu({
             starRatingCurve = settings.starRatingCurve;
         }
 
-        await onSave({
+        await onSaveSettings({
             enabled,
             delayDays,
             promptForMissingImages,
             showStarRatings,
             starRatingCurve
         });
-        setSettingsOpen(false);
+        setMenuOpen(false);
     }
 
     return (
-        <div className="user-settings-menu" ref={menuRef}>
+        <div className="account-menu" ref={menuRef}>
             <button
-                aria-expanded={settingsOpen}
-                className="settings-toggle"
+                aria-expanded={menuOpen}
+                className="account-menu-toggle"
                 type="button"
-                onClick={() => setSettingsOpen((isOpen) => !isOpen)}
+                onClick={() => setMenuOpen((isOpen) => !isOpen)}
             >
-                Settings
+                <span className="account-avatar" aria-hidden="true" />
             </button>
 
-            {settingsOpen ? (
-                <form className="stack panel user-settings-popover" onSubmit={handleSubmit}>
-                    <label className="checkbox-row">
-                        <input
-                            checked={enabled}
-                            disabled={busy}
-                            type="checkbox"
-                            onChange={(event) => setEnabled(event.target.checked)}
-                        />
-                        <span>Queue new entries</span>
-                    </label>
-                    <label className="checkbox-row">
-                        <input
-                            checked={promptForMissingImages}
-                            disabled={busy}
-                            type="checkbox"
-                            onChange={(event) => setPromptForMissingImages(event.target.checked)}
-                        />
-                        <span>Prompt for missing images</span>
-                    </label>
-                    <label className="checkbox-row">
-                        <input
-                            checked={showStarRatings}
-                            disabled={busy}
-                            type="checkbox"
-                            onChange={(event) => setShowStarRatings(event.target.checked)}
-                        />
-                        <span>Show star ratings</span>
-                    </label>
-                    <label className="stack compact-stack">
-                        <span className="muted">Queue delay (days)</span>
-                        <input
-                            disabled={busy}
-                            min={0}
-                            max={365}
-                            type="number"
-                            value={delayDays}
-                            onChange={(event) => setDelayDays(Number(event.target.value))}
-                        />
-                    </label>
-                    {showStarRatings ? (
-                        <details className="stack compact-stack star-curve-editor">
-                            <summary>Star curve</summary>
-                            <textarea
-                                aria-label="Star curve"
-                                disabled={busy}
-                                rows={9}
-                                spellCheck={false}
-                                value={starCurveText}
-                                onChange={(event) => {
-                                    setStarCurveText(event.target.value);
-                                    setStarCurveError(null);
-                                }}
-                            />
-                            {starCurveError ? <div className="status">{starCurveError}</div> : null}
-                            <button
-                                className="small-button"
-                                disabled={busy}
-                                type="button"
-                                onClick={() => {
-                                    setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
-                                    setStarCurveError(null);
-                                }}
-                            >
-                                Reset Curve
-                            </button>
-                        </details>
+            {menuOpen ? (
+                <div className="stack panel account-menu-panel">
+                    <div className="account-menu-header">
+                        <span className="account-avatar large" aria-hidden="true" />
+                        <div>
+                            <strong>{userName}</strong>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setActivePanel((panel) => panel === "settings" ? null : "settings")}
+                    >
+                        Settings
+                    </button>
+                    <button
+                        disabled={importDisabled}
+                        type="button"
+                        onClick={() => setActivePanel((panel) => panel === "import" ? null : "import")}
+                    >
+                        Import xlsx
+                    </button>
+                    <button disabled={busy} type="button" onClick={() => void handleExportClick()}>
+                        Export xlsx
+                    </button>
+                    <button
+                        className="danger menu-danger"
+                        type="button"
+                        onClick={() => signOut().then(() => window.location.assign("/"))}
+                    >
+                        Sign Out
+                    </button>
+                    {activePanel === "settings" ? (
+                        <form className="stack account-subpanel" onSubmit={handleSubmit}>
+                            <label className="checkbox-row">
+                                <input
+                                    checked={enabled}
+                                    disabled={busy}
+                                    type="checkbox"
+                                    onChange={(event) => setEnabled(event.target.checked)}
+                                />
+                                <span>Queue new entries</span>
+                            </label>
+                            <label className="checkbox-row">
+                                <input
+                                    checked={promptForMissingImages}
+                                    disabled={busy}
+                                    type="checkbox"
+                                    onChange={(event) => setPromptForMissingImages(event.target.checked)}
+                                />
+                                <span>Prompt for missing images</span>
+                            </label>
+                            <label className="checkbox-row">
+                                <input
+                                    checked={showStarRatings}
+                                    disabled={busy}
+                                    type="checkbox"
+                                    onChange={(event) => setShowStarRatings(event.target.checked)}
+                                />
+                                <span>Show star ratings</span>
+                            </label>
+                            <label className="stack compact-stack">
+                                <span className="muted">Queue delay (days)</span>
+                                <input
+                                    disabled={busy}
+                                    min={0}
+                                    max={365}
+                                    type="number"
+                                    value={delayDays}
+                                    onChange={(event) => setDelayDays(Number(event.target.value))}
+                                />
+                            </label>
+                            {showStarRatings ? (
+                                <details className="stack compact-stack star-curve-editor">
+                                    <summary>Star curve</summary>
+                                    <textarea
+                                        aria-label="Star curve"
+                                        disabled={busy}
+                                        rows={9}
+                                        spellCheck={false}
+                                        value={starCurveText}
+                                        onChange={(event) => {
+                                            setStarCurveText(event.target.value);
+                                            setStarCurveError(null);
+                                        }}
+                                    />
+                                    {starCurveError ? <div className="status">{starCurveError}</div> : null}
+                                    <button
+                                        className="small-button"
+                                        disabled={busy}
+                                        type="button"
+                                        onClick={() => {
+                                            setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
+                                            setStarCurveError(null);
+                                        }}
+                                    >
+                                        Reset Curve
+                                    </button>
+                                </details>
+                            ) : null}
+                            <button disabled={busy} type="submit">Save Settings</button>
+                        </form>
                     ) : null}
-                    <button disabled={busy} type="submit">Save Settings</button>
-                </form>
+                    {activePanel === "import" ? (
+                        <form className="stack account-subpanel" onSubmit={handleImportSubmit}>
+                            <input disabled={importDisabled} name="firstConsumedAt" type="date" />
+                            <input disabled={importDisabled} name="workbook" type="file" accept=".xlsx" />
+                            <button disabled={importDisabled} type="submit">
+                                {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
+                            </button>
+                        </form>
+                    ) : null}
+                </div>
             ) : null}
         </div>
     );

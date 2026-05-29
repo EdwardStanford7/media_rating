@@ -102,19 +102,17 @@ textarea {
     margin-bottom: 0;
 }
 
-.brand-row {
+.sidebar-header {
+    position: relative;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
 }
 
 .brand-title {
     font-size: 1.35rem;
     line-height: 1.1;
-}
-
-.sign-out-button {
-    justify-self: start;
-    padding: 0.4rem 0.7rem;
 }
 
 .main {
@@ -247,45 +245,74 @@ textarea {
     text-align: left;
 }
 
-.user-settings-row {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
-
-.user-name {
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.user-settings-menu {
-    position: static;
-    flex: 0 0 auto;
-}
-
-.settings-toggle {
-    padding: 0.35rem 0.65rem;
-    font-size: 0.85rem;
-}
-
 .small-button {
     padding: 0.35rem 0.6rem;
     font-size: 0.85rem;
 }
 
-.user-settings-popover {
+.account-menu {
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.account-menu-toggle {
+    width: 2.35rem;
+    height: 2.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0;
+}
+
+.account-avatar {
+    display: block;
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 999px;
+    background:
+        radial-gradient(circle at 50% 38%, #6d6861 0 21%, transparent 22%),
+        radial-gradient(circle at 50% 110%, #6d6861 0 39%, transparent 40%),
+        #ded8cc;
+    border: 1px solid #c9c1b3;
+}
+
+.account-avatar.large {
+    width: 2.2rem;
+    height: 2.2rem;
+}
+
+.account-menu-panel {
     position: absolute;
-    top: calc(100% + 0.5rem);
+    top: calc(100% + 0.6rem);
     right: 0;
-    z-index: 20;
-    width: min(420px, 100%);
+    z-index: 35;
+    width: min(360px, calc(100vw - 2rem));
     max-height: min(70vh, 560px);
     overflow-y: auto;
     padding: 0.85rem;
+    border-color: #c9c1b3;
+    background: #fffdf8;
+    box-shadow: 0 22px 60px rgba(36, 34, 32, 0.2);
+}
+
+.account-menu-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.75rem;
+}
+
+.account-menu-panel>button {
+    width: 100%;
+    text-align: left;
+}
+
+.account-subpanel {
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
 }
 
 .star-curve-editor textarea {
@@ -905,21 +932,10 @@ img.match-poster {
         border-bottom: 1px solid var(--line);
     }
 
-    .user-settings-row {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .user-settings-menu,
-    .settings-toggle {
-        width: 100%;
-    }
-
-    .user-settings-popover {
-        position: static;
-        width: 100%;
+    .account-menu-panel {
+        right: 0;
+        width: min(360px, calc(100vw - 2rem));
         max-height: none;
-        margin-top: 0.5rem;
     }
 
     .topbar,
