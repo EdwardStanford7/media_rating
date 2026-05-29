@@ -60,6 +60,14 @@ make password-reset-link EMAIL=user@example.com
 
 Passwords are stored as hashes in the `account` table, so they cannot be viewed or recovered manually.
 
+If testing sign-in repeatedly triggers a temporary auth lockout, clear only the auth rate-limit rows:
+
+```sh
+make auth-clear-rate-limits
+```
+
+This does not delete users, passwords, sessions, or app data.
+
 ## Verification
 
 ```sh

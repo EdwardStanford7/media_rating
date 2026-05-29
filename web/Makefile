@@ -3,6 +3,7 @@ D1_NAME = media-rating
 R2_BUCKET = media-rating-images
 
 .PHONY: help install check test typecheck build dev preview audit password-reset-link password-reset-link-local \
+	auth-clear-rate-limits auth-clear-rate-limits-local \
 	cf-login cf-whoami cf-create-d1 cf-create-r2 cf-secret-auth cf-secret-signup-invite \
 	cf-secret-password-reset \
 	cf-migrate-local cf-migrate-remote cf-reset-free-rank-remote \
@@ -18,6 +19,8 @@ help:
 	@echo "  make cf-migrate-local     Apply D1 migrations to local Wrangler D1"
 	@echo "  make password-reset-link EMAIL=user@example.com Generate a one-hour remote reset link"
 	@echo "  make password-reset-link-local EMAIL=user@example.com Generate a local D1 reset link"
+	@echo "  make auth-clear-rate-limits Clear remote auth rate-limit lockouts"
+	@echo "  make auth-clear-rate-limits-local Clear local auth rate-limit lockouts"
 	@echo ""
 	@echo "Cloudflare setup:"
 	@echo "  make cf-login             Authenticate Wrangler"
@@ -63,6 +66,12 @@ password-reset-link:
 password-reset-link-local:
 	@test -n "$(EMAIL)" || (echo "Usage: make password-reset-link-local EMAIL=user@example.com"; exit 1)
 	node scripts/create-password-reset-link.mjs "$(EMAIL)" http://localhost:5173 --local
+
+auth-clear-rate-limits:
+	node scripts/clear-auth-rate-limits.mjs
+
+auth-clear-rate-limits-local:
+	node scripts/clear-auth-rate-limits.mjs --local
 
 cf-login:
 	npx wrangler login

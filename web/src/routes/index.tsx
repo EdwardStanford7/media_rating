@@ -63,11 +63,19 @@ interface ImageSearchCandidate {
     height: number;
 }
 
+interface FreeRankEloChange {
+    entryAId: string;
+    entryAChange: number;
+    entryBId: string;
+    entryBChange: number;
+}
+
 const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 const THEME_STORAGE_KEY = "media-rating-theme";
+const FREE_RANK_RESULT_ANIMATION_MS = 850;
 
 type AppMode = "dashboard" | "free_rank";
 type ThemeMode = "light" | "dark";
@@ -1138,6 +1146,10 @@ function readInitialThemeMode(): ThemeMode {
     }
 
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function wait(milliseconds: number) {
+    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: () => void) {
@@ -2627,10 +2639,12 @@ function FreeRankScreen({
     const [loading, setLoading] = useState(false);
     const [ranking, setRanking] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [eloChange, setEloChange] = useState<FreeRankEloChange | null>(null);
 
     const loadMatchup = useCallback(async () => {
         setLoading(true);
         setError(null);
+        setEloChange(null);
         try {
             setMatchup(await getFreeRankMatchup({ data: { categorySelection } }));
         } catch (loadError) {
@@ -2697,7 +2711,7 @@ function FreeRankScreen({
         setRanking(true);
         setError(null);
         try {
-            await submitFreeRankWinner({
+            const result = await submitFreeRankWinner({
                 data: {
                     categoryId: matchup.categoryId,
                     entryAId: matchup.entryA.id,
@@ -2705,6 +2719,13 @@ function FreeRankScreen({
                     winnerId
                 }
             });
+            setEloChange({
+                entryAId: matchup.entryA.id,
+                entryAChange: result.entryAEloAfter - matchup.entryA.freeRankElo,
+                entryBId: matchup.entryB.id,
+                entryBChange: result.entryBEloAfter - matchup.entryB.freeRankElo
+            });
+            await wait(FREE_RANK_RESULT_ANIMATION_MS);
             await onRanked();
             await loadMatchup();
         } catch (submitError) {
@@ -2743,6 +2764,7 @@ function FreeRankScreen({
                 <div className="free-rank-match-grid">
                     <FreeRankChoice
                         disabled={loading || ranking}
+                        eloChange={eloChange?.entryAId === matchup.entryA.id ? eloChange.entryAChange : null}
                         entry={matchup.entryA}
                         onChoose={() => void chooseWinner(matchup.entryA.id)}
                         onPickImage={() => onPickImage(matchup.entryA, {
@@ -2752,6 +2774,7 @@ function FreeRankScreen({
                     />
                     <FreeRankChoice
                         disabled={loading || ranking}
+                        eloChange={eloChange?.entryBId === matchup.entryB.id ? eloChange.entryBChange : null}
                         entry={matchup.entryB}
                         onChoose={() => void chooseWinner(matchup.entryB.id)}
                         onPickImage={() => onPickImage(matchup.entryB, {
@@ -2769,11 +2792,13 @@ function FreeRankScreen({
 
 function FreeRankChoice({
     disabled,
+    eloChange,
     entry,
     onChoose,
     onPickImage
 }: {
     disabled: boolean;
+    eloChange: number | null;
     entry: Entry;
     onChoose: () => void;
     onPickImage: () => void;
@@ -2805,7 +2830,17 @@ function FreeRankChoice({
                 onClick={onChoose}
             >
                 <strong>{entry.name}</strong>
-                <small>{Math.round(entry.freeRankElo)} Elo</small>
+                <span className="free-rank-elo-line">
+                    <small>{Math.round(entry.freeRankElo)} Elo</small>
+                    {eloChange !== null ? (
+                        <span
+                            aria-live="polite"
+                            className={`elo-delta ${eloChange >= 0 ? "positive" : "negative"}`}
+                        >
+                            {formatEloDelta(eloChange)}
+                        </span>
+                    ) : null}
+                </span>
             </button>
         </article>
     );
@@ -2852,6 +2887,11 @@ function formatDate(timestamp: number) {
 
 function formatRatingNumber(value: number) {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatEloDelta(value: number) {
+    const rounded = Math.round(value);
+    return `${rounded >= 0 ? "+" : ""}${rounded}`;
 }
 
 function formatDateTime(timestamp: number) {
