@@ -1152,6 +1152,28 @@ function wait(milliseconds: number) {
     return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+async function preloadStoredImages(entries: Entry[]) {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    const imageUrls = entries
+        .filter((entry) => hasStoredImage(entry.imageKey))
+        .map((entry) => `/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`);
+
+    await Promise.all(imageUrls.map((src) => preloadImage(src)));
+}
+
+function preloadImage(src: string) {
+    return new Promise<void>((resolve) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+        image.src = src;
+    });
+}
+
 function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: () => void) {
     const ref = useRef<T | null>(null);
 
@@ -2641,18 +2663,31 @@ function FreeRankScreen({
     const [error, setError] = useState<string | null>(null);
     const [eloChange, setEloChange] = useState<FreeRankEloChange | null>(null);
 
-    const loadMatchup = useCallback(async () => {
-        setLoading(true);
+    const fetchMatchup = useCallback(async () => {
+        const nextMatchup = await getFreeRankMatchup({ data: { categorySelection } });
+        if (nextMatchup) {
+            await preloadStoredImages([nextMatchup.entryA, nextMatchup.entryB]);
+        }
+        return nextMatchup;
+    }, [categorySelection]);
+
+    const loadMatchup = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
+        if (!quiet) {
+            setLoading(true);
+        }
         setError(null);
-        setEloChange(null);
         try {
-            setMatchup(await getFreeRankMatchup({ data: { categorySelection } }));
+            const nextMatchup = await fetchMatchup();
+            setEloChange(null);
+            setMatchup(nextMatchup);
         } catch (loadError) {
             setError(errorMessage(loadError));
         } finally {
-            setLoading(false);
+            if (!quiet) {
+                setLoading(false);
+            }
         }
-    }, [categorySelection]);
+    }, [fetchMatchup]);
 
     useEffect(() => {
         void loadMatchup();
@@ -2727,7 +2762,7 @@ function FreeRankScreen({
             });
             await wait(FREE_RANK_RESULT_ANIMATION_MS);
             await onRanked();
-            await loadMatchup();
+            await loadMatchup({ quiet: true });
         } catch (submitError) {
             setError(errorMessage(submitError));
         } finally {
@@ -2758,7 +2793,7 @@ function FreeRankScreen({
 
             {error ? <div className="status">{error}</div> : null}
 
-            {loading ? <div className="status">Loading matchup...</div> : null}
+            {loading && !matchup ? <div className="status">Loading matchup...</div> : null}
 
             {matchup ? (
                 <div className="free-rank-match-grid">
