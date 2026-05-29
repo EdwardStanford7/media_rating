@@ -141,6 +141,46 @@ describe("free-rank matchup selection", () => {
         expect(matchup?.entryA.id).toBe("new");
         expect(matchup?.entryB.id).toBe("veteran");
     });
+
+    it("prefers closer-ranked opponents once the anchor has enough matches", () => {
+        const categories = [
+            category("Books", [
+                entry("anchor", 0, 1900, 30, 0),
+                entry("near", 1, 1840, 30, 0),
+                entry("far", 2, 1100, 30, 0)
+            ])
+        ];
+        const random = sequenceRandom([0, 0, 0.55]);
+
+        const matchup = selectFreeRankMatchup(categories, "books", random);
+        expect(matchup?.entryA.id).toBe("anchor");
+        expect(matchup?.entryB.id).toBe("near");
+    });
+
+    it("penalizes recently repeated free-rank pairs", () => {
+        const categories = [
+            category("Books", [
+                entry("anchor", 0, 1900, 30, 0),
+                entry("repeated", 1, 1840, 30, 0),
+                entry("fresh", 2, 1800, 30, 0)
+            ])
+        ];
+        const random = sequenceRandom([0, 0, 0.1]);
+
+        const matchup = selectFreeRankMatchup(categories, "books", random, {
+            now: 10_000,
+            pairHistory: [
+                {
+                    entryAId: "anchor",
+                    entryBId: "repeated",
+                    matchCount: 5,
+                    lastMatchedAt: 10_000
+                }
+            ]
+        });
+        expect(matchup?.entryA.id).toBe("anchor");
+        expect(matchup?.entryB.id).toBe("fresh");
+    });
 });
 
 describe("combined order", () => {

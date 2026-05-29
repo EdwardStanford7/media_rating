@@ -1,5 +1,6 @@
 import {
     DEFAULT_ELO,
+    type FreeRankPairHistory,
     chooseBinaryPivot,
     eloKFactorForMatchCount,
     matchCount,
@@ -27,6 +28,8 @@ import { env } from "cloudflare:workers";
 import { NO_IMAGE_KEY, hasStoredImage } from "@/lib/images";
 import { all, assertOwned, first, getDb, newId, now } from "./db";
 
+const FREE_RANK_PAIR_HISTORY_LIMIT = 500;
+
 interface CategoryRow {
     id: string;
     name: string;
@@ -49,6 +52,13 @@ interface EntryRow {
     free_rank_elo: number;
     free_rank_wins: number;
     free_rank_losses: number;
+}
+
+interface PairHistoryRow {
+    entry_a_id: string;
+    entry_b_id: string;
+    match_count: number;
+    last_matched_at: number | null;
 }
 
 interface ExistingEntryRow {
@@ -1157,6 +1167,7 @@ export async function getFreeRankMatchup(
     }
 
     const entries = await listActiveEntries(userId, category.id);
+    const pairHistory = await listFreeRankPairHistory(userId, category.id);
     return selectFreeRankMatchup([
         {
             id: category.id,
@@ -1165,7 +1176,10 @@ export async function getFreeRankMatchup(
             createdAt: category.created_at,
             entries
         }
-    ], category.id);
+    ], category.id, Math.random, {
+        pairHistory,
+        now: now()
+    });
 }
 
 export async function submitFreeRankWinner(
@@ -2079,6 +2093,39 @@ async function listActiveEntries(userId: string, categoryId: string, excludedEnt
     );
 
     return rows.map(mapEntry);
+}
+
+async function listFreeRankPairHistory(userId: string, categoryId: string): Promise<FreeRankPairHistory[]> {
+    const rows = await all<PairHistoryRow>(
+        getDb()
+            .prepare(
+                `SELECT
+           CASE WHEN entry_a_id < entry_b_id THEN entry_a_id ELSE entry_b_id END AS entry_a_id,
+           CASE WHEN entry_a_id < entry_b_id THEN entry_b_id ELSE entry_a_id END AS entry_b_id,
+           COUNT(*) AS match_count,
+           MAX(created_at) AS last_matched_at
+         FROM (
+           SELECT entry_a_id, entry_b_id, created_at
+           FROM matches
+           WHERE user_id = ?
+             AND category_id = ?
+             AND match_type = 'free_rank'
+           ORDER BY created_at DESC
+           LIMIT ?
+         )
+         GROUP BY
+           CASE WHEN entry_a_id < entry_b_id THEN entry_a_id ELSE entry_b_id END,
+           CASE WHEN entry_a_id < entry_b_id THEN entry_b_id ELSE entry_a_id END`
+            )
+            .bind(userId, categoryId, FREE_RANK_PAIR_HISTORY_LIMIT)
+    );
+
+    return rows.map((row) => ({
+        entryAId: row.entry_a_id,
+        entryBId: row.entry_b_id,
+        matchCount: row.match_count,
+        lastMatchedAt: row.last_matched_at
+    }));
 }
 
 async function getActiveEntryCount(userId: string, categoryId: string) {

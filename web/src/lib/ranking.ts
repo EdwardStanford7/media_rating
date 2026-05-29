@@ -12,6 +12,15 @@ export const EARLY_ELO_K_FACTOR = 64;
 export const COMBINED_MIN_MATCHES = 10;
 export const RANK_PRIOR_ELO_RANGE = 400;
 export const MAX_STAR_RATING_SCALE = 100;
+const FREE_RANK_MATCH_BALANCE_EXPONENT = 1;
+const FREE_RANK_RANGE_TUNING_MATCHES = 30;
+const FREE_RANK_EARLY_BAND_RATIO = 0.65;
+const FREE_RANK_LATE_BAND_RATIO = 0.12;
+const FREE_RANK_MIN_LATE_BAND = 2;
+const FREE_RANK_EXPLORATION_FLOOR = 0.08;
+const FREE_RANK_REPEAT_PENALTY_MULTIPLIER = 1.5;
+const FREE_RANK_REPEAT_RECENCY_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_STAR_RATING_CURVE: StarRatingCurvePoint[] = [
     { percentile: 0, stars: 5 },
     { percentile: 0.01, stars: 5 },
@@ -40,6 +49,18 @@ export interface BinaryStepResult {
     state: BinaryState;
     complete: boolean;
     finalIndex: number | null;
+}
+
+export interface FreeRankPairHistory {
+    entryAId: string;
+    entryBId: string;
+    matchCount: number;
+    lastMatchedAt: number | null;
+}
+
+export interface FreeRankMatchupSelectionOptions {
+    pairHistory?: FreeRankPairHistory[];
+    now?: number;
 }
 
 export function chooseBinaryPivot(
@@ -371,7 +392,8 @@ function formatCurveNumber(value: number) {
 export function selectFreeRankMatchup(
     categories: CategoryWithEntries[],
     categorySelection: string | "any",
-    random: () => number = Math.random
+    random: () => number = Math.random,
+    options: FreeRankMatchupSelectionOptions = {}
 ): FreeRankMatchup | null {
     const eligibleCategories = categories.filter(
         (category) =>
@@ -388,10 +410,20 @@ export function selectFreeRankMatchup(
         (candidate) => possiblePairCount(candidate.entries.length),
         random
     );
-    const entryA = weightedChoice(category.entries, freeRankEntryWeight, random);
+    const freeRankIndexes = freeRankOrderedIndexes(category.entries);
+    const pairHistory = pairHistoryIndex(options.pairHistory ?? []);
+    const now = options.now ?? Date.now();
+    const entryA = weightedChoice(category.entries, freeRankAnchorWeight, random);
     const entryB = weightedChoice(
         category.entries.filter((entry) => entry.id !== entryA.id),
-        freeRankEntryWeight,
+        (candidate) => freeRankOpponentWeight({
+            anchor: entryA,
+            candidate,
+            freeRankIndexes,
+            pairHistory,
+            now,
+            categorySize: category.entries.length
+        }),
         random
     );
 
@@ -407,8 +439,86 @@ function possiblePairCount(entryCount: number) {
     return entryCount * (entryCount - 1) / 2;
 }
 
-function freeRankEntryWeight(entry: Pick<Entry, "freeRankWins" | "freeRankLosses">) {
-    return 1 / Math.sqrt(1 + matchCount(entry));
+function freeRankAnchorWeight(entry: Pick<Entry, "freeRankWins" | "freeRankLosses">) {
+    return freeRankMatchBalanceWeight(matchCount(entry));
+}
+
+function freeRankMatchBalanceWeight(matches: number) {
+    return 1 / ((1 + matches) ** FREE_RANK_MATCH_BALANCE_EXPONENT);
+}
+
+function freeRankOpponentWeight({
+    anchor,
+    candidate,
+    categorySize,
+    freeRankIndexes,
+    now,
+    pairHistory
+}: {
+    anchor: Entry;
+    candidate: Entry;
+    categorySize: number;
+    freeRankIndexes: Map<string, number>;
+    now: number;
+    pairHistory: Map<string, FreeRankPairHistory>;
+}) {
+    const anchorIndex = freeRankIndexes.get(anchor.id) ?? anchor.rankPosition;
+    const candidateIndex = freeRankIndexes.get(candidate.id) ?? candidate.rankPosition;
+    const distance = Math.abs(anchorIndex - candidateIndex);
+    const band = freeRankOpponentBand(matchCount(anchor), categorySize);
+    const distanceWeight = Math.exp(-(distance * distance) / (2 * band * band));
+    const explorationWeight = FREE_RANK_EXPLORATION_FLOOR + distanceWeight;
+    const historyPenalty = pairHistoryPenalty(
+        pairHistory.get(pairKey(anchor.id, candidate.id)),
+        now
+    );
+
+    return freeRankMatchBalanceWeight(matchCount(candidate)) * explorationWeight * historyPenalty;
+}
+
+function freeRankOpponentBand(anchorMatches: number, categorySize: number) {
+    const confidence = Math.max(0, Math.min(anchorMatches / FREE_RANK_RANGE_TUNING_MATCHES, 1));
+    const earlyBand = Math.max(1, categorySize * FREE_RANK_EARLY_BAND_RATIO);
+    const lateBand = Math.max(FREE_RANK_MIN_LATE_BAND, categorySize * FREE_RANK_LATE_BAND_RATIO);
+    return earlyBand + (lateBand - earlyBand) * confidence;
+}
+
+function pairHistoryPenalty(history: FreeRankPairHistory | undefined, now: number) {
+    if (!history) {
+        return 1;
+    }
+
+    const countPenalty = 1 / (1 + history.matchCount * FREE_RANK_REPEAT_PENALTY_MULTIPLIER);
+    if (!history.lastMatchedAt) {
+        return countPenalty;
+    }
+
+    const ageDays = Math.max(0, (now - history.lastMatchedAt) / DAY_MS);
+    const recencyPenalty = Math.max(0.2, Math.min(ageDays / FREE_RANK_REPEAT_RECENCY_DAYS, 1));
+    return Math.max(0.03, countPenalty * recencyPenalty);
+}
+
+function freeRankOrderedIndexes(entries: Entry[]) {
+    const indexes = new Map<string, number>();
+    [...entries]
+        .sort((left, right) => {
+            const eloDiff = right.freeRankElo - left.freeRankElo;
+            if (eloDiff !== 0) {
+                return eloDiff;
+            }
+
+            return left.rankPosition - right.rankPosition;
+        })
+        .forEach((entry, index) => indexes.set(entry.id, index));
+    return indexes;
+}
+
+function pairHistoryIndex(history: FreeRankPairHistory[]) {
+    return new Map(history.map((item) => [pairKey(item.entryAId, item.entryBId), item]));
+}
+
+function pairKey(entryAId: string, entryBId: string) {
+    return entryAId < entryBId ? `${entryAId}:${entryBId}` : `${entryBId}:${entryAId}`;
 }
 
 function weightedChoice<T>(
