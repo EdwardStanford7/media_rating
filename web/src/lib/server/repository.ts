@@ -1,6 +1,9 @@
 import {
     DEFAULT_ELO,
+    type BubbleRepairState,
     type FreeRankPairHistory,
+    type RankingComparison,
+    advanceBubbleRepairState,
     chooseBinaryPivot,
     eloKFactorForMatchCount,
     matchCount,
@@ -9,6 +12,7 @@ import {
     rankPriorElo,
     rebaseEloForRankChange,
     selectFreeRankMatchup,
+    startBubbleRepairState,
     updateEloPair
 } from "@/lib/ranking";
 import type {
@@ -22,6 +26,7 @@ import type {
     ParsedImport,
     QueuedEntry,
     QueueSettings,
+    RankingOperationKind,
     RankingSource
 } from "@/lib/types";
 import { env } from "cloudflare:workers";
@@ -103,6 +108,10 @@ interface SessionRow {
     created_at: number;
     comparison_count?: number;
     phase?: string;
+    operation_kind?: RankingOperationKind | string;
+    secondary_entry_id?: string | null;
+    secondary_original_rank_position?: number | null;
+    operation_state?: string | null;
 }
 
 interface ActiveBinarySessionRow {
@@ -111,6 +120,7 @@ interface ActiveBinarySessionRow {
     category_name: string;
     subject_name: string;
     source: RankingSource;
+    operation_kind?: RankingOperationKind | string;
 }
 
 interface ActiveSessionRepairRow {
@@ -132,6 +142,15 @@ interface ActiveSessionRepairRow {
     pivot_id: string | null;
     pivot_category_id: string | null;
     pivot_status: string | null;
+    original_rank_position?: number | null;
+    phase?: string;
+    operation_kind?: RankingOperationKind | string;
+    secondary_entry_id?: string | null;
+    secondary_original_rank_position?: number | null;
+    operation_state?: string | null;
+    secondary_id?: string | null;
+    secondary_category_id?: string | null;
+    secondary_status?: string | null;
 }
 
 interface OrphanedRankingEntryRow {
@@ -146,6 +165,23 @@ const IMPORT_BATCH_SIZE = 100;
 const DEFAULT_QUEUE_DELAY_DAYS = 3;
 const MAX_QUEUE_DELAY_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+interface RandomAuditOperationState {
+    kind: "random_audit";
+    stage: "rank_higher" | "rank_lower";
+    higherEntryId: string;
+    lowerEntryId: string;
+    higherOriginalRankPosition: number;
+    lowerOriginalRankPosition: number;
+    firstFinalRankPosition: number | null;
+}
+
+interface RankingOperationStateEnvelope {
+    kind: "ranking_operation_state";
+    comparisons: RankingComparison[];
+    bubbleRepair: BubbleRepairState | null;
+    randomAudit: RandomAuditOperationState | null;
+}
 
 export async function loadDashboard(
     userId: string,
@@ -714,6 +750,98 @@ export async function startRerankEntry(userId: string, entryId: string) {
     return { kind: "session" as const, entryId, sessionId: session.sessionId };
 }
 
+export async function startRandomAuditRanking(
+    userId: string,
+    input: {
+        categoryId: string;
+        entryAId: string;
+        entryBId: string;
+        winnerId: string;
+    }
+) {
+    const db = getDb();
+    await assertNoActiveBinarySession(userId);
+
+    const entryA = await getOwnedActiveEntry(userId, input.entryAId);
+    const entryB = await getOwnedActiveEntry(userId, input.entryBId);
+    assertOwned(entryA, "First audit entry");
+    assertOwned(entryB, "Second audit entry");
+
+    if (entryA.categoryId !== input.categoryId || entryB.categoryId !== input.categoryId) {
+        throw new Error("Random audit entries must belong to the selected category");
+    }
+
+    if (entryA.categoryId !== entryB.categoryId) {
+        throw new Error("Random audit cannot cross categories");
+    }
+
+    if (input.winnerId !== entryA.id && input.winnerId !== entryB.id) {
+        throw new Error("Winner must be one of the audit entries");
+    }
+
+    const higherEntry = entryA.rankPosition < entryB.rankPosition ? entryA : entryB;
+    const lowerEntry = higherEntry.id === entryA.id ? entryB : entryA;
+    if (input.winnerId === higherEntry.id) {
+        return { kind: "completed" as const, changed: false, sessionId: null };
+    }
+
+    const activeCount = await getActiveEntryCount(userId, input.categoryId);
+    if (activeCount < 2) {
+        return { kind: "completed" as const, changed: false, sessionId: null };
+    }
+
+    const updatedAt = now();
+    const remainingCount = activeCount - 2;
+    await db.batch([
+        db
+            .prepare(
+                `UPDATE entries
+         SET rank_position = CASE
+             WHEN rank_position > ? AND rank_position < ? THEN rank_position - 1
+             WHEN rank_position > ? THEN rank_position - 2
+             ELSE rank_position
+           END,
+           updated_at = ?
+         WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position > ?`
+            )
+            .bind(
+                higherEntry.rankPosition,
+                lowerEntry.rankPosition,
+                lowerEntry.rankPosition,
+                updatedAt,
+                userId,
+                input.categoryId,
+                higherEntry.rankPosition
+            ),
+        db
+            .prepare(
+                `UPDATE entries
+         SET status = 'ranking', rank_position = ?, updated_at = ?
+         WHERE user_id = ? AND id = ? AND status = 'active'`
+            )
+            .bind(remainingCount, updatedAt, userId, higherEntry.id),
+        db
+            .prepare(
+                `UPDATE entries
+         SET status = 'ranking', rank_position = ?, updated_at = ?
+         WHERE user_id = ? AND id = ? AND status = 'active'`
+            )
+            .bind(remainingCount + 1, updatedAt, userId, lowerEntry.id)
+    ]);
+
+    const state: RandomAuditOperationState = {
+        kind: "random_audit",
+        stage: "rank_higher",
+        higherEntryId: higherEntry.id,
+        lowerEntryId: lowerEntry.id,
+        higherOriginalRankPosition: higherEntry.rankPosition,
+        lowerOriginalRankPosition: lowerEntry.rankPosition,
+        firstFinalRankPosition: null
+    };
+
+    return startRandomAuditFirstStageOrCommit(db, userId, input.categoryId, state, updatedAt);
+}
+
 export async function moveEntryOnePosition(
     userId: string,
     input: { entryId: string; direction: "up" | "down" }
@@ -894,7 +1022,9 @@ export async function getBinarySession(
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
                 upper_bound, pivot_entry_id, pivot_rank_position, from_category_id,
-                final_rank_position, created_at, comparison_count, phase
+                final_rank_position, created_at, comparison_count, phase,
+                operation_kind, secondary_entry_id, secondary_original_rank_position,
+                operation_state
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -905,9 +1035,19 @@ export async function getBinarySession(
         return null;
     }
 
+    const operationState = parseRankingOperationState(session.operation_state);
+    const repairComparison = session.phase === "bubble_repair"
+        ? operationState.bubbleRepair?.currentComparison ?? null
+        : null;
     const category = await getOwnedCategory(userId, session.category_id);
-    const subject = await getOwnedEntry(userId, session.subject_entry_id);
-    const opponent = await getOwnedEntry(userId, session.pivot_entry_id);
+    const subject = await getOwnedEntry(
+        userId,
+        repairComparison?.entryAId ?? session.subject_entry_id
+    );
+    const opponent = await getOwnedEntry(
+        userId,
+        repairComparison?.entryBId ?? session.pivot_entry_id
+    );
 
     if (!category || !subject || !opponent) {
         return null;
@@ -918,7 +1058,8 @@ export async function getBinarySession(
         categoryId: session.category_id,
         categoryName: category.name,
         source: session.source,
-        phase: session.phase === "repair_up" || session.phase === "repair_down" ? "local_repair" : "binary",
+        operationKind: normalizeOperationKind(session.operation_kind),
+        phase: session.phase && session.phase !== "binary" ? "local_repair" : "binary",
         subject,
         opponent,
         lowerBound: session.lower_bound,
@@ -934,7 +1075,9 @@ export async function cancelBinarySession(userId: string, sessionId: string) {
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
                 upper_bound, pivot_entry_id, pivot_rank_position, from_category_id,
-                final_rank_position, original_rank_position, created_at, phase
+                final_rank_position, original_rank_position, created_at, phase,
+                operation_kind, secondary_entry_id, secondary_original_rank_position,
+                operation_state
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -950,6 +1093,11 @@ export async function cancelBinarySession(userId: string, sessionId: string) {
     assertOwned(entry, "Entry");
 
     const updatedAt = now();
+    if (normalizeOperationKind(session.operation_kind) === "random_audit") {
+        await cancelRandomAuditSession(db, userId, session, updatedAt);
+        return;
+    }
+
     const statements: D1PreparedStatement[] = [
         db
             .prepare(
@@ -1038,7 +1186,9 @@ export async function submitBinaryWinner(
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
                 upper_bound, pivot_entry_id, pivot_rank_position, from_category_id,
-                final_rank_position, original_rank_position, created_at, phase
+                final_rank_position, original_rank_position, created_at, phase,
+                operation_kind, secondary_entry_id, secondary_original_rank_position,
+                operation_state
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -1050,6 +1200,11 @@ export async function submitBinaryWinner(
         throw new Error("Ranking session has no active matchup");
     }
 
+    const createdAt = now();
+    if (session.phase === "bubble_repair") {
+        return submitBubbleRepairWinner(db, userId, session, input.winnerId, createdAt);
+    }
+
     if (
         input.winnerId !== session.subject_entry_id &&
         input.winnerId !== session.pivot_entry_id
@@ -1057,12 +1212,14 @@ export async function submitBinaryWinner(
         throw new Error("Winner must be one of the active matchup entries");
     }
 
-    const createdAt = now();
     if (session.phase === "repair_up" || session.phase === "repair_down") {
         return submitLocalRepairWinner(db, userId, session, input.winnerId, createdAt);
     }
 
+    const operationState = parseRankingOperationState(session.operation_state);
     const subjectWon = input.winnerId === session.subject_entry_id;
+    const loserId = subjectWon ? session.pivot_entry_id : session.subject_entry_id;
+    const nextOperationState = addCachedComparison(operationState, input.winnerId, loserId);
     const lowerBound = subjectWon
         ? session.lower_bound
         : session.pivot_rank_position + 1;
@@ -1081,19 +1238,45 @@ export async function submitBinaryWinner(
                 .prepare(
                     `UPDATE ranking_sessions
          SET lower_bound = ?, upper_bound = ?, pivot_entry_id = ?,
-             pivot_rank_position = ?, comparison_count = comparison_count + 1
+             pivot_rank_position = ?, operation_state = ?,
+             comparison_count = comparison_count + 1
          WHERE id = ? AND user_id = ?`
                 )
-                .bind(lowerBound, upperBound, pivot.id, pivot.rankPosition, session.id, userId)
+                .bind(
+                    lowerBound,
+                    upperBound,
+                    pivot.id,
+                    pivot.rankPosition,
+                    serializeRankingOperationState(nextOperationState),
+                    session.id,
+                    userId
+                )
         ]);
 
         return { kind: "session" as const, sessionId: session.id };
     }
 
-    return startLocalRepairOrCommit(db, userId, session, lowerBound, createdAt, {
-        countCurrentComparison: true,
-        allowUpwardCheck: true
-    });
+    if (normalizeOperationKind(session.operation_kind) === "random_audit") {
+        await db
+            .prepare(
+                `UPDATE ranking_sessions
+       SET operation_state = ?
+       WHERE id = ? AND user_id = ? AND status = 'active'`
+            )
+            .bind(serializeRankingOperationState(nextOperationState), session.id, userId)
+            .run();
+        return completeRankingSession(db, userId, session, lowerBound, createdAt, true);
+    }
+
+    return startBubbleRepairOrCommit(
+        db,
+        userId,
+        session,
+        lowerBound,
+        createdAt,
+        nextOperationState,
+        true
+    );
 }
 
 async function submitLocalRepairWinner(
@@ -1112,7 +1295,7 @@ async function submitLocalRepairWinner(
             return continueUpwardRepairOrCommit(db, userId, session, pivotRank, updatedAt, true);
         }
 
-        const wasInitialLeftCheck = pivotRank === currentFinalRank - 2;
+        const wasInitialLeftCheck = pivotRank === currentFinalRank - 1;
         if (wasInitialLeftCheck) {
             return startLocalRepairOrCommit(db, userId, session, currentFinalRank, updatedAt, {
                 countCurrentComparison: true,
@@ -1130,6 +1313,166 @@ async function submitLocalRepairWinner(
     return completeRankingSession(db, userId, session, currentFinalRank, updatedAt, true);
 }
 
+async function submitBubbleRepairWinner(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    winnerId: string,
+    updatedAt: number
+) {
+    const operationState = parseRankingOperationState(session.operation_state);
+    const bubbleRepair = operationState.bubbleRepair;
+    const currentComparison = bubbleRepair?.currentComparison;
+    if (!bubbleRepair || !currentComparison) {
+        throw new Error("Ranking session has no active repair matchup");
+    }
+
+    if (
+        winnerId !== currentComparison.entryAId &&
+        winnerId !== currentComparison.entryBId
+    ) {
+        throw new Error("Winner must be one of the active matchup entries");
+    }
+
+    const loserId = winnerId === currentComparison.entryAId
+        ? currentComparison.entryBId
+        : currentComparison.entryAId;
+    const nextOperationState = addCachedComparison(operationState, winnerId, loserId);
+    const result = advanceBubbleRepairState(bubbleRepair, nextOperationState.comparisons);
+    nextOperationState.bubbleRepair = result.state;
+
+    if (result.complete) {
+        return completeBubbleRepairSession(
+            db,
+            userId,
+            session,
+            result.state.workingOrderIds,
+            updatedAt,
+            nextOperationState,
+            true
+        );
+    }
+
+    await updateBubbleRepairPrompt(db, userId, session, nextOperationState, true);
+    return { kind: "session" as const, sessionId: session.id };
+}
+
+async function startBubbleRepairOrCommit(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    finalRankPosition: number,
+    updatedAt: number,
+    operationState: RankingOperationStateEnvelope,
+    countCurrentComparison: boolean
+) {
+    const entries = await listActiveEntries(userId, session.category_id);
+    const workingOrderIds = entries.map((entry) => entry.id);
+    workingOrderIds.splice(
+        clampInsertionIndex(finalRankPosition, workingOrderIds.length),
+        0,
+        session.subject_entry_id
+    );
+
+    const bubbleRepair = startBubbleRepairState(workingOrderIds, session.subject_entry_id);
+    const result = advanceBubbleRepairState(bubbleRepair, operationState.comparisons);
+    operationState.bubbleRepair = result.state;
+
+    if (result.complete) {
+        return completeBubbleRepairSession(
+            db,
+            userId,
+            session,
+            result.state.workingOrderIds,
+            updatedAt,
+            operationState,
+            countCurrentComparison
+        );
+    }
+
+    await updateBubbleRepairPrompt(db, userId, session, operationState, countCurrentComparison);
+    return { kind: "session" as const, sessionId: session.id };
+}
+
+async function updateBubbleRepairPrompt(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    operationState: RankingOperationStateEnvelope,
+    countCurrentComparison: boolean
+) {
+    const comparison = operationState.bubbleRepair?.currentComparison;
+    const bubbleRepair = operationState.bubbleRepair;
+    if (!comparison || !bubbleRepair) {
+        throw new Error("Bubble repair has no active matchup");
+    }
+
+    const opponent = await getOwnedEntry(userId, comparison.entryBId);
+    assertOwned(opponent, "Repair opponent");
+
+    await db
+        .prepare(
+            `UPDATE ranking_sessions
+       SET phase = 'bubble_repair',
+           final_rank_position = ?,
+           pivot_entry_id = ?,
+           pivot_rank_position = ?,
+           operation_state = ?,
+           comparison_count = comparison_count + ?
+       WHERE id = ? AND user_id = ? AND status = 'active'`
+        )
+        .bind(
+            bubbleRepair.workingOrderIds.indexOf(session.subject_entry_id),
+            comparison.entryBId,
+            opponent.rankPosition,
+            serializeRankingOperationState(operationState),
+            countCurrentComparison ? 1 : 0,
+            session.id,
+            userId
+        )
+        .run();
+}
+
+async function completeBubbleRepairSession(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    workingOrderIds: string[],
+    updatedAt: number,
+    operationState: RankingOperationStateEnvelope,
+    countCurrentComparison: boolean
+) {
+    const finalRankPosition = workingOrderIds.indexOf(session.subject_entry_id);
+    if (finalRankPosition < 0) {
+        throw new Error("Ranked entry is missing from the repaired order");
+    }
+
+    operationState.bubbleRepair = null;
+    await db.batch([
+        ...rewriteCategoryOrderStatements(db, userId, session.category_id, workingOrderIds, updatedAt),
+        db
+            .prepare(
+                `UPDATE ranking_sessions
+       SET status = 'completed', final_rank_position = ?, completed_at = ?,
+           pivot_entry_id = NULL, pivot_rank_position = NULL,
+           phase = 'binary',
+           operation_state = ?,
+           comparison_count = comparison_count + ?
+       WHERE id = ? AND user_id = ?`
+            )
+            .bind(
+                finalRankPosition,
+                updatedAt,
+                serializeRankingOperationState(operationState),
+                countCurrentComparison ? 1 : 0,
+                session.id,
+                userId
+            )
+    ]);
+
+    return { kind: "completed" as const, sessionId: session.id, finalRankPosition };
+}
+
 async function startLocalRepairOrCommit(
     db: D1Database,
     userId: string,
@@ -1144,7 +1487,7 @@ async function startLocalRepairOrCommit(
     const entries = await listActiveEntries(userId, session.category_id);
 
     if (options.allowUpwardCheck) {
-        const upwardPivot = entries[finalRankPosition - 2];
+        const upwardPivot = entries[finalRankPosition - 1];
         if (upwardPivot) {
             await updateRankingSessionPivot(
                 db,
@@ -1159,7 +1502,7 @@ async function startLocalRepairOrCommit(
         }
     }
 
-    const downwardPivot = entries[finalRankPosition + 1];
+    const downwardPivot = entries[finalRankPosition];
     if (downwardPivot) {
         await updateRankingSessionPivot(
             db,
@@ -1274,6 +1617,17 @@ async function completeRankingSession(
     updatedAt: number,
     countCurrentComparison: boolean
 ) {
+    if (normalizeOperationKind(session.operation_kind) === "random_audit") {
+        return completeRandomAuditStageOrOperation(
+            db,
+            userId,
+            session,
+            finalRankPosition,
+            updatedAt,
+            countCurrentComparison
+        );
+    }
+
     await db.batch([
         ...placeRankedEntryStatements(
             db,
@@ -1296,6 +1650,255 @@ async function completeRankingSession(
     ]);
 
     return { kind: "completed" as const, sessionId: session.id, finalRankPosition };
+}
+
+async function startRandomAuditFirstStageOrCommit(
+    db: D1Database,
+    userId: string,
+    categoryId: string,
+    state: RandomAuditOperationState,
+    createdAt: number
+) {
+    const remainingCount = await getActiveEntryCount(userId, categoryId);
+    if (remainingCount === 0) {
+        await commitRandomAuditOrder(db, userId, categoryId, state, 0, 0, createdAt, null, false);
+        return { kind: "completed" as const, changed: true, sessionId: null };
+    }
+
+    const lowerBound = Math.min(state.higherOriginalRankPosition, remainingCount);
+    const upperBound = remainingCount;
+    if (lowerBound >= upperBound) {
+        return startRandomAuditLowerStageOrCommit(
+            db,
+            userId,
+            categoryId,
+            { ...state, stage: "rank_lower", firstFinalRankPosition: lowerBound },
+            createdAt,
+            null,
+            false
+        );
+    }
+
+    const session = await prepareBinarySession(db, {
+        userId,
+        categoryId,
+        subjectEntryId: state.higherEntryId,
+        source: "rerank_entry",
+        opponentCount: remainingCount,
+        initialRankPosition: state.higherOriginalRankPosition,
+        lowerBound,
+        upperBound,
+        operationKind: "random_audit",
+        secondaryEntryId: state.lowerEntryId,
+        secondaryOriginalRankPosition: state.lowerOriginalRankPosition,
+        operationState: JSON.stringify(state),
+        createdAt
+    });
+    await db.batch([session.statement]);
+    return { kind: "session" as const, entryId: state.higherEntryId, sessionId: session.sessionId };
+}
+
+async function startRandomAuditLowerStageOrCommit(
+    db: D1Database,
+    userId: string,
+    categoryId: string,
+    state: RandomAuditOperationState,
+    updatedAt: number,
+    session: SessionRow | null,
+    countCurrentComparison: boolean
+) {
+    const firstFinalRankPosition = state.firstFinalRankPosition ?? 0;
+    const remainingCount = await getActiveEntryCount(userId, categoryId);
+    const lowerBound = 0;
+    const upperBound = Math.min(firstFinalRankPosition, remainingCount);
+
+    if (lowerBound >= upperBound) {
+        await commitRandomAuditOrder(
+            db,
+            userId,
+            categoryId,
+            state,
+            firstFinalRankPosition,
+            lowerBound,
+            updatedAt,
+            session,
+            countCurrentComparison
+        );
+        return {
+            kind: "completed" as const,
+            changed: true,
+            sessionId: session?.id ?? null,
+            finalRankPosition: lowerBound
+        };
+    }
+
+    const opponents = await listActiveEntries(userId, categoryId);
+    const pivotIndex = chooseBinaryPivot(lowerBound, upperBound);
+    const pivot = opponents[pivotIndex];
+    assertOwned(pivot, "Pivot entry");
+
+    if (session) {
+        await db
+            .prepare(
+                `UPDATE ranking_sessions
+       SET subject_entry_id = ?,
+           original_rank_position = ?,
+           secondary_entry_id = ?,
+           secondary_original_rank_position = ?,
+           lower_bound = ?,
+           upper_bound = ?,
+           pivot_entry_id = ?,
+           pivot_rank_position = ?,
+           final_rank_position = NULL,
+           phase = 'binary',
+           operation_state = ?,
+           comparison_count = comparison_count + ?
+       WHERE id = ? AND user_id = ? AND status = 'active'`
+            )
+            .bind(
+                state.lowerEntryId,
+                state.lowerOriginalRankPosition,
+                state.higherEntryId,
+                state.higherOriginalRankPosition,
+                lowerBound,
+                upperBound,
+                pivot.id,
+                pivot.rankPosition,
+                JSON.stringify(state),
+                countCurrentComparison ? 1 : 0,
+                session.id,
+                userId
+            )
+            .run();
+        return { kind: "session" as const, sessionId: session.id };
+    }
+
+    const preparedSession = await prepareBinarySession(db, {
+        userId,
+        categoryId,
+        subjectEntryId: state.lowerEntryId,
+        source: "rerank_entry",
+        opponentCount: remainingCount,
+        initialRankPosition: state.lowerOriginalRankPosition,
+        lowerBound,
+        upperBound,
+        operationKind: "random_audit",
+        secondaryEntryId: state.higherEntryId,
+        secondaryOriginalRankPosition: state.higherOriginalRankPosition,
+        operationState: JSON.stringify(state),
+        createdAt: updatedAt
+    });
+    await db.batch([preparedSession.statement]);
+    return { kind: "session" as const, entryId: state.lowerEntryId, sessionId: preparedSession.sessionId };
+}
+
+async function completeRandomAuditStageOrOperation(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    finalRankPosition: number,
+    updatedAt: number,
+    countCurrentComparison: boolean
+) {
+    const state = parseRandomAuditOperationState(session.operation_state);
+    if (!state) {
+        throw new Error("Random audit session state is missing");
+    }
+
+    if (state.stage === "rank_higher") {
+        const nextState: RandomAuditOperationState = {
+            ...state,
+            stage: "rank_lower",
+            firstFinalRankPosition: finalRankPosition
+        };
+        return startRandomAuditLowerStageOrCommit(
+            db,
+            userId,
+            session.category_id,
+            nextState,
+            updatedAt,
+            session,
+            countCurrentComparison
+        );
+    }
+
+    const firstFinalRankPosition = state.firstFinalRankPosition ?? 0;
+    return commitRandomAuditOrder(
+        db,
+        userId,
+        session.category_id,
+        state,
+        firstFinalRankPosition,
+        Math.min(finalRankPosition, firstFinalRankPosition),
+        updatedAt,
+        session,
+        countCurrentComparison
+    );
+}
+
+async function commitRandomAuditOrder(
+    db: D1Database,
+    userId: string,
+    categoryId: string,
+    state: RandomAuditOperationState,
+    higherFinalRankPosition: number,
+    lowerFinalRankPosition: number,
+    updatedAt: number,
+    session: SessionRow | null,
+    countCurrentComparison: boolean
+) {
+    const higherEntry = await getOwnedEntry(userId, state.higherEntryId);
+    const lowerEntry = await getOwnedEntry(userId, state.lowerEntryId);
+    assertOwned(higherEntry, "Higher-ranked audit entry");
+    assertOwned(lowerEntry, "Lower-ranked audit entry");
+
+    const activeEntries = await listActiveEntries(userId, categoryId);
+    const orderedIds = activeEntries.map((entry) => entry.id);
+    const lowerIndex = clampInsertionIndex(lowerFinalRankPosition, orderedIds.length);
+    orderedIds.splice(lowerIndex, 0, lowerEntry.id);
+    const higherIndex = clampInsertionIndex(
+        higherFinalRankPosition + (higherFinalRankPosition >= lowerIndex ? 1 : 0),
+        orderedIds.length
+    );
+    orderedIds.splice(higherIndex, 0, higherEntry.id);
+
+    const statements = [
+        ...rewriteCategoryOrderStatements(db, userId, categoryId, orderedIds, updatedAt)
+    ];
+
+    if (session) {
+        statements.push(
+            db
+                .prepare(
+                    `UPDATE ranking_sessions
+       SET status = 'completed',
+           final_rank_position = ?,
+           completed_at = ?,
+           pivot_entry_id = NULL,
+           pivot_rank_position = NULL,
+           phase = 'binary',
+           operation_state = ?,
+           comparison_count = comparison_count + ?
+       WHERE id = ? AND user_id = ?`
+                )
+                .bind(
+                    lowerIndex,
+                    updatedAt,
+                    JSON.stringify({ ...state, stage: "rank_lower", firstFinalRankPosition: higherFinalRankPosition }),
+                    countCurrentComparison ? 1 : 0,
+                    session.id,
+                    userId
+                )
+        );
+    }
+
+    await db.batch(statements);
+    return {
+        kind: "completed" as const,
+        changed: true,
+        sessionId: session?.id ?? null,
+        finalRankPosition: lowerIndex
+    };
 }
 
 export async function getFreeRankMatchup(
@@ -1755,7 +2358,7 @@ async function getActiveBinarySession(userId: string): Promise<ActiveBinarySessi
             .prepare(
                 `SELECT ranking_sessions.id, ranking_sessions.category_id,
                 categories.name AS category_name, entries.name AS subject_name,
-                ranking_sessions.source
+                ranking_sessions.source, ranking_sessions.operation_kind
          FROM ranking_sessions
          INNER JOIN categories ON categories.id = ranking_sessions.category_id
          INNER JOIN entries ON entries.id = ranking_sessions.subject_entry_id
@@ -1772,7 +2375,8 @@ async function getActiveBinarySession(userId: string): Promise<ActiveBinarySessi
             categoryId: row.category_id,
             categoryName: row.category_name,
             subjectName: row.subject_name,
-            source: row.source
+            source: row.source,
+            operationKind: normalizeOperationKind(row.operation_kind)
         }
         : null;
 }
@@ -1783,7 +2387,8 @@ async function getActiveSessionRow(userId: string) {
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, from_category_id,
                 lower_bound, upper_bound, pivot_entry_id, pivot_rank_position,
-                final_rank_position, created_at
+                final_rank_position, created_at, operation_kind, secondary_entry_id,
+                secondary_original_rank_position, operation_state
          FROM ranking_sessions
          WHERE user_id = ? AND status = 'active'
          ORDER BY created_at DESC
@@ -1815,14 +2420,21 @@ async function cancelStaleActiveRankingSessions(userId: string) {
                 ranking_sessions.subject_entry_id, ranking_sessions.source,
                 ranking_sessions.lower_bound, ranking_sessions.upper_bound,
                 ranking_sessions.pivot_entry_id, ranking_sessions.pivot_rank_position,
-                ranking_sessions.created_at,
+                ranking_sessions.created_at, ranking_sessions.original_rank_position,
+                ranking_sessions.phase, ranking_sessions.operation_kind,
+                ranking_sessions.secondary_entry_id,
+                ranking_sessions.secondary_original_rank_position,
+                ranking_sessions.operation_state,
                 categories.id AS category_exists,
                 subject.id AS subject_id, subject.name AS subject_name,
                 subject.category_id AS subject_category_id,
                 subject.image_key AS subject_image_key,
                 subject.status AS subject_status,
                 pivot.id AS pivot_id, pivot.category_id AS pivot_category_id,
-                pivot.status AS pivot_status
+                pivot.status AS pivot_status,
+                secondary.id AS secondary_id,
+                secondary.category_id AS secondary_category_id,
+                secondary.status AS secondary_status
          FROM ranking_sessions
          LEFT JOIN categories
            ON categories.id = ranking_sessions.category_id
@@ -1833,6 +2445,9 @@ async function cancelStaleActiveRankingSessions(userId: string) {
          LEFT JOIN entries pivot
            ON pivot.id = ranking_sessions.pivot_entry_id
           AND pivot.user_id = ranking_sessions.user_id
+         LEFT JOIN entries secondary
+           ON secondary.id = ranking_sessions.secondary_entry_id
+          AND secondary.user_id = ranking_sessions.user_id
          WHERE ranking_sessions.user_id = ? AND ranking_sessions.status = 'active'
          ORDER BY ranking_sessions.created_at DESC`
             )
@@ -1853,6 +2468,79 @@ async function cancelStaleActiveRankingSessions(userId: string) {
         const canResume = canResumeActiveSession(session);
         if (canResume && keptActiveSessionId === null) {
             keptActiveSessionId = session.id;
+            continue;
+        }
+
+        if (normalizeOperationKind(session.operation_kind) === "random_audit") {
+            const state = parseRandomAuditOperationState(session.operation_state);
+            const stagedEntries = state
+                ? [
+                    session.subject_id
+                        ? {
+                            id: session.subject_entry_id,
+                            originalRankPosition: session.subject_entry_id === state.higherEntryId
+                                ? state.higherOriginalRankPosition
+                                : state.lowerOriginalRankPosition
+                        }
+                        : null,
+                    session.secondary_id && session.secondary_entry_id
+                        ? {
+                            id: session.secondary_entry_id,
+                            originalRankPosition: session.secondary_entry_id === state.higherEntryId
+                                ? state.higherOriginalRankPosition
+                                : state.lowerOriginalRankPosition
+                        }
+                        : null
+                ]
+                : [
+                    session.subject_id && session.original_rank_position !== null && session.original_rank_position !== undefined
+                        ? {
+                            id: session.subject_entry_id,
+                            originalRankPosition: session.original_rank_position
+                        }
+                        : null,
+                    session.secondary_id &&
+                        session.secondary_entry_id &&
+                        session.secondary_original_rank_position !== null &&
+                        session.secondary_original_rank_position !== undefined
+                        ? {
+                            id: session.secondary_entry_id,
+                            originalRankPosition: session.secondary_original_rank_position
+                        }
+                        : null
+                ];
+            const restoreEntries = stagedEntries
+                .filter((entry): entry is { id: string; originalRankPosition: number } => Boolean(entry))
+                .sort((left, right) => left.originalRankPosition - right.originalRankPosition);
+            if (restoreEntries.length > 0) {
+                const activeEntries = await listActiveEntries(userId, session.category_id);
+                const orderedIds = activeEntries.map((entry) => entry.id);
+                for (const entry of restoreEntries) {
+                    orderedIds.splice(
+                        clampInsertionIndex(entry.originalRankPosition, orderedIds.length),
+                        0,
+                        entry.id
+                    );
+                }
+                statements.push(...rewriteCategoryOrderStatements(
+                    db,
+                    userId,
+                    session.category_id,
+                    orderedIds,
+                    updatedAt
+                ));
+            }
+            statements.push(
+                db
+                    .prepare(
+                        `UPDATE ranking_sessions
+           SET status = 'cancelled', completed_at = ?,
+               pivot_entry_id = NULL, pivot_rank_position = NULL,
+               phase = 'binary'
+           WHERE id = ? AND user_id = ? AND status = 'active'`
+                    )
+                    .bind(updatedAt, session.id, userId)
+            );
             continue;
         }
 
@@ -1938,18 +2626,30 @@ async function cancelStaleActiveRankingSessions(userId: string) {
 }
 
 function canResumeActiveSession(session: ActiveSessionRepairRow) {
+    const operationKind = normalizeOperationKind(session.operation_kind);
+    const hasValidSecondary = operationKind !== "random_audit" || Boolean(
+        session.secondary_entry_id &&
+        session.secondary_id &&
+        session.secondary_category_id === session.category_id &&
+        session.secondary_status === "ranking" &&
+        parseRandomAuditOperationState(session.operation_state)
+    );
+    const hasValidBounds = session.phase && session.phase !== "binary"
+        ? session.lower_bound >= 0
+        : session.lower_bound >= 0 && session.upper_bound > session.lower_bound;
+
     return Boolean(
         session.category_exists &&
         session.subject_id &&
         session.subject_category_id === session.category_id &&
         session.subject_status === "ranking" &&
+        hasValidSecondary &&
         session.pivot_entry_id &&
         session.pivot_id &&
         session.pivot_category_id === session.category_id &&
         session.pivot_status === "active" &&
         session.pivot_rank_position !== null &&
-        session.lower_bound >= 0 &&
-        session.upper_bound > session.lower_bound
+        hasValidBounds
     );
 }
 
@@ -2120,6 +2820,12 @@ async function prepareBinarySession(
         opponentCount: number;
         excludedEntryId?: string;
         initialRankPosition?: number | null;
+        lowerBound?: number;
+        upperBound?: number;
+        operationKind?: RankingOperationKind;
+        secondaryEntryId?: string | null;
+        secondaryOriginalRankPosition?: number | null;
+        operationState?: string | null;
         createdAt: number;
     }
 ) {
@@ -2128,7 +2834,13 @@ async function prepareBinarySession(
         input.categoryId,
         input.excludedEntryId
     );
-    const pivotIndex = chooseBinaryPivot(0, input.opponentCount);
+    const lowerBound = input.lowerBound ?? 0;
+    const upperBound = input.upperBound ?? input.opponentCount;
+    if (lowerBound < 0 || upperBound > opponents.length || lowerBound >= upperBound) {
+        throw new Error("Invalid ranking bounds");
+    }
+
+    const pivotIndex = chooseBinaryPivot(lowerBound, upperBound);
     const pivot = opponents[pivotIndex];
     assertOwned(pivot, "Pivot entry");
 
@@ -2140,9 +2852,10 @@ async function prepareBinarySession(
                 `INSERT INTO ranking_sessions (
            id, user_id, category_id, subject_entry_id, source, from_category_id, lower_bound,
            upper_bound, pivot_entry_id, pivot_rank_position, final_rank_position,
-           original_rank_position, status, created_at
+           original_rank_position, status, created_at, operation_kind, secondary_entry_id,
+           secondary_original_rank_position, operation_state
          )
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, ?, 'active', ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'active', ?, ?, ?, ?, ?)`
             )
             .bind(
                 sessionId,
@@ -2151,11 +2864,16 @@ async function prepareBinarySession(
                 input.subjectEntryId,
                 input.source,
                 input.fromCategoryId ?? null,
-                input.opponentCount,
+                lowerBound,
+                upperBound,
                 pivot.id,
                 pivot.rankPosition,
                 input.initialRankPosition ?? null,
-                input.createdAt
+                input.createdAt,
+                input.operationKind ?? "single",
+                input.secondaryEntryId ?? null,
+                input.secondaryOriginalRankPosition ?? null,
+                input.operationState ?? null
             )
     };
 }
@@ -2215,6 +2933,279 @@ function freeRankEloForBinaryPlacement(
     }
 
     return null;
+}
+
+function normalizeOperationKind(value: string | null | undefined): RankingOperationKind {
+    return value === "random_audit" ? "random_audit" : "single";
+}
+
+function parseRankingOperationState(value: string | null | undefined): RankingOperationStateEnvelope {
+    if (!value) {
+        return emptyRankingOperationState();
+    }
+
+    try {
+        const parsed = JSON.parse(value) as Partial<RankingOperationStateEnvelope> & Partial<RandomAuditOperationState>;
+        if (parsed.kind === "ranking_operation_state") {
+            return {
+                kind: "ranking_operation_state",
+                comparisons: normalizeComparisonCache(parsed.comparisons),
+                bubbleRepair: normalizeBubbleRepairState(parsed.bubbleRepair),
+                randomAudit: normalizeRandomAuditState(parsed.randomAudit)
+            };
+        }
+
+        const randomAudit = normalizeRandomAuditState(parsed);
+        if (randomAudit) {
+            return {
+                ...emptyRankingOperationState(),
+                randomAudit
+            };
+        }
+    } catch {
+        return emptyRankingOperationState();
+    }
+
+    return emptyRankingOperationState();
+}
+
+function serializeRankingOperationState(state: RankingOperationStateEnvelope) {
+    return JSON.stringify({
+        kind: "ranking_operation_state",
+        comparisons: state.comparisons,
+        bubbleRepair: state.bubbleRepair,
+        randomAudit: state.randomAudit
+    });
+}
+
+function emptyRankingOperationState(): RankingOperationStateEnvelope {
+    return {
+        kind: "ranking_operation_state",
+        comparisons: [],
+        bubbleRepair: null,
+        randomAudit: null
+    };
+}
+
+function addCachedComparison(
+    state: RankingOperationStateEnvelope,
+    winnerId: string,
+    loserId: string
+) {
+    const comparisons = state.comparisons.filter((comparison) =>
+        !(
+            (comparison.winnerId === winnerId && comparison.loserId === loserId) ||
+            (comparison.winnerId === loserId && comparison.loserId === winnerId)
+        )
+    );
+
+    return {
+        ...state,
+        comparisons: [{ winnerId, loserId }, ...comparisons].slice(0, 200)
+    };
+}
+
+function normalizeComparisonCache(value: unknown): RankingComparison[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .filter((comparison): comparison is RankingComparison =>
+            typeof comparison === "object" &&
+            comparison !== null &&
+            "winnerId" in comparison &&
+            "loserId" in comparison &&
+            typeof comparison.winnerId === "string" &&
+            typeof comparison.loserId === "string"
+        )
+        .map((comparison) => ({
+            winnerId: comparison.winnerId,
+            loserId: comparison.loserId
+        }))
+        .slice(0, 200);
+}
+
+function normalizeBubbleRepairState(value: unknown): BubbleRepairState | null {
+    if (
+        typeof value !== "object" ||
+        value === null ||
+        !("kind" in value) ||
+        value.kind !== "bubble_repair" ||
+        !("stage" in value) ||
+        typeof value.stage !== "string" ||
+        !("workingOrderIds" in value) ||
+        !Array.isArray(value.workingOrderIds) ||
+        !("insertedEntryId" in value) ||
+        typeof value.insertedEntryId !== "string"
+    ) {
+        return null;
+    }
+
+    const currentComparison = "currentComparison" in value &&
+        typeof value.currentComparison === "object" &&
+        value.currentComparison !== null &&
+        "entryAId" in value.currentComparison &&
+        "entryBId" in value.currentComparison &&
+        typeof value.currentComparison.entryAId === "string" &&
+        typeof value.currentComparison.entryBId === "string"
+        ? {
+            entryAId: value.currentComparison.entryAId,
+            entryBId: value.currentComparison.entryBId
+        }
+        : null;
+
+    return {
+        kind: "bubble_repair",
+        stage: value.stage as BubbleRepairState["stage"],
+        workingOrderIds: value.workingOrderIds.filter((id): id is string => typeof id === "string"),
+        insertedEntryId: value.insertedEntryId,
+        aId: "aId" in value && typeof value.aId === "string" ? value.aId : null,
+        bId: "bId" in value && typeof value.bId === "string" ? value.bId : null,
+        dId: "dId" in value && typeof value.dId === "string" ? value.dId : null,
+        eId: "eId" in value && typeof value.eId === "string" ? value.eId : null,
+        currentComparison
+    };
+}
+
+function parseRandomAuditOperationState(
+    value: string | null | undefined
+): RandomAuditOperationState | null {
+    if (!value) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(value) as Partial<RankingOperationStateEnvelope> & Partial<RandomAuditOperationState>;
+        if (parsed.kind === "ranking_operation_state") {
+            return normalizeRandomAuditState(parsed.randomAudit);
+        }
+
+        return normalizeRandomAuditState(parsed);
+    } catch {
+        return null;
+    }
+}
+
+function normalizeRandomAuditState(value: unknown): RandomAuditOperationState | null {
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "kind" in value &&
+        value.kind === "random_audit" &&
+        "stage" in value &&
+        (value.stage === "rank_higher" || value.stage === "rank_lower") &&
+        "higherEntryId" in value &&
+        typeof value.higherEntryId === "string" &&
+        "lowerEntryId" in value &&
+        typeof value.lowerEntryId === "string" &&
+        "higherOriginalRankPosition" in value &&
+        typeof value.higherOriginalRankPosition === "number" &&
+        "lowerOriginalRankPosition" in value &&
+        typeof value.lowerOriginalRankPosition === "number"
+    ) {
+        return {
+            kind: "random_audit",
+            stage: value.stage,
+            higherEntryId: value.higherEntryId,
+            lowerEntryId: value.lowerEntryId,
+            higherOriginalRankPosition: value.higherOriginalRankPosition,
+            lowerOriginalRankPosition: value.lowerOriginalRankPosition,
+            firstFinalRankPosition: "firstFinalRankPosition" in value &&
+                typeof value.firstFinalRankPosition === "number"
+                ? value.firstFinalRankPosition
+                : null
+        };
+    }
+
+    return null;
+}
+
+function clampInsertionIndex(index: number, length: number) {
+    return Math.max(0, Math.min(length, Math.floor(index)));
+}
+
+function rewriteCategoryOrderStatements(
+    db: D1Database,
+    userId: string,
+    categoryId: string,
+    orderedEntryIds: string[],
+    updatedAt: number
+) {
+    return orderedEntryIds.map((entryId, rankPosition) =>
+        db
+            .prepare(
+                `UPDATE entries
+       SET status = 'active', rank_position = ?, updated_at = ?
+       WHERE user_id = ? AND category_id = ? AND id = ? AND status != 'deleted'`
+            )
+            .bind(rankPosition, updatedAt, userId, categoryId, entryId)
+    );
+}
+
+async function cancelRandomAuditSession(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    updatedAt: number
+) {
+    const state = parseRandomAuditOperationState(session.operation_state);
+    if (
+        !state &&
+        (
+            session.original_rank_position === null ||
+            session.original_rank_position === undefined ||
+            !session.secondary_entry_id ||
+            session.secondary_original_rank_position === null ||
+            session.secondary_original_rank_position === undefined
+        )
+    ) {
+        throw new Error("Random audit session state is missing");
+    }
+
+    const activeEntries = await listActiveEntries(userId, session.category_id);
+    const orderedIds = activeEntries.map((entry) => entry.id);
+    const restoreEntries = state
+        ? [
+            { id: state.higherEntryId, originalRankPosition: state.higherOriginalRankPosition },
+            { id: state.lowerEntryId, originalRankPosition: state.lowerOriginalRankPosition }
+        ]
+        : [
+            {
+                id: session.subject_entry_id,
+                originalRankPosition: session.original_rank_position as number
+            },
+            {
+                id: session.secondary_entry_id as string,
+                originalRankPosition: session.secondary_original_rank_position as number
+            }
+        ].sort((left, right) => left.originalRankPosition - right.originalRankPosition);
+    for (const entry of restoreEntries) {
+        orderedIds.splice(
+            clampInsertionIndex(entry.originalRankPosition, orderedIds.length),
+            0,
+            entry.id
+        );
+    }
+
+    await db.batch([
+        db
+            .prepare(
+                `DELETE FROM matches
+         WHERE user_id = ? AND ranking_session_id = ?`
+            )
+            .bind(userId, session.id),
+        ...rewriteCategoryOrderStatements(db, userId, session.category_id, orderedIds, updatedAt),
+        db
+            .prepare(
+                `UPDATE ranking_sessions
+         SET status = 'cancelled', completed_at = ?,
+             pivot_entry_id = NULL, pivot_rank_position = NULL,
+             phase = 'binary'
+         WHERE id = ? AND user_id = ? AND status = 'active'`
+            )
+            .bind(updatedAt, session.id, userId)
+    ]);
 }
 
 async function getOwnedCategory(userId: string, categoryId: string) {

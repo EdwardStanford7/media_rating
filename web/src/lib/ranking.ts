@@ -65,6 +65,43 @@ export interface LocalRepairStepResult {
     finalIndex: number;
 }
 
+export interface RankingComparison {
+    winnerId: string;
+    loserId: string;
+}
+
+export type BubbleRepairStage =
+    | "left_check"
+    | "bubble_b_left"
+    | "bubble_c_left"
+    | "bubble_a_right"
+    | "right_check"
+    | "bubble_d_right"
+    | "bubble_c_right"
+    | "bubble_e_left";
+
+export interface BubbleRepairComparison {
+    entryAId: string;
+    entryBId: string;
+}
+
+export interface BubbleRepairState {
+    kind: "bubble_repair";
+    stage: BubbleRepairStage;
+    workingOrderIds: string[];
+    insertedEntryId: string;
+    aId: string | null;
+    bId: string | null;
+    dId: string | null;
+    eId: string | null;
+    currentComparison: BubbleRepairComparison | null;
+}
+
+export interface BubbleRepairAdvanceResult {
+    state: BubbleRepairState;
+    complete: boolean;
+}
+
 export interface FreeRankPairHistory {
     entryAId: string;
     entryBId: string;
@@ -160,20 +197,20 @@ export function startLocalRepairState(
     activeEntryCount: number,
     allowUpwardCheck = true
 ): LocalRepairState | null {
-    if (allowUpwardCheck && finalIndex >= 2) {
+    if (allowUpwardCheck && finalIndex >= 1) {
         return {
             phase: "repair_up",
             finalIndex,
-            opponentIndex: finalIndex - 2,
+            opponentIndex: finalIndex - 1,
             initialUpwardCheck: true
         };
     }
 
-    if (finalIndex + 1 < activeEntryCount) {
+    if (finalIndex < activeEntryCount) {
         return {
             phase: "repair_down",
             finalIndex,
-            opponentIndex: finalIndex + 1,
+            opponentIndex: finalIndex,
             initialUpwardCheck: false
         };
     }
@@ -232,6 +269,218 @@ export function recordLocalRepairChoice(
     }
 
     return { state: null, complete: true, finalIndex: state.finalIndex };
+}
+
+export function startBubbleRepairState(
+    workingOrderIds: string[],
+    insertedEntryId: string
+): BubbleRepairState {
+    const insertedIndex = workingOrderIds.indexOf(insertedEntryId);
+    if (insertedIndex < 0) {
+        throw new Error("Inserted entry is missing from the working order");
+    }
+
+    return {
+        kind: "bubble_repair",
+        stage: "left_check",
+        workingOrderIds: [...workingOrderIds],
+        insertedEntryId,
+        aId: workingOrderIds[insertedIndex - 2] ?? null,
+        bId: workingOrderIds[insertedIndex - 1] ?? null,
+        dId: workingOrderIds[insertedIndex + 1] ?? null,
+        eId: workingOrderIds[insertedIndex + 2] ?? null,
+        currentComparison: null
+    };
+}
+
+export function advanceBubbleRepairState(
+    state: BubbleRepairState,
+    comparisons: RankingComparison[]
+): BubbleRepairAdvanceResult {
+    const next: BubbleRepairState = {
+        ...state,
+        workingOrderIds: [...state.workingOrderIds],
+        currentComparison: null
+    };
+    const maxSteps = Math.max(next.workingOrderIds.length * 8 + 16, 32);
+
+    for (let step = 0; step < maxSteps; step += 1) {
+        if (next.stage === "left_check") {
+            if (!next.aId) {
+                next.stage = "right_check";
+                continue;
+            }
+
+            const winnerId = getCachedWinner(comparisons, next.insertedEntryId, next.aId);
+            if (!winnerId) {
+                next.currentComparison = {
+                    entryAId: next.insertedEntryId,
+                    entryBId: next.aId
+                };
+                return { state: next, complete: false };
+            }
+
+            next.stage = winnerId === next.insertedEntryId
+                ? "bubble_b_left"
+                : "right_check";
+            continue;
+        }
+
+        if (next.stage === "bubble_b_left") {
+            const result = bubbleLeftUntilStopped(next, next.bId, comparisons);
+            if (result.needsComparison) {
+                return { state: next, complete: false };
+            }
+            next.stage = "bubble_c_left";
+            continue;
+        }
+
+        if (next.stage === "bubble_c_left") {
+            const result = bubbleLeftUntilStopped(next, next.insertedEntryId, comparisons);
+            if (result.needsComparison) {
+                return { state: next, complete: false };
+            }
+            next.stage = "bubble_a_right";
+            continue;
+        }
+
+        if (next.stage === "bubble_a_right") {
+            const result = bubbleRightUntilStopped(next, next.aId, comparisons);
+            if (result.needsComparison) {
+                return { state: next, complete: false };
+            }
+            return { state: next, complete: true };
+        }
+
+        if (next.stage === "right_check") {
+            if (!next.eId) {
+                return { state: next, complete: true };
+            }
+
+            const winnerId = getCachedWinner(comparisons, next.insertedEntryId, next.eId);
+            if (!winnerId) {
+                next.currentComparison = {
+                    entryAId: next.insertedEntryId,
+                    entryBId: next.eId
+                };
+                return { state: next, complete: false };
+            }
+
+            if (winnerId === next.eId) {
+                next.stage = "bubble_d_right";
+                continue;
+            }
+
+            return { state: next, complete: true };
+        }
+
+        if (next.stage === "bubble_d_right") {
+            const result = bubbleRightUntilStopped(next, next.dId, comparisons);
+            if (result.needsComparison) {
+                return { state: next, complete: false };
+            }
+            next.stage = "bubble_c_right";
+            continue;
+        }
+
+        if (next.stage === "bubble_c_right") {
+            const result = bubbleRightUntilStopped(next, next.insertedEntryId, comparisons);
+            if (result.needsComparison) {
+                return { state: next, complete: false };
+            }
+            next.stage = "bubble_e_left";
+            continue;
+        }
+
+        const result = bubbleLeftUntilStopped(next, next.eId, comparisons);
+        if (result.needsComparison) {
+            return { state: next, complete: false };
+        }
+        return { state: next, complete: true };
+    }
+
+    throw new Error("Bubble repair did not converge");
+}
+
+export function getCachedWinner(
+    comparisons: RankingComparison[],
+    entryAId: string,
+    entryBId: string
+) {
+    const comparison = comparisons.find((candidate) =>
+        (candidate.winnerId === entryAId && candidate.loserId === entryBId) ||
+        (candidate.winnerId === entryBId && candidate.loserId === entryAId)
+    );
+
+    return comparison?.winnerId ?? null;
+}
+
+function bubbleLeftUntilStopped(
+    state: BubbleRepairState,
+    entryId: string | null,
+    comparisons: RankingComparison[]
+) {
+    if (!entryId) {
+        return { needsComparison: false };
+    }
+
+    while (true) {
+        const index = state.workingOrderIds.indexOf(entryId);
+        if (index <= 0) {
+            return { needsComparison: false };
+        }
+
+        const previousEntryId = state.workingOrderIds[index - 1];
+        const winnerId = getCachedWinner(comparisons, entryId, previousEntryId);
+        if (!winnerId) {
+            state.currentComparison = {
+                entryAId: entryId,
+                entryBId: previousEntryId
+            };
+            return { needsComparison: true };
+        }
+
+        if (winnerId !== entryId) {
+            return { needsComparison: false };
+        }
+
+        state.workingOrderIds[index - 1] = entryId;
+        state.workingOrderIds[index] = previousEntryId;
+    }
+}
+
+function bubbleRightUntilStopped(
+    state: BubbleRepairState,
+    entryId: string | null,
+    comparisons: RankingComparison[]
+) {
+    if (!entryId) {
+        return { needsComparison: false };
+    }
+
+    while (true) {
+        const index = state.workingOrderIds.indexOf(entryId);
+        if (index < 0 || index >= state.workingOrderIds.length - 1) {
+            return { needsComparison: false };
+        }
+
+        const nextEntryId = state.workingOrderIds[index + 1];
+        const winnerId = getCachedWinner(comparisons, entryId, nextEntryId);
+        if (!winnerId) {
+            state.currentComparison = {
+                entryAId: entryId,
+                entryBId: nextEntryId
+            };
+            return { needsComparison: true };
+        }
+
+        if (winnerId !== nextEntryId) {
+            return { needsComparison: false };
+        }
+
+        state.workingOrderIds[index] = nextEntryId;
+        state.workingOrderIds[index + 1] = entryId;
+    }
 }
 
 export function updateEloPair(

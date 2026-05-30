@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     chooseBinaryPivot,
+    advanceBubbleRepairState,
     combinedOrder,
     eloKFactorForMatchCount,
     generateNormalStarRatingCurve,
@@ -11,6 +12,7 @@ import {
     rebaseEloForRankChange,
     selectFreeRankMatchup,
     startBinaryState,
+    startBubbleRepairState,
     startLocalRepairState,
     starRatingForCombinedRank,
     starRatingScaleMax,
@@ -67,38 +69,38 @@ describe("pure binary ranking", () => {
 });
 
 describe("local repair ranking", () => {
-    it("checks outside the binary insertion neighborhood before committing", () => {
+    it("checks the insertion neighbors before committing", () => {
         expect(startLocalRepairState(0, 5)).toEqual({
             phase: "repair_down",
             finalIndex: 0,
-            opponentIndex: 1,
+            opponentIndex: 0,
             initialUpwardCheck: false
         });
         expect(startLocalRepairState(3, 6)).toEqual({
             phase: "repair_up",
             finalIndex: 3,
-            opponentIndex: 1,
+            opponentIndex: 2,
             initialUpwardCheck: true
         });
-        expect(startLocalRepairState(1, 2)).toBeNull();
+        expect(startLocalRepairState(0, 0)).toBeNull();
     });
 
-    it("continues upward when the subject beats the outside-left neighbor", () => {
+    it("continues upward when the subject beats the left neighbor", () => {
         const state = startLocalRepairState(4, 8);
         expect(state).not.toBeNull();
 
         const result = recordLocalRepairChoice(state!, true, 8);
         expect(result.complete).toBe(false);
-        expect(result.finalIndex).toBe(2);
+        expect(result.finalIndex).toBe(3);
         expect(result.state).toEqual({
             phase: "repair_up",
-            finalIndex: 2,
-            opponentIndex: 1,
+            finalIndex: 3,
+            opponentIndex: 2,
             initialUpwardCheck: false
         });
     });
 
-    it("falls through to the right-side check when the outside-left neighbor wins", () => {
+    it("falls through to the right-side check when the left neighbor wins", () => {
         const state = startLocalRepairState(4, 8);
         expect(state).not.toBeNull();
 
@@ -108,24 +110,80 @@ describe("local repair ranking", () => {
         expect(result.state).toEqual({
             phase: "repair_down",
             finalIndex: 4,
-            opponentIndex: 5,
+            opponentIndex: 4,
             initialUpwardCheck: false
         });
     });
 
-    it("continues downward when the outside-right neighbor beats the subject", () => {
+    it("continues downward when the right neighbor beats the subject", () => {
         const state = startLocalRepairState(0, 5);
         expect(state).not.toBeNull();
 
         const result = recordLocalRepairChoice(state!, false, 5);
         expect(result.complete).toBe(false);
-        expect(result.finalIndex).toBe(2);
+        expect(result.finalIndex).toBe(1);
         expect(result.state).toEqual({
             phase: "repair_down",
-            finalIndex: 2,
-            opponentIndex: 2,
+            finalIndex: 1,
+            opponentIndex: 1,
             initialUpwardCheck: false
         });
+    });
+});
+
+describe("bubble repair ranking", () => {
+    it("repairs an insertion that landed too high", () => {
+        let state = startBubbleRepairState(["a", "b-", "d", "b", "c", "e"], "b-");
+        const comparisons = [
+            { winnerId: "b", loserId: "b-" },
+            { winnerId: "b", loserId: "d" },
+            { winnerId: "c", loserId: "d" },
+            { winnerId: "d", loserId: "e" },
+            { winnerId: "b-", loserId: "c" },
+            { winnerId: "a", loserId: "b" }
+        ];
+
+        const result = advanceBubbleRepairState(state, comparisons);
+        state = result.state;
+
+        expect(result.complete).toBe(true);
+        expect(state.workingOrderIds).toEqual(["a", "b", "b-", "c", "d", "e"]);
+    });
+
+    it("repairs an insertion that landed too low", () => {
+        let state = startBubbleRepairState(["a", "d", "b", "b-", "c", "e"], "b-");
+        const comparisons = [
+            { winnerId: "b-", loserId: "d" },
+            { winnerId: "b", loserId: "d" },
+            { winnerId: "a", loserId: "b" },
+            { winnerId: "b-", loserId: "d" },
+            { winnerId: "b", loserId: "b-" },
+            { winnerId: "c", loserId: "d" },
+            { winnerId: "d", loserId: "e" },
+            { winnerId: "b-", loserId: "c" }
+        ];
+
+        const result = advanceBubbleRepairState(state, comparisons);
+        state = result.state;
+
+        expect(result.complete).toBe(true);
+        expect(state.workingOrderIds).toEqual(["a", "b", "b-", "c", "d", "e"]);
+    });
+
+    it("prompts for missing comparisons and resumes with the cached answer", () => {
+        const state = startBubbleRepairState(["a", "d", "b", "b-", "c", "e"], "b-");
+        const firstStep = advanceBubbleRepairState(state, []);
+
+        expect(firstStep.complete).toBe(false);
+        expect(firstStep.state.currentComparison).toEqual({
+            entryAId: "b-",
+            entryBId: "d"
+        });
+
+        const secondStep = advanceBubbleRepairState(firstStep.state, [
+            { winnerId: "b-", loserId: "d" }
+        ]);
+        expect(secondStep.state.currentComparison).not.toEqual(firstStep.state.currentComparison);
     });
 });
 

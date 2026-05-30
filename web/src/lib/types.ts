@@ -1,6 +1,7 @@
 export type DisplayMode = "ordered list" | "free_rank" | "combined";
 export type MatchType = "binary_search" | "free_rank";
 export type RankingSource = "new_entry" | "rerank_entry" | "switch_category";
+export type RankingOperationKind = "single" | "random_audit";
 
 export interface Entry {
     id: string;
@@ -61,6 +62,7 @@ export interface ActiveBinarySession {
     categoryName: string;
     subjectName: string;
     source: RankingSource;
+    operationKind: RankingOperationKind;
 }
 
 export interface BinarySessionView {
@@ -68,6 +70,7 @@ export interface BinarySessionView {
     categoryId: string;
     categoryName: string;
     source: RankingSource;
+    operationKind: RankingOperationKind;
     phase: "binary" | "local_repair";
     subject: Entry;
     opponent: Entry;

@@ -135,6 +135,14 @@ export const startRerankEntry = createServerFn({ method: "POST" })
         return repo.startRerankEntry(user.id, data.entryId);
     });
 
+export const startRandomAuditRanking = createServerFn({ method: "POST" })
+    .inputValidator((data: { categoryId: string; entryAId: string; entryBId: string; winnerId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.startRandomAuditRanking(user.id, data);
+    });
+
 export const moveEntryOnePosition = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string; direction: "up" | "down" }) => data)
     .handler(async ({ data }) => {
