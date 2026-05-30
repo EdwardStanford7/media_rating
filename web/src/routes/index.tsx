@@ -931,8 +931,8 @@ function Dashboard({
                 session.operationKind === "random_audit"
                     ? "Cancelled random audit."
                     : session.source === "rerank_entry"
-                    ? `Cancelled reranking ${session.subject.name}.`
-                    : `Cancelled adding ${session.subject.name}.`
+                        ? `Cancelled reranking ${session.subject.name}.`
+                        : `Cancelled adding ${session.subject.name}.`
             );
             await refresh();
         } catch (error) {
@@ -1053,165 +1053,164 @@ function Dashboard({
                 </ConfirmDialog>
             ) : null}
             <aside className="sidebar">
-                        <div className="sidebar-header">
-                            <strong className="brand-title">Media Rating</strong>
-                            <AccountMenu
-                                busy={busy}
-                                busyLabel={busyLabel}
-                                listLocked={Boolean(activeSessionId)}
-                                selectedCategory={selectedCategory}
-                                settings={dashboard.queueSettings}
-                                onExport={handleExport}
-                                onImport={handleImport}
-                                onSaveCategoryStarRatingCurve={handleCategoryStarRatingCurve}
-                                onSaveSettings={handleQueueSettings}
-                                onThemeChange={setThemeMode}
-                                themeMode={themeMode}
-                                userName={userName}
-                            />
-                        </div>
+                <div className="sidebar-header">
+                    <strong className="brand-title">Media Rating</strong>
+                    <AccountMenu
+                        busy={busy}
+                        busyLabel={busyLabel}
+                        listLocked={Boolean(activeSessionId)}
+                        selectedCategory={selectedCategory}
+                        settings={dashboard.queueSettings}
+                        onExport={handleExport}
+                        onImport={handleImport}
+                        onSaveCategoryStarRatingCurve={handleCategoryStarRatingCurve}
+                        onSaveSettings={handleQueueSettings}
+                        onThemeChange={setThemeMode}
+                        themeMode={themeMode}
+                        userName={userName}
+                    />
+                </div>
 
-                        <form className="form-row" onSubmit={handleCreateCategory}>
-                            <input disabled={busy} name="name" placeholder="New category" required />
-                            <button disabled={busy} type="submit">Add</button>
+                <form className="form-row" onSubmit={handleCreateCategory}>
+                    <input disabled={busy} name="name" placeholder="New category" required />
+                    <button disabled={busy} type="submit">Add</button>
+                </form>
+
+                <div className="category-list">
+                    {dashboard.categories.map((category) => (
+                        <CategoryListItem
+                            category={category}
+                            isActive={category.id === selectedCategory?.id}
+                            key={category.id}
+                            busy={busy}
+                            listLocked={Boolean(activeSessionId)}
+                            onDelete={() => setCategoryDeleteTarget(category)}
+                            onRename={(name) => handleRenameCategory(category.id, name)}
+                            onSelect={() => setSelectedCategoryId(category.id)}
+                        />
+                    ))}
+                </div>
+
+                <QueuePanel
+                    activeSessionId={activeSessionId}
+                    busy={busy}
+                    queueRankMode={queueRankMode}
+                    queuedEntries={dashboard.queuedEntries}
+                    onDelete={handleDeleteQueuedEntry}
+                    onPickImage={(entry) => setImagePickerTarget({
+                        kind: "queue",
+                        item: entry,
+                        category: {
+                            id: entry.categoryId,
+                            name: entry.categoryName
+                        }
+                    })}
+                    onStartQueue={handleStartQueueRank}
+                    onRename={handleRenameQueuedEntry}
+                    onStart={handleStartQueuedEntry}
+                    onStopQueue={handleStopQueueRank}
+                />
+
+            </aside>
+
+            <section className="main stack" ref={mainRef}>
+                <div className="topbar">
+                    <div>
+                        <h1>{selectedCategory?.name ?? "Categories"}</h1>
+                    </div>
+                    <button
+                        disabled={busy || Boolean(activeSessionId) || !selectedCategory || selectedCategory.entries.length < 2}
+                        type="button"
+                        onClick={handleStartRandomAudit}
+                    >
+                        Random Audit
+                    </button>
+                </div>
+
+                {message ? <div className="status">{message}</div> : null}
+
+                {selectedCategory ? (
+                    <>
+                        <form className="panel form-row" onSubmit={handleCreateEntry}>
+                            <input disabled={busy || Boolean(activeSessionId)} name="name" placeholder="New entry" required />
+                            <input disabled={busy || Boolean(activeSessionId)} name="firstConsumedAt" type="date" />
+                            <button className="primary" disabled={busy || Boolean(activeSessionId)} type="submit">
+                                {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
+                            </button>
                         </form>
 
-                        <div className="category-list">
-                            {dashboard.categories.map((category) => (
-                                <CategoryListItem
-                                    category={category}
-                                    isActive={category.id === selectedCategory?.id}
-                                    key={category.id}
-                                    busy={busy}
-                                    listLocked={Boolean(activeSessionId)}
-                                    onDelete={() => setCategoryDeleteTarget(category)}
-                                    onRename={(name) => handleRenameCategory(category.id, name)}
-                                    onSelect={() => setSelectedCategoryId(category.id)}
-                                />
-                            ))}
+                        <div className="panel search-panel">
+                            <input
+                                aria-label="Search entries"
+                                value={entrySearch}
+                                placeholder="Search entries"
+                                onChange={(event) => setEntrySearch(event.target.value)}
+                            />
                         </div>
+                    </>
+                ) : null}
 
-                        <QueuePanel
-                            activeSessionId={activeSessionId}
-                            busy={busy}
-                            queueRankMode={queueRankMode}
-                            queuedEntries={dashboard.queuedEntries}
-                            onDelete={handleDeleteQueuedEntry}
-                            onPickImage={(entry) => setImagePickerTarget({
-                                kind: "queue",
+                {activeSessionId ? (
+                    <BinaryRankPanel
+                        imageRefreshVersion={imageRefreshVersion}
+                        sessionId={activeSessionId}
+                        onCancel={handleCancelBinarySession}
+                        onComplete={async (sessionId) => {
+                            markBinarySessionClosed(sessionId);
+                            if (activeSessionIdRef.current === sessionId) {
+                                setActiveBinarySessionId(null);
+                            }
+                            const nextDashboard = await refresh();
+                            if (queueRankModeRef.current) {
+                                await startNextQueuedRank(nextDashboard.queuedEntries);
+                            }
+                        }}
+                        onUnavailable={handleMissingBinarySession}
+                        onNeedImage={requestImageForMatch}
+                    />
+                ) : null}
+
+                {auditPair && !activeSessionId ? (
+                    <RandomAuditPanel
+                        pair={auditPair}
+                        onCancel={() => setAuditPair(null)}
+                        onNeedImage={requestImageForMatch}
+                        onChoose={(winnerId) => void handleAuditWinner(winnerId)}
+                    />
+                ) : null}
+
+                <section className="entries-grid">
+                    {selectedCategory ? displayedEntries.map((entry) => (
+                        <EntryCard
+                            entry={entry}
+                            categories={dashboard.categories}
+                            key={entry.id}
+                            canMoveDown={entry.rankPosition < selectedCategory.entries.length - 1}
+                            canMoveUp={entry.rankPosition > 0}
+                            listLocked={Boolean(activeSessionId)}
+                            selectedCategoryId={selectedCategory.id}
+                            starRating={dashboard.queueSettings.showStarRatings
+                                ? starRatings.get(entry.id) ?? starRatingScale
+                                : null}
+                            starRatingScale={starRatingScale}
+                            onDelete={() => handleDelete(entry.id)}
+                            onMoveDown={() => handleMoveEntry(entry.id, "down")}
+                            onMoveUp={() => handleMoveEntry(entry.id, "up")}
+                            onPickImage={() => setImagePickerTarget({
+                                kind: "entry",
                                 item: entry,
-                                category: {
-                                    id: entry.categoryId,
-                                    name: entry.categoryName
-                                }
+                                category: selectedCategory
                             })}
-                            onStartQueue={handleStartQueueRank}
-                            onRename={handleRenameQueuedEntry}
-                            onStart={handleStartQueuedEntry}
-                            onStopQueue={handleStopQueueRank}
+                            onRename={(name) => handleRename(entry.id, name)}
+                            onRerank={() => handleRerank(entry.id)}
+                            onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
                         />
-
-                    </aside>
-
-                    <section className="main stack" ref={mainRef}>
-                        <div className="topbar">
-                            <div>
-                                <h1>{selectedCategory?.name ?? "Categories"}</h1>
-                                <p className="muted">Ordered list rank is the source of truth.</p>
-                            </div>
-                            <button
-                                disabled={busy || Boolean(activeSessionId) || !selectedCategory || selectedCategory.entries.length < 2}
-                                type="button"
-                                onClick={handleStartRandomAudit}
-                            >
-                                Random Audit
-                            </button>
-                        </div>
-
-                        {message ? <div className="status">{message}</div> : null}
-
-                        {selectedCategory ? (
-                            <>
-                                <form className="panel form-row" onSubmit={handleCreateEntry}>
-                                    <input disabled={busy || Boolean(activeSessionId)} name="name" placeholder="New entry" required />
-                                    <input disabled={busy || Boolean(activeSessionId)} name="firstConsumedAt" type="date" />
-                                    <button className="primary" disabled={busy || Boolean(activeSessionId)} type="submit">
-                                        {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
-                                    </button>
-                                </form>
-
-                                <div className="panel search-panel">
-                                    <input
-                                        aria-label="Search entries"
-                                        value={entrySearch}
-                                        placeholder="Search entries"
-                                        onChange={(event) => setEntrySearch(event.target.value)}
-                                    />
-                                </div>
-                            </>
-                        ) : null}
-
-                        {activeSessionId ? (
-                            <BinaryRankPanel
-                                imageRefreshVersion={imageRefreshVersion}
-                                sessionId={activeSessionId}
-                                onCancel={handleCancelBinarySession}
-                                onComplete={async (sessionId) => {
-                                    markBinarySessionClosed(sessionId);
-                                    if (activeSessionIdRef.current === sessionId) {
-                                        setActiveBinarySessionId(null);
-                                    }
-                                    const nextDashboard = await refresh();
-                                    if (queueRankModeRef.current) {
-                                        await startNextQueuedRank(nextDashboard.queuedEntries);
-                                    }
-                                }}
-                                onUnavailable={handleMissingBinarySession}
-                                onNeedImage={requestImageForMatch}
-                            />
-                        ) : null}
-
-                        {auditPair && !activeSessionId ? (
-                            <RandomAuditPanel
-                                pair={auditPair}
-                                onCancel={() => setAuditPair(null)}
-                                onNeedImage={requestImageForMatch}
-                                onChoose={(winnerId) => void handleAuditWinner(winnerId)}
-                            />
-                        ) : null}
-
-                        <section className="entries-grid">
-                            {selectedCategory ? displayedEntries.map((entry) => (
-                                <EntryCard
-                                    entry={entry}
-                                    categories={dashboard.categories}
-                                    key={entry.id}
-                                    canMoveDown={entry.rankPosition < selectedCategory.entries.length - 1}
-                                    canMoveUp={entry.rankPosition > 0}
-                                    listLocked={Boolean(activeSessionId)}
-                                    selectedCategoryId={selectedCategory.id}
-                                    starRating={dashboard.queueSettings.showStarRatings
-                                        ? starRatings.get(entry.id) ?? starRatingScale
-                                        : null}
-                                    starRatingScale={starRatingScale}
-                                    onDelete={() => handleDelete(entry.id)}
-                                    onMoveDown={() => handleMoveEntry(entry.id, "down")}
-                                    onMoveUp={() => handleMoveEntry(entry.id, "up")}
-                                    onPickImage={() => setImagePickerTarget({
-                                        kind: "entry",
-                                        item: entry,
-                                        category: selectedCategory
-                                    })}
-                                    onRename={(name) => handleRename(entry.id, name)}
-                                    onRerank={() => handleRerank(entry.id)}
-                                    onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
-                                />
-                            )) : null}
-                        </section>
-                        {selectedCategory && displayedEntries.length === 0 ? (
-                            <div className="muted">No entries match that search.</div>
-                        ) : null}
-                    </section>
+                    )) : null}
+                </section>
+                {selectedCategory && displayedEntries.length === 0 ? (
+                    <div className="muted">No entries match that search.</div>
+                ) : null}
+            </section>
         </main>
     );
 }
@@ -1750,126 +1749,126 @@ function AccountMenu({
                                 <strong>Settings</strong>
                             </div>
                             <form className="stack account-subpanel" onSubmit={handleSubmit}>
-                            <label className="checkbox-row">
-                                <input
-                                    checked={enabled}
-                                    disabled={busy || quickSaving}
-                                    type="checkbox"
-                                    onChange={(event) => void updateToggle("enabled", event.target.checked)}
-                                />
-                                <span>Queue new entries</span>
-                            </label>
-                            <label className="checkbox-row">
-                                <input
-                                    checked={promptForMissingImages}
-                                    disabled={busy || quickSaving}
-                                    type="checkbox"
-                                    onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
-                                />
-                                <span>Prompt for missing images</span>
-                            </label>
-                            <label className="checkbox-row">
-                                <input
-                                    checked={showStarRatings}
-                                    disabled={busy || quickSaving}
-                                    type="checkbox"
-                                    onChange={(event) => void updateToggle("showStarRatings", event.target.checked)}
-                                />
-                                <span>Show star ratings</span>
-                            </label>
-                            <label className="stack compact-stack">
-                                <span className="muted">Queue delay (days)</span>
-                                <input
-                                    disabled={busy}
-                                    min={0}
-                                    max={365}
-                                    type="number"
-                                    value={delayDays}
-                                    onChange={(event) => setDelayDays(Number(event.target.value))}
-                                />
-                            </label>
-                            {showStarRatings ? (
-                                <details className="stack compact-stack star-curve-editor">
-                                    <summary>Global star curve</summary>
-                                    <StarCurveBuilder
-                                        disabled={busy}
-                                        value={globalCurveBuilder}
-                                        onApply={() => applyCurveBuilder("global")}
-                                        onChange={setGlobalCurveBuilder}
+                                <label className="checkbox-row">
+                                    <input
+                                        checked={enabled}
+                                        disabled={busy || quickSaving}
+                                        type="checkbox"
+                                        onChange={(event) => void updateToggle("enabled", event.target.checked)}
                                     />
-                                    <textarea
-                                        aria-label="Global star curve"
-                                        disabled={busy}
-                                        rows={9}
-                                        spellCheck={false}
-                                        value={starCurveText}
-                                        onChange={(event) => {
-                                            setStarCurveText(event.target.value);
-                                            setStarCurveError(null);
-                                        }}
+                                    <span>Queue new entries</span>
+                                </label>
+                                <label className="checkbox-row">
+                                    <input
+                                        checked={promptForMissingImages}
+                                        disabled={busy || quickSaving}
+                                        type="checkbox"
+                                        onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
                                     />
-                                    {starCurveError ? <div className="status">{starCurveError}</div> : null}
-                                    <button
-                                        className="small-button"
+                                    <span>Prompt for missing images</span>
+                                </label>
+                                <label className="checkbox-row">
+                                    <input
+                                        checked={showStarRatings}
+                                        disabled={busy || quickSaving}
+                                        type="checkbox"
+                                        onChange={(event) => void updateToggle("showStarRatings", event.target.checked)}
+                                    />
+                                    <span>Show star ratings</span>
+                                </label>
+                                <label className="stack compact-stack">
+                                    <span className="muted">Queue delay (days)</span>
+                                    <input
                                         disabled={busy}
-                                        type="button"
-                                        onClick={() => {
-                                            setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
-                                            setStarCurveError(null);
-                                        }}
-                                    >
-                                        Reset Curve
-                                    </button>
-                                </details>
-                            ) : null}
-                            {showStarRatings && selectedCategory ? (
-                                <details className="stack compact-stack star-curve-editor">
-                                    <summary>{selectedCategory.name} star curve</summary>
-                                    <label className="checkbox-row">
-                                        <input
-                                            checked={useCategoryStarCurve}
-                                            disabled={busy || quickSaving}
-                                            type="checkbox"
-                                            onChange={(event) => void updateCategoryCurveEnabled(event.target.checked)}
+                                        min={0}
+                                        max={365}
+                                        type="number"
+                                        value={delayDays}
+                                        onChange={(event) => setDelayDays(Number(event.target.value))}
+                                    />
+                                </label>
+                                {showStarRatings ? (
+                                    <details className="stack compact-stack star-curve-editor">
+                                        <summary>Global star curve</summary>
+                                        <StarCurveBuilder
+                                            disabled={busy}
+                                            value={globalCurveBuilder}
+                                            onApply={() => applyCurveBuilder("global")}
+                                            onChange={setGlobalCurveBuilder}
                                         />
-                                        <span>Use custom curve for this category</span>
-                                    </label>
-                                    {useCategoryStarCurve ? (
-                                        <>
-                                            <StarCurveBuilder
-                                                disabled={busy}
-                                                value={categoryCurveBuilder}
-                                                onApply={() => applyCurveBuilder("category")}
-                                                onChange={setCategoryCurveBuilder}
+                                        <textarea
+                                            aria-label="Global star curve"
+                                            disabled={busy}
+                                            rows={9}
+                                            spellCheck={false}
+                                            value={starCurveText}
+                                            onChange={(event) => {
+                                                setStarCurveText(event.target.value);
+                                                setStarCurveError(null);
+                                            }}
+                                        />
+                                        {starCurveError ? <div className="status">{starCurveError}</div> : null}
+                                        <button
+                                            className="small-button"
+                                            disabled={busy}
+                                            type="button"
+                                            onClick={() => {
+                                                setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
+                                                setStarCurveError(null);
+                                            }}
+                                        >
+                                            Reset Curve
+                                        </button>
+                                    </details>
+                                ) : null}
+                                {showStarRatings && selectedCategory ? (
+                                    <details className="stack compact-stack star-curve-editor">
+                                        <summary>{selectedCategory.name} star curve</summary>
+                                        <label className="checkbox-row">
+                                            <input
+                                                checked={useCategoryStarCurve}
+                                                disabled={busy || quickSaving}
+                                                type="checkbox"
+                                                onChange={(event) => void updateCategoryCurveEnabled(event.target.checked)}
                                             />
-                                            <textarea
-                                                aria-label={`${selectedCategory.name} star curve`}
-                                                disabled={busy}
-                                                rows={9}
-                                                spellCheck={false}
-                                                value={categoryStarCurveText}
-                                                onChange={(event) => {
-                                                    setCategoryStarCurveText(event.target.value);
-                                                    setCategoryStarCurveError(null);
-                                                }}
-                                            />
-                                            {categoryStarCurveError ? <div className="status">{categoryStarCurveError}</div> : null}
-                                            <button
-                                                className="small-button"
-                                                disabled={busy}
-                                                type="button"
-                                                onClick={() => {
-                                                    setCategoryStarCurveText(starRatingCurveToText(settings.starRatingCurve));
-                                                    setCategoryStarCurveError(null);
-                                                }}
-                                            >
-                                                Use Global Curve Text
-                                            </button>
-                                        </>
-                                    ) : null}
-                                </details>
-                            ) : null}
-                            <button disabled={busy} type="submit">Save Settings</button>
+                                            <span>Use custom curve for this category</span>
+                                        </label>
+                                        {useCategoryStarCurve ? (
+                                            <>
+                                                <StarCurveBuilder
+                                                    disabled={busy}
+                                                    value={categoryCurveBuilder}
+                                                    onApply={() => applyCurveBuilder("category")}
+                                                    onChange={setCategoryCurveBuilder}
+                                                />
+                                                <textarea
+                                                    aria-label={`${selectedCategory.name} star curve`}
+                                                    disabled={busy}
+                                                    rows={9}
+                                                    spellCheck={false}
+                                                    value={categoryStarCurveText}
+                                                    onChange={(event) => {
+                                                        setCategoryStarCurveText(event.target.value);
+                                                        setCategoryStarCurveError(null);
+                                                    }}
+                                                />
+                                                {categoryStarCurveError ? <div className="status">{categoryStarCurveError}</div> : null}
+                                                <button
+                                                    className="small-button"
+                                                    disabled={busy}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setCategoryStarCurveText(starRatingCurveToText(settings.starRatingCurve));
+                                                        setCategoryStarCurveError(null);
+                                                    }}
+                                                >
+                                                    Use Global Curve Text
+                                                </button>
+                                            </>
+                                        ) : null}
+                                    </details>
+                                ) : null}
+                                <button disabled={busy} type="submit">Save Settings</button>
                             </form>
                         </>
                     ) : activePanel === "import" ? (
@@ -1881,11 +1880,11 @@ function AccountMenu({
                                 <strong>Import Spreadsheet</strong>
                             </div>
                             <form className="stack account-subpanel" onSubmit={handleImportSubmit}>
-                            <input disabled={importDisabled} name="firstConsumedAt" type="date" />
-                            <input disabled={importDisabled} name="workbook" type="file" accept=".xlsx" />
-                            <button disabled={importDisabled} type="submit">
-                                {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
-                            </button>
+                                <input disabled={importDisabled} name="firstConsumedAt" type="date" />
+                                <input disabled={importDisabled} name="workbook" type="file" accept=".xlsx" />
+                                <button disabled={importDisabled} type="submit">
+                                    {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
+                                </button>
                             </form>
                         </>
                     ) : (
@@ -2607,7 +2606,7 @@ function EntryCard({
 
     return (
         <article className="entry-card">
-            <EntryPoster entry={entry} />
+            <EntryPoster entry={entry} starRating={starRating} starRatingScale={starRatingScale} />
             <div className="entry-card-body">
                 {isRenaming ? (
                     <form className="entry-rename-form" onSubmit={handleRenameSubmit}>
@@ -2632,22 +2631,15 @@ function EntryCard({
                         </div>
                     </form>
                 ) : (
-                    <strong className="entry-title">#{entry.rankPosition + 1} {entry.name}</strong>
+                    <strong className="entry-title" title={`#${entry.rankPosition + 1} ${entry.name}`}>
+                        #{entry.rankPosition + 1} {entry.name}
+                    </strong>
                 )}
-                <div className="metric-row">
-                    {starRating !== null ? (
-                        <span
-                            className="metric"
-                            aria-label={`Star rating ${formatRatingNumber(starRating)} out of ${formatRatingNumber(starRatingScale)}`}
-                        >
-                            <span aria-hidden="true" className="star-symbol">★</span>{" "}
-                            {formatRatingNumber(starRating)}/{formatRatingNumber(starRatingScale)}
-                        </span>
-                    ) : null}
-                    {entry.firstConsumedAt ? (
+                {entry.firstConsumedAt ? (
+                    <div className="metric-row">
                         <span className="metric">{formatDate(entry.firstConsumedAt)}</span>
-                    ) : null}
-                </div>
+                    </div>
+                ) : null}
                 <div className="entry-actions card-actions">
                     <button disabled={listLocked} type="button" onClick={onRerank}>Rerank</button>
                     <div className="rank-step-group">
@@ -2763,30 +2755,47 @@ function EntryCard({
     );
 }
 
-function EntryPoster({ entry }: { entry: Entry }) {
+function EntryPoster({
+    entry,
+    starRating,
+    starRatingScale
+}: {
+    entry: Entry;
+    starRating: number | null;
+    starRatingScale: number;
+}) {
     const [imageFailed, setImageFailed] = useState(false);
 
     useEffect(() => {
         setImageFailed(false);
     }, [entry.id, entry.imageKey]);
 
-    if (hasStoredImage(entry.imageKey) && !imageFailed) {
-        return (
-            <img
-                className="entry-poster"
-                src={`/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                onError={() => setImageFailed(true)}
-            />
-        );
-    }
-
     return (
-        <div className="entry-poster image-placeholder">
-            <span>{entry.name}</span>
-            <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+        <div className="entry-poster-frame">
+            {hasStoredImage(entry.imageKey) && !imageFailed ? (
+                <img
+                    className="entry-poster"
+                    src={`/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={() => setImageFailed(true)}
+                />
+            ) : (
+                <div className="entry-poster image-placeholder">
+                    <span>{entry.name}</span>
+                    <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+                </div>
+            )}
+            {starRating !== null ? (
+                <span
+                    className="entry-star-badge"
+                    aria-label={`Star rating ${formatRatingNumber(starRating)} out of ${formatRatingNumber(starRatingScale)}`}
+                >
+                    <span aria-hidden="true" className="star-symbol">★</span>
+                    {formatRatingNumber(starRating)}/{formatRatingNumber(starRatingScale)}
+                </span>
+            ) : null}
         </div>
     );
 }
