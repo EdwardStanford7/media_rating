@@ -1257,6 +1257,11 @@ export async function submitBinaryWinner(
     }
 
     if (normalizeOperationKind(session.operation_kind) === "random_audit") {
+        const randomAudit = operationState.randomAudit;
+        if (randomAudit) {
+            nextOperationState.randomAudit = randomAudit;
+        }
+
         await db
             .prepare(
                 `UPDATE ranking_sessions
@@ -1691,7 +1696,7 @@ async function startRandomAuditFirstStageOrCommit(
         operationKind: "random_audit",
         secondaryEntryId: state.lowerEntryId,
         secondaryOriginalRankPosition: state.lowerOriginalRankPosition,
-        operationState: JSON.stringify(state),
+        operationState: serializeRankingOperationState(randomAuditOperationState(state)),
         createdAt
     });
     await db.batch([session.statement]);
@@ -1764,7 +1769,7 @@ async function startRandomAuditLowerStageOrCommit(
                 upperBound,
                 pivot.id,
                 pivot.rankPosition,
-                JSON.stringify(state),
+                serializeRankingOperationState(randomAuditOperationState(state)),
                 countCurrentComparison ? 1 : 0,
                 session.id,
                 userId
@@ -1785,7 +1790,7 @@ async function startRandomAuditLowerStageOrCommit(
         operationKind: "random_audit",
         secondaryEntryId: state.higherEntryId,
         secondaryOriginalRankPosition: state.higherOriginalRankPosition,
-        operationState: JSON.stringify(state),
+        operationState: serializeRankingOperationState(randomAuditOperationState(state)),
         createdAt: updatedAt
     });
     await db.batch([preparedSession.statement]);
@@ -1847,13 +1852,16 @@ async function commitRandomAuditOrder(
     session: SessionRow | null,
     countCurrentComparison: boolean
 ) {
-    const higherEntry = await getOwnedEntry(userId, state.higherEntryId);
-    const lowerEntry = await getOwnedEntry(userId, state.lowerEntryId);
+    const higherEntry = await getOwnedEntryIncludingDeleted(userId, state.higherEntryId);
+    const lowerEntry = await getOwnedEntryIncludingDeleted(userId, state.lowerEntryId);
     assertOwned(higherEntry, "Higher-ranked audit entry");
     assertOwned(lowerEntry, "Lower-ranked audit entry");
 
     const activeEntries = await listActiveEntries(userId, categoryId);
-    const orderedIds = activeEntries.map((entry) => entry.id);
+    const auditEntryIds = new Set([state.higherEntryId, state.lowerEntryId]);
+    const orderedIds = activeEntries
+        .map((entry) => entry.id)
+        .filter((entryId) => !auditEntryIds.has(entryId));
     const lowerIndex = clampInsertionIndex(lowerFinalRankPosition, orderedIds.length);
     orderedIds.splice(lowerIndex, 0, lowerEntry.id);
     const higherIndex = clampInsertionIndex(
@@ -1884,7 +1892,11 @@ async function commitRandomAuditOrder(
                 .bind(
                     lowerIndex,
                     updatedAt,
-                    JSON.stringify({ ...state, stage: "rank_lower", firstFinalRankPosition: higherFinalRankPosition }),
+                    serializeRankingOperationState(randomAuditOperationState({
+                        ...state,
+                        stage: "rank_lower",
+                        firstFinalRankPosition: higherFinalRankPosition
+                    })),
                     countCurrentComparison ? 1 : 0,
                     session.id,
                     userId
@@ -2514,7 +2526,10 @@ async function cancelStaleActiveRankingSessions(userId: string) {
                 .sort((left, right) => left.originalRankPosition - right.originalRankPosition);
             if (restoreEntries.length > 0) {
                 const activeEntries = await listActiveEntries(userId, session.category_id);
-                const orderedIds = activeEntries.map((entry) => entry.id);
+                const restoreEntryIds = new Set(restoreEntries.map((entry) => entry.id));
+                const orderedIds = activeEntries
+                    .map((entry) => entry.id)
+                    .filter((entryId) => !restoreEntryIds.has(entryId));
                 for (const entry of restoreEntries) {
                     orderedIds.splice(
                         clampInsertionIndex(entry.originalRankPosition, orderedIds.length),
@@ -2627,22 +2642,31 @@ async function cancelStaleActiveRankingSessions(userId: string) {
 
 function canResumeActiveSession(session: ActiveSessionRepairRow) {
     const operationKind = normalizeOperationKind(session.operation_kind);
-    const hasValidSecondary = operationKind !== "random_audit" || Boolean(
-        session.secondary_entry_id &&
-        session.secondary_id &&
-        session.secondary_category_id === session.category_id &&
-        session.secondary_status === "ranking" &&
-        parseRandomAuditOperationState(session.operation_state)
-    );
     const hasValidBounds = session.phase && session.phase !== "binary"
         ? session.lower_bound >= 0
         : session.lower_bound >= 0 && session.upper_bound > session.lower_bound;
+    const hasValidRandomAuditState = operationKind !== "random_audit" || Boolean(
+        parseRankingOperationState(session.operation_state).randomAudit ||
+        parseRandomAuditOperationState(session.operation_state)
+    );
+    const hasValidStagedSubject = Boolean(
+        session.subject_id &&
+        session.subject_category_id === session.category_id &&
+        (
+            session.subject_status === "ranking" ||
+            operationKind === "random_audit"
+        )
+    );
+    const hasValidSecondary = operationKind !== "random_audit" || Boolean(
+        session.secondary_entry_id &&
+        session.secondary_id &&
+        session.secondary_category_id === session.category_id
+    );
 
     return Boolean(
         session.category_exists &&
-        session.subject_id &&
-        session.subject_category_id === session.category_id &&
-        session.subject_status === "ranking" &&
+        hasValidStagedSubject &&
+        hasValidRandomAuditState &&
         hasValidSecondary &&
         session.pivot_entry_id &&
         session.pivot_id &&
@@ -2663,14 +2687,20 @@ async function recoverInterruptedRankingEntries(userId: string) {
                   SELECT ranking_sessions.source
                   FROM ranking_sessions
                   WHERE ranking_sessions.user_id = entries.user_id
-                    AND ranking_sessions.subject_entry_id = entries.id
+                    AND (
+                      ranking_sessions.subject_entry_id = entries.id OR
+                      ranking_sessions.secondary_entry_id = entries.id
+                    )
                   ORDER BY ranking_sessions.created_at DESC
                   LIMIT 1
                 ) AS session_source
          FROM entries
          LEFT JOIN ranking_sessions
            ON ranking_sessions.user_id = entries.user_id
-          AND ranking_sessions.subject_entry_id = entries.id
+          AND (
+            ranking_sessions.subject_entry_id = entries.id OR
+            ranking_sessions.secondary_entry_id = entries.id
+          )
           AND ranking_sessions.status = 'active'
          WHERE entries.user_id = ? AND entries.status = 'ranking'
            AND ranking_sessions.id IS NULL
@@ -2987,6 +3017,15 @@ function emptyRankingOperationState(): RankingOperationStateEnvelope {
     };
 }
 
+function randomAuditOperationState(
+    randomAudit: RandomAuditOperationState
+): RankingOperationStateEnvelope {
+    return {
+        ...emptyRankingOperationState(),
+        randomAudit
+    };
+}
+
 function addCachedComparison(
     state: RankingOperationStateEnvelope,
     winnerId: string,
@@ -3137,7 +3176,7 @@ function rewriteCategoryOrderStatements(
             .prepare(
                 `UPDATE entries
        SET status = 'active', rank_position = ?, updated_at = ?
-       WHERE user_id = ? AND category_id = ? AND id = ? AND status != 'deleted'`
+       WHERE user_id = ? AND category_id = ? AND id = ?`
             )
             .bind(rankPosition, updatedAt, userId, categoryId, entryId)
     );
@@ -3164,7 +3203,6 @@ async function cancelRandomAuditSession(
     }
 
     const activeEntries = await listActiveEntries(userId, session.category_id);
-    const orderedIds = activeEntries.map((entry) => entry.id);
     const restoreEntries = state
         ? [
             { id: state.higherEntryId, originalRankPosition: state.higherOriginalRankPosition },
@@ -3180,6 +3218,10 @@ async function cancelRandomAuditSession(
                 originalRankPosition: session.secondary_original_rank_position as number
             }
         ].sort((left, right) => left.originalRankPosition - right.originalRankPosition);
+    const restoreEntryIds = new Set(restoreEntries.map((entry) => entry.id));
+    const orderedIds = activeEntries
+        .map((entry) => entry.id)
+        .filter((entryId) => !restoreEntryIds.has(entryId));
     for (const entry of restoreEntries) {
         orderedIds.splice(
             clampInsertionIndex(entry.originalRankPosition, orderedIds.length),
@@ -3228,6 +3270,21 @@ async function getOwnedEntry(userId: string, entryId: string) {
                 first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
          FROM entries
          WHERE user_id = ? AND id = ? AND status != 'deleted'`
+            )
+            .bind(userId, entryId)
+    );
+
+    return row ? mapEntry(row) : null;
+}
+
+async function getOwnedEntryIncludingDeleted(userId: string, entryId: string) {
+    const row = await first<EntryRow>(
+        getDb()
+            .prepare(
+                `SELECT id, category_id, name, rank_position, image_key, created_at,
+                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+         FROM entries
+         WHERE user_id = ? AND id = ?`
             )
             .bind(userId, entryId)
     );
