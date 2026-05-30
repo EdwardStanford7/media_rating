@@ -35,6 +35,7 @@ interface CategoryRow {
     name: string;
     sort_order: number;
     created_at: number;
+    star_rating_curve?: string | null;
 }
 
 interface CategoryCountRow extends CategoryRow {
@@ -98,7 +99,10 @@ interface SessionRow {
     pivot_entry_id: string | null;
     pivot_rank_position: number | null;
     final_rank_position: number | null;
+    original_rank_position?: number | null;
     created_at: number;
+    comparison_count?: number;
+    phase?: string;
 }
 
 interface ActiveBinarySessionRow {
@@ -155,7 +159,7 @@ export async function loadDashboard(
     const categories = await all<CategoryRow>(
         db
             .prepare(
-                `SELECT id, name, sort_order, created_at
+                `SELECT id, name, sort_order, created_at, star_rating_curve
          FROM categories
          WHERE user_id = ?
          ORDER BY sort_order ASC, name ASC`
@@ -191,6 +195,7 @@ export async function loadDashboard(
             name: category.name,
             sortOrder: category.sort_order,
             createdAt: category.created_at,
+            starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
             entries: orderEntries(entriesByCategory.get(category.id) ?? [], displayMode)
         })),
         queueSettings,
@@ -509,6 +514,33 @@ export async function updateQueueSettings(
     return getQueueSettings(userId);
 }
 
+export async function updateCategoryStarRatingCurve(
+    userId: string,
+    input: {
+        categoryId: string;
+        starRatingCurve: QueueSettings["starRatingCurve"] | null;
+    }
+) {
+    const category = await getOwnedCategory(userId, input.categoryId);
+    assertOwned(category, "Category");
+
+    const updatedAt = now();
+    const starRatingCurve = input.starRatingCurve
+        ? JSON.stringify(normalizeStarRatingCurve(input.starRatingCurve))
+        : null;
+
+    await getDb()
+        .prepare(
+            `UPDATE categories
+       SET star_rating_curve = ?, updated_at = ?
+       WHERE user_id = ? AND id = ?`
+        )
+        .bind(starRatingCurve, updatedAt, userId, input.categoryId)
+        .run();
+
+    return parseStoredCategoryStarRatingCurve(starRatingCurve);
+}
+
 export async function markImageUnavailable(
     userId: string,
     input: { targetKind: "entry" | "queue"; targetId: string }
@@ -713,36 +745,21 @@ export async function moveEntryOnePosition(
     }
 
     const updatedAt = now();
-    const categorySize = await getActiveEntryCount(userId, entry.categoryId);
-    const entryElo = rebaseEloForRankChange(
-        entry.freeRankElo,
-        entry.rankPosition,
-        categorySize,
-        targetRankPosition,
-        categorySize
-    );
-    const neighborElo = rebaseEloForRankChange(
-        neighbor.free_rank_elo,
-        neighbor.rank_position,
-        categorySize,
-        entry.rankPosition,
-        categorySize
-    );
     await db.batch([
         db
             .prepare(
                 `UPDATE entries
-         SET rank_position = ?, free_rank_elo = ?, updated_at = ?
+         SET rank_position = ?, updated_at = ?
          WHERE user_id = ? AND id = ? AND status = 'active'`
             )
-            .bind(targetRankPosition, entryElo, updatedAt, userId, entry.id),
+            .bind(targetRankPosition, updatedAt, userId, entry.id),
         db
             .prepare(
                 `UPDATE entries
-         SET rank_position = ?, free_rank_elo = ?, updated_at = ?
+         SET rank_position = ?, updated_at = ?
          WHERE user_id = ? AND id = ? AND status = 'active'`
             )
-            .bind(entry.rankPosition, neighborElo, updatedAt, userId, neighbor.id)
+            .bind(entry.rankPosition, updatedAt, userId, neighbor.id)
     ]);
 
     return { moved: true };
@@ -877,7 +894,7 @@ export async function getBinarySession(
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
                 upper_bound, pivot_entry_id, pivot_rank_position, from_category_id,
-                final_rank_position, created_at
+                final_rank_position, created_at, comparison_count, phase
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -891,15 +908,6 @@ export async function getBinarySession(
     const category = await getOwnedCategory(userId, session.category_id);
     const subject = await getOwnedEntry(userId, session.subject_entry_id);
     const opponent = await getOwnedEntry(userId, session.pivot_entry_id);
-    const comparisonCount = await first<{ count: number }>(
-        db
-            .prepare(
-                `SELECT COUNT(*) AS count
-         FROM matches
-         WHERE user_id = ? AND ranking_session_id = ?`
-            )
-            .bind(userId, sessionId)
-    );
 
     if (!category || !subject || !opponent) {
         return null;
@@ -910,11 +918,12 @@ export async function getBinarySession(
         categoryId: session.category_id,
         categoryName: category.name,
         source: session.source,
+        phase: session.phase === "repair_up" || session.phase === "repair_down" ? "local_repair" : "binary",
         subject,
         opponent,
         lowerBound: session.lower_bound,
         upperBound: session.upper_bound,
-        comparisonCount: comparisonCount?.count ?? 0
+        comparisonCount: session.comparison_count ?? 0
     };
 }
 
@@ -925,7 +934,7 @@ export async function cancelBinarySession(userId: string, sessionId: string) {
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
                 upper_bound, pivot_entry_id, pivot_rank_position, from_category_id,
-                final_rank_position, created_at
+                final_rank_position, original_rank_position, created_at, phase
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -959,7 +968,7 @@ export async function cancelBinarySession(userId: string, sessionId: string) {
     ];
 
     if (session.source === "rerank_entry") {
-        const restoreRankPosition = session.final_rank_position ?? await getNextActiveRankPosition(
+        const restoreRankPosition = session.original_rank_position ?? session.final_rank_position ?? await getNextActiveRankPosition(
             userId,
             session.category_id
         );
@@ -1029,7 +1038,7 @@ export async function submitBinaryWinner(
             .prepare(
                 `SELECT id, user_id, category_id, subject_entry_id, source, lower_bound,
                 upper_bound, pivot_entry_id, pivot_rank_position, from_category_id,
-                final_rank_position, created_at
+                final_rank_position, original_rank_position, created_at, phase
          FROM ranking_sessions
          WHERE id = ? AND user_id = ? AND status = 'active'`
             )
@@ -1049,24 +1058,9 @@ export async function submitBinaryWinner(
     }
 
     const createdAt = now();
-    const matchStatement = db
-        .prepare(
-            `INSERT INTO matches (
-         id, user_id, category_id, entry_a_id, entry_b_id, winner_id,
-         match_type, ranking_session_id, created_at
-       )
-       VALUES (?, ?, ?, ?, ?, ?, 'binary_search', ?, ?)`
-        )
-        .bind(
-            newId("match"),
-            userId,
-            session.category_id,
-            session.subject_entry_id,
-            session.pivot_entry_id,
-            input.winnerId,
-            session.id,
-            createdAt
-        );
+    if (session.phase === "repair_up" || session.phase === "repair_down") {
+        return submitLocalRepairWinner(db, userId, session, input.winnerId, createdAt);
+    }
 
     const subjectWon = input.winnerId === session.subject_entry_id;
     const lowerBound = subjectWon
@@ -1083,12 +1077,11 @@ export async function submitBinaryWinner(
         assertOwned(pivot, "Pivot entry");
 
         await db.batch([
-            matchStatement,
             db
                 .prepare(
                     `UPDATE ranking_sessions
          SET lower_bound = ?, upper_bound = ?, pivot_entry_id = ?,
-             pivot_rank_position = ?
+             pivot_rank_position = ?, comparison_count = comparison_count + 1
          WHERE id = ? AND user_id = ?`
                 )
                 .bind(lowerBound, upperBound, pivot.id, pivot.rankPosition, session.id, userId)
@@ -1097,38 +1090,212 @@ export async function submitBinaryWinner(
         return { kind: "session" as const, sessionId: session.id };
     }
 
-    const subject = await getOwnedEntry(userId, session.subject_entry_id);
-    assertOwned(subject, "Entry");
-    const finalCategorySize = await getActiveEntryCount(userId, session.category_id) + 1;
-    const freeRankElo = freeRankEloForBinaryPlacement(
-        session,
-        subject,
-        lowerBound,
-        finalCategorySize
-    );
+    return startLocalRepairOrCommit(db, userId, session, lowerBound, createdAt, {
+        countCurrentComparison: true,
+        allowUpwardCheck: true
+    });
+}
 
+async function submitLocalRepairWinner(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    winnerId: string,
+    updatedAt: number
+) {
+    const subjectWon = winnerId === session.subject_entry_id;
+    const currentFinalRank = session.final_rank_position ?? session.lower_bound;
+    const pivotRank = session.pivot_rank_position ?? currentFinalRank;
+
+    if (session.phase === "repair_up") {
+        if (subjectWon) {
+            return continueUpwardRepairOrCommit(db, userId, session, pivotRank, updatedAt, true);
+        }
+
+        const wasInitialLeftCheck = pivotRank === currentFinalRank - 2;
+        if (wasInitialLeftCheck) {
+            return startLocalRepairOrCommit(db, userId, session, currentFinalRank, updatedAt, {
+                countCurrentComparison: true,
+                allowUpwardCheck: false
+            });
+        }
+
+        return completeRankingSession(db, userId, session, currentFinalRank, updatedAt, true);
+    }
+
+    if (!subjectWon) {
+        return continueDownwardRepairOrCommit(db, userId, session, pivotRank + 1, updatedAt, true);
+    }
+
+    return completeRankingSession(db, userId, session, currentFinalRank, updatedAt, true);
+}
+
+async function startLocalRepairOrCommit(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    finalRankPosition: number,
+    updatedAt: number,
+    options: {
+        countCurrentComparison: boolean;
+        allowUpwardCheck: boolean;
+    }
+) {
+    const entries = await listActiveEntries(userId, session.category_id);
+
+    if (options.allowUpwardCheck) {
+        const upwardPivot = entries[finalRankPosition - 2];
+        if (upwardPivot) {
+            await updateRankingSessionPivot(
+                db,
+                userId,
+                session.id,
+                "repair_up",
+                finalRankPosition,
+                upwardPivot,
+                options.countCurrentComparison
+            );
+            return { kind: "session" as const, sessionId: session.id };
+        }
+    }
+
+    const downwardPivot = entries[finalRankPosition + 1];
+    if (downwardPivot) {
+        await updateRankingSessionPivot(
+            db,
+            userId,
+            session.id,
+            "repair_down",
+            finalRankPosition,
+            downwardPivot,
+            options.countCurrentComparison
+        );
+        return { kind: "session" as const, sessionId: session.id };
+    }
+
+    return completeRankingSession(
+        db,
+        userId,
+        session,
+        finalRankPosition,
+        updatedAt,
+        options.countCurrentComparison
+    );
+}
+
+async function continueUpwardRepairOrCommit(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    finalRankPosition: number,
+    updatedAt: number,
+    countCurrentComparison: boolean
+) {
+    const entries = await listActiveEntries(userId, session.category_id);
+    const nextPivot = entries[finalRankPosition - 1];
+    if (nextPivot) {
+        await updateRankingSessionPivot(
+            db,
+            userId,
+            session.id,
+            "repair_up",
+            finalRankPosition,
+            nextPivot,
+            countCurrentComparison
+        );
+        return { kind: "session" as const, sessionId: session.id };
+    }
+
+    return completeRankingSession(db, userId, session, finalRankPosition, updatedAt, countCurrentComparison);
+}
+
+async function continueDownwardRepairOrCommit(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    finalRankPosition: number,
+    updatedAt: number,
+    countCurrentComparison: boolean
+) {
+    const entries = await listActiveEntries(userId, session.category_id);
+    const nextPivot = entries[finalRankPosition];
+    if (nextPivot) {
+        await updateRankingSessionPivot(
+            db,
+            userId,
+            session.id,
+            "repair_down",
+            finalRankPosition,
+            nextPivot,
+            countCurrentComparison
+        );
+        return { kind: "session" as const, sessionId: session.id };
+    }
+
+    return completeRankingSession(db, userId, session, finalRankPosition, updatedAt, countCurrentComparison);
+}
+
+async function updateRankingSessionPivot(
+    db: D1Database,
+    userId: string,
+    sessionId: string,
+    phase: "repair_up" | "repair_down",
+    finalRankPosition: number,
+    pivot: Entry,
+    countCurrentComparison: boolean
+) {
+    await db
+        .prepare(
+            `UPDATE ranking_sessions
+       SET phase = ?,
+           final_rank_position = ?,
+           pivot_entry_id = ?,
+           pivot_rank_position = ?,
+           comparison_count = comparison_count + ?
+       WHERE id = ? AND user_id = ? AND status = 'active'`
+        )
+        .bind(
+            phase,
+            finalRankPosition,
+            pivot.id,
+            pivot.rankPosition,
+            countCurrentComparison ? 1 : 0,
+            sessionId,
+            userId
+        )
+        .run();
+}
+
+async function completeRankingSession(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    finalRankPosition: number,
+    updatedAt: number,
+    countCurrentComparison: boolean
+) {
     await db.batch([
-        matchStatement,
         ...placeRankedEntryStatements(
             db,
             userId,
             session.subject_entry_id,
             session.category_id,
-            lowerBound,
-            createdAt,
-            freeRankElo
+            finalRankPosition,
+            updatedAt
         ),
         db
             .prepare(
                 `UPDATE ranking_sessions
        SET status = 'completed', final_rank_position = ?, completed_at = ?,
-           pivot_entry_id = NULL, pivot_rank_position = NULL
+           pivot_entry_id = NULL, pivot_rank_position = NULL,
+           phase = 'binary',
+           comparison_count = comparison_count + ?
        WHERE id = ? AND user_id = ?`
             )
-            .bind(lowerBound, createdAt, session.id, userId)
+            .bind(finalRankPosition, updatedAt, countCurrentComparison ? 1 : 0, session.id, userId)
     ]);
 
-    return { kind: "completed" as const, sessionId: session.id, finalRankPosition: lowerBound };
+    return { kind: "completed" as const, sessionId: session.id, finalRankPosition };
 }
 
 export async function getFreeRankMatchup(
@@ -1174,6 +1341,7 @@ export async function getFreeRankMatchup(
             name: category.name,
             sortOrder: category.sort_order,
             createdAt: category.created_at,
+            starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
             entries
         }
     ], category.id, Math.random, {
@@ -1465,6 +1633,18 @@ function parseStoredStarRatingCurve(value: string | null | undefined) {
         return normalizeStarRatingCurve(JSON.parse(value));
     } catch {
         return normalizeStarRatingCurve(null);
+    }
+}
+
+function parseStoredCategoryStarRatingCurve(value: string | null | undefined) {
+    if (!value) {
+        return null;
+    }
+
+    try {
+        return normalizeStarRatingCurve(JSON.parse(value));
+    } catch {
+        return null;
     }
 }
 
@@ -1959,9 +2139,10 @@ async function prepareBinarySession(
             .prepare(
                 `INSERT INTO ranking_sessions (
            id, user_id, category_id, subject_entry_id, source, from_category_id, lower_bound,
-           upper_bound, pivot_entry_id, pivot_rank_position, final_rank_position, status, created_at
+           upper_bound, pivot_entry_id, pivot_rank_position, final_rank_position,
+           original_rank_position, status, created_at
          )
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'active', ?)`
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, ?, 'active', ?)`
             )
             .bind(
                 sessionId,

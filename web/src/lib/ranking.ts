@@ -32,6 +32,7 @@ export const DEFAULT_STAR_RATING_CURVE: StarRatingCurvePoint[] = [
     { percentile: 0.9, stars: 2.1 },
     { percentile: 1, stars: 1.0 }
 ];
+const NORMAL_CURVE_PERCENTILES = [0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1];
 
 export interface BinaryComparison {
     opponentIndex: number;
@@ -49,6 +50,19 @@ export interface BinaryStepResult {
     state: BinaryState;
     complete: boolean;
     finalIndex: number | null;
+}
+
+export interface LocalRepairState {
+    phase: "repair_up" | "repair_down";
+    finalIndex: number;
+    opponentIndex: number;
+    initialUpwardCheck: boolean;
+}
+
+export interface LocalRepairStepResult {
+    state: LocalRepairState | null;
+    complete: boolean;
+    finalIndex: number;
 }
 
 export interface FreeRankPairHistory {
@@ -139,6 +153,85 @@ export function recordBinaryChoice(
         complete: true,
         finalIndex: lowerBound
     };
+}
+
+export function startLocalRepairState(
+    finalIndex: number,
+    activeEntryCount: number,
+    allowUpwardCheck = true
+): LocalRepairState | null {
+    if (allowUpwardCheck && finalIndex >= 2) {
+        return {
+            phase: "repair_up",
+            finalIndex,
+            opponentIndex: finalIndex - 2,
+            initialUpwardCheck: true
+        };
+    }
+
+    if (finalIndex + 1 < activeEntryCount) {
+        return {
+            phase: "repair_down",
+            finalIndex,
+            opponentIndex: finalIndex + 1,
+            initialUpwardCheck: false
+        };
+    }
+
+    return null;
+}
+
+export function recordLocalRepairChoice(
+    state: LocalRepairState,
+    subjectWon: boolean,
+    activeEntryCount: number
+): LocalRepairStepResult {
+    if (state.phase === "repair_up") {
+        if (subjectWon) {
+            const finalIndex = state.opponentIndex;
+            const nextOpponentIndex = finalIndex - 1;
+            return nextOpponentIndex >= 0
+                ? {
+                    state: {
+                        phase: "repair_up",
+                        finalIndex,
+                        opponentIndex: nextOpponentIndex,
+                        initialUpwardCheck: false
+                    },
+                    complete: false,
+                    finalIndex
+                }
+                : { state: null, complete: true, finalIndex };
+        }
+
+        if (state.initialUpwardCheck) {
+            const nextState = startLocalRepairState(state.finalIndex, activeEntryCount, false);
+            return nextState
+                ? { state: nextState, complete: false, finalIndex: state.finalIndex }
+                : { state: null, complete: true, finalIndex: state.finalIndex };
+        }
+
+        return { state: null, complete: true, finalIndex: state.finalIndex };
+    }
+
+    if (!subjectWon) {
+        const finalIndex = state.opponentIndex + 1;
+        const nextOpponentIndex = finalIndex;
+        return nextOpponentIndex < activeEntryCount
+            ? {
+                state: {
+                    phase: "repair_down",
+                    finalIndex,
+                    opponentIndex: nextOpponentIndex,
+                    initialUpwardCheck: false
+                },
+                complete: false,
+                finalIndex
+            }
+            : { state: null, complete: true, finalIndex };
+    }
+
+    return { state: null, complete: true, finalIndex: state.finalIndex };
 }
 
 export function updateEloPair(
@@ -288,7 +381,7 @@ export function starRatingsByEntryId(
     entries: Entry[],
     curve: StarRatingCurvePoint[] = DEFAULT_STAR_RATING_CURVE
 ) {
-    const combinedEntries = combinedOrder(entries);
+    const combinedEntries = orderEntries(entries, "ordered list");
     return new Map(
         combinedEntries.map((entry, index) => [
             entry.id,
@@ -300,6 +393,44 @@ export function starRatingsByEntryId(
 export function starRatingScaleMax(curve: StarRatingCurvePoint[] = DEFAULT_STAR_RATING_CURVE) {
     const stars = normalizeStarRatingCurve(curve).map((point) => point.stars);
     return roundStarRating(Math.max(1, ...stars));
+}
+
+export function generateNormalStarRatingCurve({
+    averageStars,
+    maxStars,
+    minStars = 1,
+    withinOneStarPercent
+}: {
+    averageStars: number;
+    maxStars: number;
+    minStars?: number;
+    withinOneStarPercent: number;
+}) {
+    const clampedMax = Math.max(1, Math.min(MAX_STAR_RATING_SCALE, maxStars));
+    const clampedMin = Math.max(0, Math.min(clampedMax, minStars));
+    const average = Math.max(clampedMin, Math.min(clampedMax, averageStars));
+    const middleProbability = Math.max(0.05, Math.min(0.98, withinOneStarPercent / 100));
+    const zForOneStar = inverseNormalCdf((middleProbability + 1) / 2);
+    const standardDeviation = zForOneStar <= 0 ? 1 : 1 / zForOneStar;
+
+    return normalizeStarRatingCurve(
+        NORMAL_CURVE_PERCENTILES.map((percentile) => {
+            if (percentile === 0) {
+                return { percentile, stars: clampedMax };
+            }
+
+            if (percentile === 1) {
+                return { percentile, stars: clampedMin };
+            }
+
+            const percentileFromBottom = 1 - percentile;
+            const stars = average + inverseNormalCdf(percentileFromBottom) * standardDeviation;
+            return {
+                percentile,
+                stars: Math.max(clampedMin, Math.min(clampedMax, stars))
+            };
+        })
+    );
 }
 
 export function normalizeStarRatingCurve(
@@ -383,6 +514,58 @@ export function starRatingCurveToText(curve: StarRatingCurvePoint[] = DEFAULT_ST
 
 function roundStarRating(stars: number) {
     return Math.round(Math.max(0, Math.min(MAX_STAR_RATING_SCALE, stars)) * 10) / 10;
+}
+
+function inverseNormalCdf(probability: number) {
+    const p = Math.max(1e-10, Math.min(1 - 1e-10, probability));
+    const coefficientsA = [
+        -3.969683028665376e1,
+        2.209460984245205e2,
+        -2.759285104469687e2,
+        1.38357751867269e2,
+        -3.066479806614716e1,
+        2.506628277459239
+    ];
+    const coefficientsB = [
+        -5.447609879822406e1,
+        1.615858368580409e2,
+        -1.556989798598866e2,
+        6.680131188771972e1,
+        -1.328068155288572e1
+    ];
+    const coefficientsC = [
+        -7.784894002430293e-3,
+        -3.223964580411365e-1,
+        -2.400758277161838,
+        -2.549732539343734,
+        4.374664141464968,
+        2.938163982698783
+    ];
+    const coefficientsD = [
+        7.784695709041462e-3,
+        3.224671290700398e-1,
+        2.445134137142996,
+        3.754408661907416
+    ];
+    const low = 0.02425;
+    const high = 1 - low;
+
+    if (p < low) {
+        const q = Math.sqrt(-2 * Math.log(p));
+        return (((((coefficientsC[0] * q + coefficientsC[1]) * q + coefficientsC[2]) * q + coefficientsC[3]) * q + coefficientsC[4]) * q + coefficientsC[5]) /
+            ((((coefficientsD[0] * q + coefficientsD[1]) * q + coefficientsD[2]) * q + coefficientsD[3]) * q + 1);
+    }
+
+    if (p <= high) {
+        const q = p - 0.5;
+        const r = q * q;
+        return (((((coefficientsA[0] * r + coefficientsA[1]) * r + coefficientsA[2]) * r + coefficientsA[3]) * r + coefficientsA[4]) * r + coefficientsA[5]) * q /
+            (((((coefficientsB[0] * r + coefficientsB[1]) * r + coefficientsB[2]) * r + coefficientsB[3]) * r + coefficientsB[4]) * r + 1);
+    }
+
+    const q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((coefficientsC[0] * q + coefficientsC[1]) * q + coefficientsC[2]) * q + coefficientsC[3]) * q + coefficientsC[4]) * q + coefficientsC[5]) /
+        ((((coefficientsD[0] * q + coefficientsD[1]) * q + coefficientsD[2]) * q + coefficientsD[3]) * q + 1);
 }
 
 function formatCurveNumber(value: number) {

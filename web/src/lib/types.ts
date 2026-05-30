@@ -44,6 +44,7 @@ export interface CategoryWithEntries {
     name: string;
     sortOrder: number;
     createdAt: number;
+    starRatingCurve: StarRatingCurvePoint[] | null;
     entries: Entry[];
 }
 
@@ -67,6 +68,7 @@ export interface BinarySessionView {
     categoryId: string;
     categoryName: string;
     source: RankingSource;
+    phase: "binary" | "local_repair";
     subject: Entry;
     opponent: Entry;
     lowerBound: number;

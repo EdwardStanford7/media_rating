@@ -32,6 +32,7 @@ function category(name: string, entries: Entry[]): CategoryWithEntries {
         name,
         sortOrder: 0,
         createdAt: 0,
+        starRatingCurve: null,
         entries
     };
 }

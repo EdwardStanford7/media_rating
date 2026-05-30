@@ -3,12 +3,15 @@ import {
     chooseBinaryPivot,
     combinedOrder,
     eloKFactorForMatchCount,
+    generateNormalStarRatingCurve,
     parseStarRatingCurveText,
     rankPriorElo,
     recordBinaryChoice,
+    recordLocalRepairChoice,
     rebaseEloForRankChange,
     selectFreeRankMatchup,
     startBinaryState,
+    startLocalRepairState,
     starRatingForCombinedRank,
     starRatingScaleMax,
     starRatingsByEntryId,
@@ -60,6 +63,69 @@ describe("pure binary ranking", () => {
             expect(pivot).toBeGreaterThanOrEqual(3);
             expect(pivot).toBeLessThan(9);
         }
+    });
+});
+
+describe("local repair ranking", () => {
+    it("checks outside the binary insertion neighborhood before committing", () => {
+        expect(startLocalRepairState(0, 5)).toEqual({
+            phase: "repair_down",
+            finalIndex: 0,
+            opponentIndex: 1,
+            initialUpwardCheck: false
+        });
+        expect(startLocalRepairState(3, 6)).toEqual({
+            phase: "repair_up",
+            finalIndex: 3,
+            opponentIndex: 1,
+            initialUpwardCheck: true
+        });
+        expect(startLocalRepairState(1, 2)).toBeNull();
+    });
+
+    it("continues upward when the subject beats the outside-left neighbor", () => {
+        const state = startLocalRepairState(4, 8);
+        expect(state).not.toBeNull();
+
+        const result = recordLocalRepairChoice(state!, true, 8);
+        expect(result.complete).toBe(false);
+        expect(result.finalIndex).toBe(2);
+        expect(result.state).toEqual({
+            phase: "repair_up",
+            finalIndex: 2,
+            opponentIndex: 1,
+            initialUpwardCheck: false
+        });
+    });
+
+    it("falls through to the right-side check when the outside-left neighbor wins", () => {
+        const state = startLocalRepairState(4, 8);
+        expect(state).not.toBeNull();
+
+        const result = recordLocalRepairChoice(state!, false, 8);
+        expect(result.complete).toBe(false);
+        expect(result.finalIndex).toBe(4);
+        expect(result.state).toEqual({
+            phase: "repair_down",
+            finalIndex: 4,
+            opponentIndex: 5,
+            initialUpwardCheck: false
+        });
+    });
+
+    it("continues downward when the outside-right neighbor beats the subject", () => {
+        const state = startLocalRepairState(0, 5);
+        expect(state).not.toBeNull();
+
+        const result = recordLocalRepairChoice(state!, false, 5);
+        expect(result.complete).toBe(false);
+        expect(result.finalIndex).toBe(2);
+        expect(result.state).toEqual({
+            phase: "repair_down",
+            finalIndex: 2,
+            opponentIndex: 2,
+            initialUpwardCheck: false
+        });
     });
 });
 
@@ -228,7 +294,21 @@ describe("derived star ratings", () => {
         expect(starRatingForCombinedRank(10, 11, curve)).toBe(1);
     });
 
-    it("uses combined order rather than raw binary position", () => {
+    it("can generate a normal-distribution-style curve from simple settings", () => {
+        const curve = generateNormalStarRatingCurve({
+            minStars: 1,
+            maxStars: 5,
+            averageStars: 4,
+            withinOneStarPercent: 70
+        });
+
+        expect(starRatingScaleMax(curve)).toBe(5);
+        expect(starRatingForCombinedRank(0, 101, curve)).toBe(5);
+        expect(starRatingForCombinedRank(50, 101, curve)).toBe(4);
+        expect(starRatingForCombinedRank(100, 101, curve)).toBe(1);
+    });
+
+    it("uses ordered-list position rather than Elo state", () => {
         const entries = Array.from({ length: 20 }, (_, index) =>
             entry(
                 String(index),
@@ -240,7 +320,7 @@ describe("derived star ratings", () => {
         );
 
         const ratings = starRatingsByEntryId(entries);
-        expect(ratings.get("19")).toBeGreaterThan(starRatingForCombinedRank(19, 20));
+        expect(ratings.get("19")).toBe(starRatingForCombinedRank(19, 20));
     });
 });
 
@@ -250,6 +330,7 @@ function category(name: string, entries: Entry[]): CategoryWithEntries {
         name,
         sortOrder: 0,
         createdAt: 0,
+        starRatingCurve: null,
         entries
     };
 }

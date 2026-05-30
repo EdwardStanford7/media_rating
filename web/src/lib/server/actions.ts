@@ -84,6 +84,17 @@ export const updateQueueSettings = createServerFn({ method: "POST" })
         return repo.updateQueueSettings(user.id, data);
     });
 
+export const updateCategoryStarRatingCurve = createServerFn({ method: "POST" })
+    .inputValidator((data: {
+        categoryId: string;
+        starRatingCurve: StarRatingCurvePoint[] | null;
+    }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.updateCategoryStarRatingCurve(user.id, data);
+    });
+
 export const markImageUnavailable = createServerFn({ method: "POST" })
     .inputValidator((data: { targetKind: "entry" | "queue"; targetId: string }) => data)
     .handler(async ({ data }) => {
@@ -178,29 +189,6 @@ export const submitBinaryWinner = createServerFn({ method: "POST" })
         const user = await requireUser();
         const repo = await import("./repository");
         return repo.submitBinaryWinner(user.id, data);
-    });
-
-export const getFreeRankMatchup = createServerFn({ method: "GET" })
-    .inputValidator((data: { categorySelection: string | "any" }) => data)
-    .handler(async ({ data }) => {
-        const user = await requireUser();
-        const repo = await import("./repository");
-        return repo.getFreeRankMatchup(user.id, data.categorySelection);
-    });
-
-export const submitFreeRankWinner = createServerFn({ method: "POST" })
-    .inputValidator(
-        (data: {
-            categoryId: string;
-            entryAId: string;
-            entryBId: string;
-            winnerId: string;
-        }) => data
-    )
-    .handler(async ({ data }) => {
-        const user = await requireUser();
-        const repo = await import("./repository");
-        return repo.submitFreeRankWinner(user.id, data);
     });
 
 export const importLegacyEntries = createServerFn({ method: "POST" })

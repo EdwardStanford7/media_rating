@@ -1,7 +1,6 @@
 import ExcelJS from "exceljs";
 import type {
     CategoryWithEntries,
-    MatchRecord,
     ParsedImport
 } from "./types";
 
@@ -40,10 +39,7 @@ export async function parseLegacyWorkbook(
     return { entries };
 }
 
-export async function writeExportWorkbook(
-    categories: CategoryWithEntries[],
-    matches: MatchRecord[] = []
-) {
+export async function writeExportWorkbook(categories: CategoryWithEntries[]) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Media Rating";
     workbook.created = new Date();
@@ -57,17 +53,10 @@ export async function writeExportWorkbook(
             entry: entry.name,
             rank_position: entry.rankPosition,
             created_at: entry.createdAt,
-            first_consumed_at: entry.firstConsumedAt,
-            free_rank_elo: Math.round(entry.freeRankElo),
-            free_rank_wins: entry.freeRankWins,
-            free_rank_losses: entry.freeRankLosses
+            first_consumed_at: entry.firstConsumedAt
         }))
     );
     addObjectSheet(workbook, "Entry Metadata", entryMetadata);
-
-    if (matches.length > 0) {
-        addObjectSheet(workbook, "Matches", matches.map((match) => ({ ...match })));
-    }
 
     return workbook.xlsx.writeBuffer();
 }

@@ -429,6 +429,22 @@ textarea {
     font-size: 0.85rem;
 }
 
+.star-curve-builder {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: end;
+}
+
+.star-curve-builder label {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.star-curve-builder button {
+    grid-column: 1 / -1;
+}
+
 .queue-toolbar {
     margin-bottom: 0;
 }

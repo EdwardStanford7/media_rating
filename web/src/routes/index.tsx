@@ -11,7 +11,6 @@ import {
     deleteQueuedEntry,
     getAuthOptions,
     getBinarySession,
-    getFreeRankMatchup,
     getSession,
     importLegacyEntries,
     loadDashboard,
@@ -23,16 +22,18 @@ import {
     startRerankEntry,
     startQueuedEntryRanking,
     submitBinaryWinner,
-    submitFreeRankWinner,
     switchEntryCategory,
+    updateCategoryStarRatingCurve,
     updateQueueSettings
 } from "@/lib/server/actions";
 import { signIn, signOut } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
 import {
     DEFAULT_STAR_RATING_CURVE,
+    generateNormalStarRatingCurve,
     orderEntries,
     parseStarRatingCurveText,
+    starRatingForPercentile,
     starRatingScaleMax,
     starRatingCurveToText,
     starRatingsByEntryId
@@ -42,9 +43,7 @@ import type {
     BinarySessionView,
     CategoryWithEntries,
     DashboardData,
-    DisplayMode,
     Entry,
-    FreeRankMatchup,
     QueuedEntry,
     QueueSettings
 } from "@/lib/types";
@@ -63,11 +62,18 @@ interface ImageSearchCandidate {
     height: number;
 }
 
-interface FreeRankEloChange {
-    entryAId: string;
-    entryAChange: number;
-    entryBId: string;
-    entryBChange: number;
+interface RandomAuditPair {
+    categoryId: string;
+    categoryName: string;
+    higherRanked: Entry;
+    lowerRanked: Entry;
+}
+
+interface StarCurveBuilderState {
+    minStars: number;
+    maxStars: number;
+    averageStars: number;
+    withinOneStarPercent: number;
 }
 
 const POSTER_WIDTH = 380;
@@ -75,9 +81,6 @@ const POSTER_HEIGHT = 475;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 const THEME_STORAGE_KEY = "media-rating-theme";
-const FREE_RANK_RESULT_ANIMATION_MS = 850;
-
-type AppMode = "dashboard" | "free_rank";
 type ThemeMode = "light" | "dark";
 
 export const Route = createFileRoute("/")({
@@ -371,8 +374,6 @@ function Dashboard({
     const [selectedCategoryId, setSelectedCategoryId] = useState(
         initialDashboard.activeBinarySession?.categoryId ?? initialDashboard.categories[0]?.id ?? ""
     );
-    const [appMode, setAppMode] = useState<AppMode>("dashboard");
-    const [displayMode, setDisplayMode] = useState<DisplayMode>("ordered list");
     const [entrySearch, setEntrySearch] = useState("");
     const [activeSessionId, setActiveSessionIdState] = useState<string | null>(initialActiveSessionId);
     const activeSessionIdRef = useRef<string | null>(initialActiveSessionId);
@@ -382,6 +383,7 @@ function Dashboard({
     const [busy, setBusy] = useState(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
+    const [auditPair, setAuditPair] = useState<RandomAuditPair | null>(null);
     const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
@@ -406,22 +408,23 @@ function Dashboard({
             ? selectedCategory.entries.filter((entry) => entry.name.toLowerCase().includes(searchTerm))
             : selectedCategory.entries;
 
-        return orderEntries(entries, displayMode);
-    }, [displayMode, entrySearch, selectedCategory]);
+        return orderEntries(entries, "ordered list");
+    }, [entrySearch, selectedCategory]);
+    const activeStarRatingCurve = selectedCategory?.starRatingCurve ?? dashboard.queueSettings.starRatingCurve;
     const starRatings = useMemo(() => {
         if (!selectedCategory || !dashboard.queueSettings.showStarRatings) {
             return new Map<string, number>();
         }
 
-        return starRatingsByEntryId(selectedCategory.entries, dashboard.queueSettings.starRatingCurve);
+        return starRatingsByEntryId(selectedCategory.entries, activeStarRatingCurve);
     }, [
+        activeStarRatingCurve,
         dashboard.queueSettings.showStarRatings,
-        dashboard.queueSettings.starRatingCurve,
         selectedCategory
     ]);
     const starRatingScale = useMemo(
-        () => starRatingScaleMax(dashboard.queueSettings.starRatingCurve),
-        [dashboard.queueSettings.starRatingCurve]
+        () => starRatingScaleMax(activeStarRatingCurve),
+        [activeStarRatingCurve]
     );
 
     function setActiveBinarySessionId(sessionId: string | null) {
@@ -439,6 +442,10 @@ function Dashboard({
         document.documentElement.dataset.theme = themeMode;
         window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
     }, [themeMode]);
+
+    useEffect(() => {
+        setAuditPair(null);
+    }, [selectedCategoryId]);
 
     useEffect(() => {
         if (
@@ -614,8 +621,10 @@ function Dashboard({
         }
     }
 
-    async function handleQueueSettings(settings: QueueSettings) {
-        startBusy("Saving queue settings...");
+    async function handleQueueSettings(settings: QueueSettings, options: { quiet?: boolean } = {}) {
+        if (!options.quiet) {
+            startBusy("Saving queue settings...");
+        }
         setMessage(null);
 
         try {
@@ -624,7 +633,31 @@ function Dashboard({
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
-            finishBusy();
+            if (!options.quiet) {
+                finishBusy();
+            }
+        }
+    }
+
+    async function handleCategoryStarRatingCurve(
+        categoryId: string,
+        starRatingCurve: QueueSettings["starRatingCurve"] | null,
+        options: { quiet?: boolean } = {}
+    ) {
+        if (!options.quiet) {
+            startBusy("Saving category settings...");
+        }
+        setMessage(null);
+
+        try {
+            await updateCategoryStarRatingCurve({ data: { categoryId, starRatingCurve } });
+            await refresh();
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            if (!options.quiet) {
+                finishBusy();
+            }
         }
     }
 
@@ -737,6 +770,7 @@ function Dashboard({
     async function handleRerank(entryId: string) {
         startBusy("Preparing rerank...");
         setMessage(null);
+        setAuditPair(null);
 
         try {
             const result = await startRerankEntry({ data: { entryId } });
@@ -750,6 +784,47 @@ function Dashboard({
         } finally {
             finishBusy();
         }
+    }
+
+    function handleStartRandomAudit() {
+        if (!selectedCategory || selectedCategory.entries.length < 2 || activeSessionId) {
+            return;
+        }
+
+        const orderedEntries = orderEntries(selectedCategory.entries, "ordered list");
+        const firstIndex = Math.floor(Math.random() * orderedEntries.length);
+        let secondIndex = Math.floor(Math.random() * (orderedEntries.length - 1));
+        if (secondIndex >= firstIndex) {
+            secondIndex += 1;
+        }
+
+        const higherIndex = Math.min(firstIndex, secondIndex);
+        const lowerIndex = Math.max(firstIndex, secondIndex);
+        setMessage(null);
+        setAuditPair({
+            categoryId: selectedCategory.id,
+            categoryName: selectedCategory.name,
+            higherRanked: orderedEntries[higherIndex],
+            lowerRanked: orderedEntries[lowerIndex]
+        });
+        scrollMainToTop();
+    }
+
+    async function handleAuditWinner(winnerId: string) {
+        if (!auditPair) {
+            return;
+        }
+
+        if (winnerId === auditPair.higherRanked.id) {
+            setAuditPair(null);
+            setMessage("Random audit confirmed the current order.");
+            return;
+        }
+
+        const entryId = auditPair.lowerRanked.id;
+        setAuditPair(null);
+        setMessage(`${auditPair.lowerRanked.name} won the audit. Reranking it now.`);
+        await handleRerank(entryId);
     }
 
     async function handleMoveEntry(entryId: string, direction: "up" | "down") {
@@ -919,7 +994,7 @@ function Dashboard({
     }
 
     return (
-        <main className={appMode === "free_rank" ? "free-rank-shell" : "app-shell"} aria-busy={busy}>
+        <main className="app-shell" aria-busy={busy}>
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
             {imagePickerTarget ? (
                 <ImagePickerModal
@@ -940,36 +1015,22 @@ function Dashboard({
                         This permanently removes {categoryDeleteTarget.entries.length} ranked {categoryDeleteTarget.entries.length === 1 ? "entry" : "entries"},
                         {" "}
                         {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length} queued {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length === 1 ? "entry" : "entries"},
-                        {" "}match history, and stored images for this category.
+                        {" "}and stored images for this category.
                     </p>
                 </ConfirmDialog>
             ) : null}
-            {appMode === "free_rank" ? (
-                <FreeRankScreen
-                    categories={dashboard.categories}
-                    onExit={() => setAppMode("dashboard")}
-                    onNeedImage={requestImageForMatch}
-                    onPickImage={(entry, category) => setImagePickerTarget({
-                        kind: "entry",
-                        item: entry,
-                        category
-                    })}
-                    onRanked={async () => {
-                        await refresh();
-                    }}
-                />
-            ) : (
-                <>
-                    <aside className="sidebar">
+            <aside className="sidebar">
                         <div className="sidebar-header">
                             <strong className="brand-title">Media Rating</strong>
                             <AccountMenu
                                 busy={busy}
                                 busyLabel={busyLabel}
                                 listLocked={Boolean(activeSessionId)}
+                                selectedCategory={selectedCategory}
                                 settings={dashboard.queueSettings}
                                 onExport={handleExport}
                                 onImport={handleImport}
+                                onSaveCategoryStarRatingCurve={handleCategoryStarRatingCurve}
                                 onSaveSettings={handleQueueSettings}
                                 onThemeChange={setThemeMode}
                                 themeMode={themeMode}
@@ -1023,18 +1084,15 @@ function Dashboard({
                         <div className="topbar">
                             <div>
                                 <h1>{selectedCategory?.name ?? "Categories"}</h1>
-                                <p className="muted">Ordered list rank is primary. Free-rank Elo is saved separately.</p>
+                                <p className="muted">Ordered list rank is the source of truth.</p>
                             </div>
-                            <div className="row">
-                                <select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as DisplayMode)}>
-                                    <option value="ordered list">Ordered List</option>
-                                    <option value="combined">Combined</option>
-                                    <option value="free_rank">Elo</option>
-                                </select>
-                                <button className="primary" type="button" onClick={() => setAppMode("free_rank")}>
-                                    Switch to Elo Rank Mode
-                                </button>
-                            </div>
+                            <button
+                                disabled={busy || Boolean(activeSessionId) || !selectedCategory || selectedCategory.entries.length < 2}
+                                type="button"
+                                onClick={handleStartRandomAudit}
+                            >
+                                Random Audit
+                            </button>
                         </div>
 
                         {message ? <div className="status">{message}</div> : null}
@@ -1080,8 +1138,17 @@ function Dashboard({
                             />
                         ) : null}
 
+                        {auditPair && !activeSessionId ? (
+                            <RandomAuditPanel
+                                pair={auditPair}
+                                onCancel={() => setAuditPair(null)}
+                                onNeedImage={requestImageForMatch}
+                                onChoose={(winnerId) => void handleAuditWinner(winnerId)}
+                            />
+                        ) : null}
+
                         <section className="entries-grid">
-                            {displayedEntries.map((entry) => (
+                            {selectedCategory ? displayedEntries.map((entry) => (
                                 <EntryCard
                                     entry={entry}
                                     categories={dashboard.categories}
@@ -1106,14 +1173,12 @@ function Dashboard({
                                     onRerank={() => handleRerank(entry.id)}
                                     onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
                                 />
-                            ))}
+                            )) : null}
                         </section>
                         {selectedCategory && displayedEntries.length === 0 ? (
                             <div className="muted">No entries match that search.</div>
                         ) : null}
                     </section>
-                </>
-            )}
         </main>
     );
 }
@@ -1146,32 +1211,6 @@ function readInitialThemeMode(): ThemeMode {
     }
 
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function wait(milliseconds: number) {
-    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-}
-
-async function preloadStoredImages(entries: Entry[]) {
-    if (typeof window === "undefined") {
-        return;
-    }
-
-    const imageUrls = entries
-        .filter((entry) => hasStoredImage(entry.imageKey))
-        .map((entry) => `/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`);
-
-    await Promise.all(imageUrls.map((src) => preloadImage(src)));
-}
-
-function preloadImage(src: string) {
-    return new Promise<void>((resolve) => {
-        const image = new Image();
-        image.decoding = "async";
-        image.onload = () => resolve();
-        image.onerror = () => resolve();
-        image.src = src;
-    });
 }
 
 function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: () => void) {
@@ -1462,9 +1501,11 @@ function AccountMenu({
     busy,
     busyLabel,
     listLocked,
+    selectedCategory,
     settings,
     onExport,
     onImport,
+    onSaveCategoryStarRatingCurve,
     onSaveSettings,
     onThemeChange,
     themeMode,
@@ -1473,10 +1514,16 @@ function AccountMenu({
     busy: boolean;
     busyLabel: string | null;
     listLocked: boolean;
+    selectedCategory: CategoryWithEntries | null;
     settings: QueueSettings;
     onExport: () => Promise<void>;
     onImport: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-    onSaveSettings: (settings: QueueSettings) => Promise<void>;
+    onSaveCategoryStarRatingCurve: (
+        categoryId: string,
+        starRatingCurve: QueueSettings["starRatingCurve"] | null,
+        options?: { quiet?: boolean }
+    ) => Promise<void>;
+    onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
     userName: string;
@@ -1486,7 +1533,17 @@ function AccountMenu({
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
     const [showStarRatings, setShowStarRatings] = useState(settings.showStarRatings);
     const [starCurveText, setStarCurveText] = useState(starRatingCurveToText(settings.starRatingCurve));
+    const [useCategoryStarCurve, setUseCategoryStarCurve] = useState(Boolean(selectedCategory?.starRatingCurve));
+    const [categoryStarCurveText, setCategoryStarCurveText] = useState(
+        starRatingCurveToText(selectedCategory?.starRatingCurve ?? settings.starRatingCurve)
+    );
+    const [globalCurveBuilder, setGlobalCurveBuilder] = useState(() => curveBuilderDefaults(settings.starRatingCurve));
+    const [categoryCurveBuilder, setCategoryCurveBuilder] = useState(() =>
+        curveBuilderDefaults(selectedCategory?.starRatingCurve ?? settings.starRatingCurve)
+    );
     const [starCurveError, setStarCurveError] = useState<string | null>(null);
+    const [categoryStarCurveError, setCategoryStarCurveError] = useState<string | null>(null);
+    const [quickSaving, setQuickSaving] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [activePanel, setActivePanel] = useState<"settings" | "import" | null>(null);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
@@ -1499,8 +1556,15 @@ function AccountMenu({
         setPromptForMissingImages(settings.promptForMissingImages);
         setShowStarRatings(settings.showStarRatings);
         setStarCurveText(starRatingCurveToText(settings.starRatingCurve));
+        setUseCategoryStarCurve(Boolean(selectedCategory?.starRatingCurve));
+        setCategoryStarCurveText(starRatingCurveToText(selectedCategory?.starRatingCurve ?? settings.starRatingCurve));
+        setGlobalCurveBuilder(curveBuilderDefaults(settings.starRatingCurve));
+        setCategoryCurveBuilder(curveBuilderDefaults(selectedCategory?.starRatingCurve ?? settings.starRatingCurve));
         setStarCurveError(null);
+        setCategoryStarCurveError(null);
     }, [
+        selectedCategory?.id,
+        selectedCategory?.starRatingCurve,
         settings.delayDays,
         settings.enabled,
         settings.promptForMissingImages,
@@ -1518,6 +1582,72 @@ function AccountMenu({
         setMenuOpen(false);
     }
 
+    async function saveSettingsImmediately(nextSettings: QueueSettings) {
+        setQuickSaving(true);
+        try {
+            await onSaveSettings(nextSettings, { quiet: true });
+        } finally {
+            setQuickSaving(false);
+        }
+    }
+
+    async function updateToggle<K extends "enabled" | "promptForMissingImages" | "showStarRatings">(
+        key: K,
+        value: QueueSettings[K]
+    ) {
+        if (key === "enabled") {
+            setEnabled(Boolean(value));
+        } else if (key === "promptForMissingImages") {
+            setPromptForMissingImages(Boolean(value));
+        } else {
+            setShowStarRatings(Boolean(value));
+        }
+
+        await saveSettingsImmediately({
+            ...settings,
+            enabled: key === "enabled" ? Boolean(value) : enabled,
+            delayDays,
+            promptForMissingImages: key === "promptForMissingImages" ? Boolean(value) : promptForMissingImages,
+            showStarRatings: key === "showStarRatings" ? Boolean(value) : showStarRatings,
+            starRatingCurve: settings.starRatingCurve
+        });
+    }
+
+    async function updateCategoryCurveEnabled(isEnabled: boolean) {
+        setUseCategoryStarCurve(isEnabled);
+        if (!selectedCategory) {
+            return;
+        }
+
+        if (!isEnabled) {
+            await onSaveCategoryStarRatingCurve(selectedCategory.id, null, { quiet: true });
+            return;
+        }
+
+        try {
+            await onSaveCategoryStarRatingCurve(
+                selectedCategory.id,
+                parseStarRatingCurveText(categoryStarCurveText),
+                { quiet: true }
+            );
+            setCategoryStarCurveError(null);
+        } catch (error) {
+            setCategoryStarCurveError(errorMessage(error));
+        }
+    }
+
+    function applyCurveBuilder(target: "global" | "category") {
+        const builder = target === "global" ? globalCurveBuilder : categoryCurveBuilder;
+        const text = starRatingCurveToText(generateNormalStarRatingCurve(builder));
+        if (target === "global") {
+            setStarCurveText(text);
+            setStarCurveError(null);
+        } else {
+            setCategoryStarCurveText(text);
+            setCategoryStarCurveError(null);
+        }
+    }
+
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         let starRatingCurve: QueueSettings["starRatingCurve"];
@@ -1532,6 +1662,16 @@ function AccountMenu({
             starRatingCurve = settings.starRatingCurve;
         }
 
+        let categoryStarRatingCurve: QueueSettings["starRatingCurve"] | null = null;
+        if (selectedCategory && showStarRatings && useCategoryStarCurve) {
+            try {
+                categoryStarRatingCurve = parseStarRatingCurveText(categoryStarCurveText);
+            } catch (error) {
+                setCategoryStarCurveError(errorMessage(error));
+                return;
+            }
+        }
+
         await onSaveSettings({
             enabled,
             delayDays,
@@ -1539,6 +1679,9 @@ function AccountMenu({
             showStarRatings,
             starRatingCurve
         });
+        if (selectedCategory) {
+            await onSaveCategoryStarRatingCurve(selectedCategory.id, categoryStarRatingCurve);
+        }
         setMenuOpen(false);
     }
 
@@ -1549,7 +1692,12 @@ function AccountMenu({
                 className="account-menu-toggle"
                 ref={floatingMenu.triggerRef}
                 type="button"
-                onClick={() => setMenuOpen((isOpen) => !isOpen)}
+                onClick={() => {
+                    if (!menuOpen) {
+                        setActivePanel(null);
+                    }
+                    setMenuOpen((isOpen) => !isOpen);
+                }}
             >
                 <span className="account-avatar" aria-hidden="true" />
             </button>
@@ -1560,67 +1708,39 @@ function AccountMenu({
                     ref={floatingMenu.panelRef}
                     style={floatingMenu.style}
                 >
-                    <div className="account-menu-header">
-                        <span className="account-avatar large" aria-hidden="true" />
-                        <div>
-                            <strong>{userName}</strong>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setActivePanel((panel) => panel === "settings" ? null : "settings")}
-                    >
-                        Settings
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => onThemeChange(themeMode === "dark" ? "light" : "dark")}
-                    >
-                        Switch to {themeMode === "dark" ? "Light" : "Dark"} Mode
-                    </button>
-                    <button
-                        disabled={importDisabled}
-                        type="button"
-                        onClick={() => setActivePanel((panel) => panel === "import" ? null : "import")}
-                    >
-                        Import xlsx
-                    </button>
-                    <button disabled={busy} type="button" onClick={() => void handleExportClick()}>
-                        Export xlsx
-                    </button>
-                    <button
-                        className="danger menu-danger"
-                        type="button"
-                        onClick={() => signOut().then(() => window.location.assign("/"))}
-                    >
-                        Sign Out
-                    </button>
                     {activePanel === "settings" ? (
-                        <form className="stack account-subpanel" onSubmit={handleSubmit}>
+                        <>
+                            <div className="account-menu-header">
+                                <button className="small-button" type="button" onClick={() => setActivePanel(null)}>
+                                    Back
+                                </button>
+                                <strong>Settings</strong>
+                            </div>
+                            <form className="stack account-subpanel" onSubmit={handleSubmit}>
                             <label className="checkbox-row">
                                 <input
                                     checked={enabled}
-                                    disabled={busy}
+                                    disabled={busy || quickSaving}
                                     type="checkbox"
-                                    onChange={(event) => setEnabled(event.target.checked)}
+                                    onChange={(event) => void updateToggle("enabled", event.target.checked)}
                                 />
                                 <span>Queue new entries</span>
                             </label>
                             <label className="checkbox-row">
                                 <input
                                     checked={promptForMissingImages}
-                                    disabled={busy}
+                                    disabled={busy || quickSaving}
                                     type="checkbox"
-                                    onChange={(event) => setPromptForMissingImages(event.target.checked)}
+                                    onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
                                 />
                                 <span>Prompt for missing images</span>
                             </label>
                             <label className="checkbox-row">
                                 <input
                                     checked={showStarRatings}
-                                    disabled={busy}
+                                    disabled={busy || quickSaving}
                                     type="checkbox"
-                                    onChange={(event) => setShowStarRatings(event.target.checked)}
+                                    onChange={(event) => void updateToggle("showStarRatings", event.target.checked)}
                                 />
                                 <span>Show star ratings</span>
                             </label>
@@ -1637,9 +1757,15 @@ function AccountMenu({
                             </label>
                             {showStarRatings ? (
                                 <details className="stack compact-stack star-curve-editor">
-                                    <summary>Star curve</summary>
+                                    <summary>Global star curve</summary>
+                                    <StarCurveBuilder
+                                        disabled={busy}
+                                        value={globalCurveBuilder}
+                                        onApply={() => applyCurveBuilder("global")}
+                                        onChange={setGlobalCurveBuilder}
+                                    />
                                     <textarea
-                                        aria-label="Star curve"
+                                        aria-label="Global star curve"
                                         disabled={busy}
                                         rows={9}
                                         spellCheck={false}
@@ -1663,20 +1789,170 @@ function AccountMenu({
                                     </button>
                                 </details>
                             ) : null}
+                            {showStarRatings && selectedCategory ? (
+                                <details className="stack compact-stack star-curve-editor">
+                                    <summary>{selectedCategory.name} star curve</summary>
+                                    <label className="checkbox-row">
+                                        <input
+                                            checked={useCategoryStarCurve}
+                                            disabled={busy || quickSaving}
+                                            type="checkbox"
+                                            onChange={(event) => void updateCategoryCurveEnabled(event.target.checked)}
+                                        />
+                                        <span>Use custom curve for this category</span>
+                                    </label>
+                                    {useCategoryStarCurve ? (
+                                        <>
+                                            <StarCurveBuilder
+                                                disabled={busy}
+                                                value={categoryCurveBuilder}
+                                                onApply={() => applyCurveBuilder("category")}
+                                                onChange={setCategoryCurveBuilder}
+                                            />
+                                            <textarea
+                                                aria-label={`${selectedCategory.name} star curve`}
+                                                disabled={busy}
+                                                rows={9}
+                                                spellCheck={false}
+                                                value={categoryStarCurveText}
+                                                onChange={(event) => {
+                                                    setCategoryStarCurveText(event.target.value);
+                                                    setCategoryStarCurveError(null);
+                                                }}
+                                            />
+                                            {categoryStarCurveError ? <div className="status">{categoryStarCurveError}</div> : null}
+                                            <button
+                                                className="small-button"
+                                                disabled={busy}
+                                                type="button"
+                                                onClick={() => {
+                                                    setCategoryStarCurveText(starRatingCurveToText(settings.starRatingCurve));
+                                                    setCategoryStarCurveError(null);
+                                                }}
+                                            >
+                                                Use Global Curve Text
+                                            </button>
+                                        </>
+                                    ) : null}
+                                </details>
+                            ) : null}
                             <button disabled={busy} type="submit">Save Settings</button>
-                        </form>
-                    ) : null}
-                    {activePanel === "import" ? (
-                        <form className="stack account-subpanel" onSubmit={handleImportSubmit}>
+                            </form>
+                        </>
+                    ) : activePanel === "import" ? (
+                        <>
+                            <div className="account-menu-header">
+                                <button className="small-button" type="button" onClick={() => setActivePanel(null)}>
+                                    Back
+                                </button>
+                                <strong>Import Spreadsheet</strong>
+                            </div>
+                            <form className="stack account-subpanel" onSubmit={handleImportSubmit}>
                             <input disabled={importDisabled} name="firstConsumedAt" type="date" />
                             <input disabled={importDisabled} name="workbook" type="file" accept=".xlsx" />
                             <button disabled={importDisabled} type="submit">
                                 {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
                             </button>
-                        </form>
-                    ) : null}
+                            </form>
+                        </>
+                    ) : (
+                        <>
+                            <div className="account-menu-header">
+                                <span className="account-avatar large" aria-hidden="true" />
+                                <div>
+                                    <strong>{userName}</strong>
+                                </div>
+                            </div>
+                            <button type="button" onClick={() => setActivePanel("settings")}>
+                                Settings
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onThemeChange(themeMode === "dark" ? "light" : "dark")}
+                            >
+                                Switch to {themeMode === "dark" ? "Light" : "Dark"} Mode
+                            </button>
+                            <button
+                                disabled={importDisabled}
+                                type="button"
+                                onClick={() => setActivePanel("import")}
+                            >
+                                Import xlsx
+                            </button>
+                            <button disabled={busy} type="button" onClick={() => void handleExportClick()}>
+                                Export xlsx
+                            </button>
+                            <button
+                                className="danger menu-danger"
+                                type="button"
+                                onClick={() => signOut().then(() => window.location.assign("/"))}
+                            >
+                                Sign Out
+                            </button>
+                        </>
+                    )}
                 </div>
             ) : null}
+        </div>
+    );
+}
+
+function StarCurveBuilder({
+    disabled,
+    onApply,
+    onChange,
+    value
+}: {
+    disabled: boolean;
+    onApply: () => void;
+    onChange: (value: StarCurveBuilderState) => void;
+    value: StarCurveBuilderState;
+}) {
+    function update<K extends keyof StarCurveBuilderState>(key: K, nextValue: number) {
+        onChange({ ...value, [key]: nextValue });
+    }
+
+    return (
+        <div className="star-curve-builder">
+            <label>
+                <span className="muted">Max stars</span>
+                <input
+                    disabled={disabled}
+                    min={1}
+                    max={100}
+                    step={0.5}
+                    type="number"
+                    value={value.maxStars}
+                    onChange={(event) => update("maxStars", Number(event.target.value))}
+                />
+            </label>
+            <label>
+                <span className="muted">Average item</span>
+                <input
+                    disabled={disabled}
+                    min={0}
+                    max={value.maxStars}
+                    step={0.1}
+                    type="number"
+                    value={value.averageStars}
+                    onChange={(event) => update("averageStars", Number(event.target.value))}
+                />
+            </label>
+            <label>
+                <span className="muted">Within ±1</span>
+                <input
+                    disabled={disabled}
+                    min={5}
+                    max={98}
+                    step={1}
+                    type="number"
+                    value={value.withinOneStarPercent}
+                    onChange={(event) => update("withinOneStarPercent", Number(event.target.value))}
+                />
+            </label>
+            <button className="small-button" disabled={disabled} type="button" onClick={onApply}>
+                Generate Curve
+            </button>
         </div>
     );
 }
@@ -2326,9 +2602,6 @@ function EntryCard({
                     <strong className="entry-title">#{entry.rankPosition + 1} {entry.name}</strong>
                 )}
                 <div className="metric-row">
-                    <span className="metric">Ordered List {entry.rankPosition + 1}</span>
-                    <span className="metric">Elo {Math.round(entry.freeRankElo)}</span>
-                    <span className="metric">{entry.freeRankWins}-{entry.freeRankLosses}</span>
                     {starRating !== null ? (
                         <span
                             className="metric"
@@ -2485,6 +2758,65 @@ function EntryPoster({ entry }: { entry: Entry }) {
     );
 }
 
+function RandomAuditPanel({
+    pair,
+    onCancel,
+    onChoose,
+    onNeedImage
+}: {
+    pair: RandomAuditPair;
+    onCancel: () => void;
+    onChoose: (winnerId: string) => void;
+    onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
+}) {
+    useEffect(() => {
+        const missingImageEntry = shouldPromptForImage(pair.higherRanked.imageKey)
+            ? pair.higherRanked
+            : shouldPromptForImage(pair.lowerRanked.imageKey)
+                ? pair.lowerRanked
+                : null;
+
+        if (missingImageEntry) {
+            onNeedImage(missingImageEntry, {
+                id: pair.categoryId,
+                name: pair.categoryName
+            });
+        }
+    }, [onNeedImage, pair]);
+
+    return (
+        <section className="rank-panel stack">
+            <div className="toolbar">
+                <div>
+                    <strong>Random Audit · {pair.categoryName}</strong>
+                    <p className="muted rank-meta">Pick the entry you prefer. If the lower-ranked entry wins, it will start a rerank.</p>
+                </div>
+                <button className="small-button" type="button" onClick={onCancel}>
+                    Cancel Audit
+                </button>
+            </div>
+            <div className="match-grid">
+                <button
+                    className="match-choice"
+                    type="button"
+                    onClick={() => onChoose(pair.higherRanked.id)}
+                >
+                    <MatchPoster entry={pair.higherRanked} />
+                    <strong>{pair.higherRanked.name}</strong>
+                </button>
+                <button
+                    className="match-choice"
+                    type="button"
+                    onClick={() => onChoose(pair.lowerRanked.id)}
+                >
+                    <MatchPoster entry={pair.lowerRanked} />
+                    <strong>{pair.lowerRanked.name}</strong>
+                </button>
+            </div>
+        </section>
+    );
+}
+
 function BinaryRankPanel({
     sessionId,
     imageRefreshVersion,
@@ -2603,9 +2935,9 @@ function BinaryRankPanel({
         <section className="rank-panel stack">
             <div className="toolbar">
                 <div>
-                    <strong>Binary Rank · {session.categoryName}</strong>
+                    <strong>{session.phase === "local_repair" ? "Local Repair" : "Binary Rank"} · {session.categoryName}</strong>
                     <p className="muted rank-meta">
-                        Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} matches
+                        Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} comparisons
                     </p>
                 </div>
                 {session.source === "new_entry" || session.source === "rerank_entry" ? (
@@ -2640,244 +2972,6 @@ function BinaryRankPanel({
                 </button>
             </div>
         </section>
-    );
-}
-
-function FreeRankScreen({
-    categories,
-    onExit,
-    onNeedImage,
-    onPickImage,
-    onRanked
-}: {
-    categories: CategoryWithEntries[];
-    onExit: () => void;
-    onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
-    onPickImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
-    onRanked: () => Promise<void>;
-}) {
-    const [categorySelection, setCategorySelection] = useState<string | "any">("any");
-    const [matchup, setMatchup] = useState<FreeRankMatchup | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [ranking, setRanking] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [eloChange, setEloChange] = useState<FreeRankEloChange | null>(null);
-
-    const fetchMatchup = useCallback(async () => {
-        const nextMatchup = await getFreeRankMatchup({ data: { categorySelection } });
-        if (nextMatchup) {
-            await preloadStoredImages([nextMatchup.entryA, nextMatchup.entryB]);
-        }
-        return nextMatchup;
-    }, [categorySelection]);
-
-    const loadMatchup = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
-        if (!quiet) {
-            setLoading(true);
-        }
-        setError(null);
-        try {
-            const nextMatchup = await fetchMatchup();
-            setEloChange(null);
-            setMatchup(nextMatchup);
-        } catch (loadError) {
-            setError(errorMessage(loadError));
-        } finally {
-            if (!quiet) {
-                setLoading(false);
-            }
-        }
-    }, [fetchMatchup]);
-
-    useEffect(() => {
-        void loadMatchup();
-    }, [loadMatchup]);
-
-    useEffect(() => {
-        setMatchup((currentMatchup) => {
-            if (!currentMatchup) {
-                return currentMatchup;
-            }
-
-            const category = categories.find((candidate) => candidate.id === currentMatchup.categoryId);
-            const entryA = category?.entries.find((entry) => entry.id === currentMatchup.entryA.id);
-            const entryB = category?.entries.find((entry) => entry.id === currentMatchup.entryB.id);
-
-            if (!entryA || !entryB) {
-                return currentMatchup;
-            }
-
-            if (entryA === currentMatchup.entryA && entryB === currentMatchup.entryB) {
-                return currentMatchup;
-            }
-
-            return {
-                ...currentMatchup,
-                entryA,
-                entryB
-            };
-        });
-    }, [categories]);
-
-    useEffect(() => {
-        if (!matchup) {
-            return;
-        }
-
-        const missingImageEntry = shouldPromptForImage(matchup.entryA.imageKey)
-            ? matchup.entryA
-            : shouldPromptForImage(matchup.entryB.imageKey)
-                ? matchup.entryB
-                : null;
-
-        if (missingImageEntry) {
-            onNeedImage(missingImageEntry, {
-                id: matchup.categoryId,
-                name: matchup.categoryName
-            });
-        }
-    }, [matchup, onNeedImage]);
-
-    async function chooseWinner(winnerId: string) {
-        if (!matchup) {
-            return;
-        }
-
-        setRanking(true);
-        setError(null);
-        try {
-            const result = await submitFreeRankWinner({
-                data: {
-                    categoryId: matchup.categoryId,
-                    entryAId: matchup.entryA.id,
-                    entryBId: matchup.entryB.id,
-                    winnerId
-                }
-            });
-            setEloChange({
-                entryAId: matchup.entryA.id,
-                entryAChange: result.entryAEloAfter - matchup.entryA.freeRankElo,
-                entryBId: matchup.entryB.id,
-                entryBChange: result.entryBEloAfter - matchup.entryB.freeRankElo
-            });
-            await wait(FREE_RANK_RESULT_ANIMATION_MS);
-            await onRanked();
-            await loadMatchup({ quiet: true });
-        } catch (submitError) {
-            setError(errorMessage(submitError));
-        } finally {
-            setRanking(false);
-        }
-    }
-
-    return (
-        <section className="free-rank-screen stack">
-            <div className="free-rank-topbar">
-                <div>
-                    <h1>Free Rank</h1>
-                    {matchup ? <p className="muted">{matchup.categoryName}</p> : null}
-                </div>
-                <div className="row">
-                    <select value={categorySelection} onChange={(event) => setCategorySelection(event.target.value)}>
-                        <option value="any">Any</option>
-                        {categories.map((category) => (
-                            <option key={category.id} value={category.id}>
-                                {category.name}
-                            </option>
-                        ))}
-                    </select>
-                    <button disabled={loading || ranking} type="button" onClick={() => void loadMatchup()}>Skip</button>
-                    <button type="button" onClick={onExit}>Back to List</button>
-                </div>
-            </div>
-
-            {error ? <div className="status">{error}</div> : null}
-
-            {loading && !matchup ? <div className="status">Loading matchup...</div> : null}
-
-            {matchup ? (
-                <div className="free-rank-match-grid">
-                    <FreeRankChoice
-                        disabled={loading || ranking}
-                        eloChange={eloChange?.entryAId === matchup.entryA.id ? eloChange.entryAChange : null}
-                        entry={matchup.entryA}
-                        onChoose={() => void chooseWinner(matchup.entryA.id)}
-                        onPickImage={() => onPickImage(matchup.entryA, {
-                            id: matchup.categoryId,
-                            name: matchup.categoryName
-                        })}
-                    />
-                    <FreeRankChoice
-                        disabled={loading || ranking}
-                        eloChange={eloChange?.entryBId === matchup.entryB.id ? eloChange.entryBChange : null}
-                        entry={matchup.entryB}
-                        onChoose={() => void chooseWinner(matchup.entryB.id)}
-                        onPickImage={() => onPickImage(matchup.entryB, {
-                            id: matchup.categoryId,
-                            name: matchup.categoryName
-                        })}
-                    />
-                </div>
-            ) : !loading ? (
-                <div className="muted">No active matchup selected.</div>
-            ) : null}
-        </section>
-    );
-}
-
-function FreeRankChoice({
-    disabled,
-    eloChange,
-    entry,
-    onChoose,
-    onPickImage
-}: {
-    disabled: boolean;
-    eloChange: number | null;
-    entry: Entry;
-    onChoose: () => void;
-    onPickImage: () => void;
-}) {
-    return (
-        <article className="free-rank-choice">
-            <div className="free-rank-poster-wrap">
-                <button
-                    className="free-rank-poster-button"
-                    disabled={disabled}
-                    type="button"
-                    onClick={onChoose}
-                >
-                    <MatchPoster entry={entry} />
-                </button>
-                <button
-                    className="free-rank-image-edit"
-                    disabled={disabled}
-                    type="button"
-                    onClick={onPickImage}
-                >
-                    New Image
-                </button>
-            </div>
-            <button
-                className="free-rank-label-button"
-                disabled={disabled}
-                type="button"
-                onClick={onChoose}
-            >
-                <strong>{entry.name}</strong>
-                <span className="free-rank-elo-line">
-                    <small>{Math.round(entry.freeRankElo)} Elo</small>
-                    {eloChange !== null ? (
-                        <span
-                            aria-live="polite"
-                            className={`elo-delta ${eloChange >= 0 ? "positive" : "negative"}`}
-                        >
-                            {formatEloDelta(eloChange)}
-                        </span>
-                    ) : null}
-                </span>
-            </button>
-        </article>
     );
 }
 
@@ -2924,9 +3018,13 @@ function formatRatingNumber(value: number) {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function formatEloDelta(value: number) {
-    const rounded = Math.round(value);
-    return `${rounded >= 0 ? "+" : ""}${rounded}`;
+function curveBuilderDefaults(curve: QueueSettings["starRatingCurve"]): StarCurveBuilderState {
+    return {
+        minStars: 1,
+        maxStars: starRatingScaleMax(curve),
+        averageStars: starRatingForPercentile(0.5, curve),
+        withinOneStarPercent: 75
+    };
 }
 
 function formatDateTime(timestamp: number) {
