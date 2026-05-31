@@ -1,5 +1,3 @@
-export type DisplayMode = "ordered list" | "free_rank" | "combined";
-export type MatchType = "binary_search" | "free_rank";
 export type RankingSource = "new_entry" | "rerank_entry" | "switch_category";
 export type RankingOperationKind = "single" | "random_audit";
 
@@ -11,9 +9,6 @@ export interface Entry {
     imageKey: string | null;
     createdAt: number;
     firstConsumedAt: number | null;
-    freeRankElo: number;
-    freeRankWins: number;
-    freeRankLosses: number;
 }
 
 export interface QueueSettings {
@@ -77,28 +72,6 @@ export interface BinarySessionView {
     lowerBound: number;
     upperBound: number;
     comparisonCount: number;
-}
-
-export interface FreeRankMatchup {
-    categoryId: string;
-    categoryName: string;
-    entryA: Entry;
-    entryB: Entry;
-}
-
-export interface MatchRecord {
-    id: string;
-    categoryId: string;
-    entryAId: string;
-    entryBId: string;
-    winnerId: string;
-    matchType: MatchType;
-    rankingSessionId: string | null;
-    entryAEloBefore: number | null;
-    entryBEloBefore: number | null;
-    entryAEloAfter: number | null;
-    entryBEloAfter: number | null;
-    createdAt: number;
 }
 
 export interface ParsedImportEntry {

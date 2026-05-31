@@ -97,7 +97,7 @@ export const Route = createFileRoute("/")({
         return {
             session,
             authOptions,
-            dashboard: await loadDashboard({ data: { displayMode: "ordered list" } })
+            dashboard: await loadDashboard()
         };
     },
     component: Home
@@ -121,8 +121,6 @@ function AuthPage({
     authOptions
 }: {
     authOptions: {
-        enabled: boolean;
-        inviteCodeRequired: boolean;
         minPasswordLength: number;
     };
 }) {
@@ -153,11 +151,10 @@ function AuthPage({
         const email = String(form.get("email") ?? "");
         const password = String(form.get("password") ?? "");
         const name = String(form.get("name") ?? email);
-        const inviteCode = String(form.get("inviteCode") ?? "");
 
         try {
             if (mode === "signup") {
-                await signUpWithEmail({ email, password, name, inviteCode });
+                await signUpWithEmail({ email, password, name });
             } else {
                 await signIn.email({ email, password, callbackURL: "/" });
             }
@@ -250,33 +247,20 @@ function AuthPage({
                             <button className="primary" type="submit">Sign In</button>
                         </form>
 
-                        {authOptions.enabled ? (
-                            <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signup")}>
-                                <h2>Create Account</h2>
-                                <input name="name" placeholder="Name" autoComplete="name" required />
-                                <input name="email" type="email" placeholder="Email" autoComplete="email" required />
-                                <input
-                                    name="password"
-                                    type="password"
-                                    placeholder="Password"
-                                    autoComplete="new-password"
-                                    minLength={authOptions.minPasswordLength}
-                                    required
-                                />
-                                {authOptions.inviteCodeRequired ? (
-                                    <input
-                                        name="inviteCode"
-                                        type="password"
-                                        placeholder="Invite code"
-                                        autoComplete="off"
-                                        required
-                                    />
-                                ) : null}
-                                <button type="submit">Create Account</button>
-                            </form>
-                        ) : (
-                            <div className="status">Sign up is closed for this deployment.</div>
-                        )}
+                        <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signup")}>
+                            <h2>Create Account</h2>
+                            <input name="name" placeholder="Name" autoComplete="name" required />
+                            <input name="email" type="email" placeholder="Email" autoComplete="email" required />
+                            <input
+                                name="password"
+                                type="password"
+                                placeholder="Password"
+                                autoComplete="new-password"
+                                minLength={authOptions.minPasswordLength}
+                                required
+                            />
+                            <button type="submit">Create Account</button>
+                        </form>
                     </div>
                 )}
             </section>
@@ -338,13 +322,11 @@ function safeJsonParse(text: string) {
 async function signUpWithEmail({
     email,
     password,
-    name,
-    inviteCode
+    name
 }: {
     email: string;
     password: string;
     name: string;
-    inviteCode: string;
 }) {
     const response = await fetch("/api/auth/sign-up/email", {
         method: "POST",
@@ -355,8 +337,7 @@ async function signUpWithEmail({
             email,
             password,
             name,
-            callbackURL: "/",
-            inviteCode
+            callbackURL: "/"
         })
     });
 
@@ -411,7 +392,7 @@ function Dashboard({
             ? selectedCategory.entries.filter((entry) => entry.name.toLowerCase().includes(searchTerm))
             : selectedCategory.entries;
 
-        return orderEntries(entries, "ordered list");
+        return orderEntries(entries);
     }, [entrySearch, selectedCategory]);
     const activeStarRatingCurve = selectedCategory?.starRatingCurve ?? dashboard.queueSettings.starRatingCurve;
     const starRatings = useMemo(() => {
@@ -464,7 +445,7 @@ function Dashboard({
     }, [activeSessionId, dashboard.activeBinarySession]);
 
     async function refresh() {
-        const nextDashboard = await loadDashboard({ data: { displayMode: "ordered list" } });
+        const nextDashboard = await loadDashboard();
         setDashboard(nextDashboard);
         return nextDashboard;
     }
@@ -794,7 +775,7 @@ function Dashboard({
             return;
         }
 
-        const orderedEntries = orderEntries(selectedCategory.entries, "ordered list");
+        const orderedEntries = orderEntries(selectedCategory.entries);
         const firstIndex = Math.floor(Math.random() * orderedEntries.length);
         let secondIndex = Math.floor(Math.random() * (orderedEntries.length - 1));
         if (secondIndex >= firstIndex) {

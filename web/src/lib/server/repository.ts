@@ -1,28 +1,18 @@
 import {
-    DEFAULT_ELO,
     type BubbleRepairState,
-    type FreeRankPairHistory,
     type RankingComparison,
     advanceBubbleRepairState,
     chooseBinaryPivot,
-    eloKFactorForMatchCount,
-    matchCount,
     normalizeStarRatingCurve,
     orderEntries,
-    rankPriorElo,
-    rebaseEloForRankChange,
-    selectFreeRankMatchup,
-    startBubbleRepairState,
-    updateEloPair
+    startBubbleRepairState
 } from "@/lib/ranking";
 import type {
     ActiveBinarySession,
     BinarySessionView,
     CategoryWithEntries,
     DashboardData,
-    DisplayMode,
     Entry,
-    FreeRankMatchup,
     ParsedImport,
     QueuedEntry,
     QueueSettings,
@@ -33,18 +23,12 @@ import { env } from "cloudflare:workers";
 import { NO_IMAGE_KEY, hasStoredImage } from "@/lib/images";
 import { all, assertOwned, first, getDb, newId, now } from "./db";
 
-const FREE_RANK_PAIR_HISTORY_LIMIT = 500;
-
 interface CategoryRow {
     id: string;
     name: string;
     sort_order: number;
     created_at: number;
     star_rating_curve?: string | null;
-}
-
-interface CategoryCountRow extends CategoryRow {
-    entry_count: number;
 }
 
 interface EntryRow {
@@ -55,16 +39,6 @@ interface EntryRow {
     image_key: string | null;
     created_at: number;
     first_consumed_at: number | null;
-    free_rank_elo: number;
-    free_rank_wins: number;
-    free_rank_losses: number;
-}
-
-interface PairHistoryRow {
-    entry_a_id: string;
-    entry_b_id: string;
-    match_count: number;
-    last_matched_at: number | null;
 }
 
 interface ExistingEntryRow {
@@ -183,10 +157,7 @@ interface RankingOperationStateEnvelope {
     randomAudit: RandomAuditOperationState | null;
 }
 
-export async function loadDashboard(
-    userId: string,
-    displayMode: DisplayMode
-): Promise<DashboardData> {
+export async function loadDashboard(userId: string): Promise<DashboardData> {
     const db = getDb();
     await repairInterruptedRankingState(userId);
     const queueSettings = await getQueueSettings(userId);
@@ -211,7 +182,7 @@ export async function loadDashboard(
         db
             .prepare(
                 `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+                first_consumed_at
          FROM entries
          WHERE user_id = ? AND status = 'active'
          ORDER BY category_id ASC, rank_position ASC`
@@ -232,7 +203,7 @@ export async function loadDashboard(
             sortOrder: category.sort_order,
             createdAt: category.created_at,
             starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
-            entries: orderEntries(entriesByCategory.get(category.id) ?? [], displayMode)
+            entries: orderEntries(entriesByCategory.get(category.id) ?? [])
         })),
         queueSettings,
         queuedEntries,
@@ -317,9 +288,6 @@ export async function deleteCategory(userId: string, categoryId: string) {
 
     await db.batch([
         db
-            .prepare(`DELETE FROM matches WHERE user_id = ? AND category_id = ?`)
-            .bind(userId, categoryId),
-        db
             .prepare(`DELETE FROM ranking_sessions WHERE user_id = ? AND category_id = ?`)
             .bind(userId, categoryId),
         db
@@ -402,10 +370,9 @@ export async function createEntryWithBinaryRanking(
             .prepare(
                 `INSERT INTO entries (
            id, user_id, category_id, name, rank_position, status, image_key,
-           created_at, first_consumed_at, free_rank_elo, free_rank_wins,
-           free_rank_losses, updated_at
+           created_at, first_consumed_at, updated_at
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .bind(
                 entryId,
@@ -417,7 +384,6 @@ export async function createEntryWithBinaryRanking(
                 input.imageKey ?? null,
                 createdAt,
                 input.firstConsumedAt,
-                DEFAULT_ELO,
                 createdAt
             )
     ];
@@ -862,7 +828,7 @@ export async function moveEntryOnePosition(
         db
             .prepare(
                 `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+                first_consumed_at
          FROM entries
          WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position = ?`
             )
@@ -1099,12 +1065,6 @@ export async function cancelBinarySession(userId: string, sessionId: string) {
     }
 
     const statements: D1PreparedStatement[] = [
-        db
-            .prepare(
-                `DELETE FROM matches
-         WHERE user_id = ? AND ranking_session_id = ?`
-            )
-            .bind(userId, session.id),
         db
             .prepare(
                 `UPDATE ranking_sessions
@@ -1913,153 +1873,6 @@ async function commitRandomAuditOrder(
     };
 }
 
-export async function getFreeRankMatchup(
-    userId: string,
-    categorySelection: string | "any"
-): Promise<FreeRankMatchup | null> {
-    const db = getDb();
-    let category: CategoryRow | null = null;
-
-    if (categorySelection === "any") {
-        const eligibleCategories = await all<CategoryCountRow>(
-            db
-                .prepare(
-                    `SELECT categories.id, categories.name, categories.sort_order, categories.created_at,
-                COUNT(entries.id) AS entry_count
-         FROM categories
-         INNER JOIN entries
-           ON entries.category_id = categories.id
-          AND entries.user_id = categories.user_id
-          AND entries.status = 'active'
-         WHERE categories.user_id = ?
-         GROUP BY categories.id, categories.name, categories.sort_order, categories.created_at
-         HAVING COUNT(entries.id) >= 2`
-                )
-                .bind(userId)
-        );
-
-        if (eligibleCategories.length === 0) {
-            return null;
-        }
-
-        category = weightedRandomCategory(eligibleCategories);
-    } else {
-        category = await getOwnedCategory(userId, categorySelection);
-        assertOwned(category, "Category");
-    }
-
-    const entries = await listActiveEntries(userId, category.id);
-    const pairHistory = await listFreeRankPairHistory(userId, category.id);
-    return selectFreeRankMatchup([
-        {
-            id: category.id,
-            name: category.name,
-            sortOrder: category.sort_order,
-            createdAt: category.created_at,
-            starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
-            entries
-        }
-    ], category.id, Math.random, {
-        pairHistory,
-        now: now()
-    });
-}
-
-export async function submitFreeRankWinner(
-    userId: string,
-    input: {
-        categoryId: string;
-        entryAId: string;
-        entryBId: string;
-        winnerId: string;
-    }
-) {
-    const db = getDb();
-    const entryA = await getOwnedActiveEntry(userId, input.entryAId);
-    const entryB = await getOwnedActiveEntry(userId, input.entryBId);
-    assertOwned(entryA, "First entry");
-    assertOwned(entryB, "Second entry");
-
-    if (entryA.categoryId !== input.categoryId || entryB.categoryId !== input.categoryId) {
-        throw new Error("Free-rank entries must belong to the selected category");
-    }
-
-    if (entryA.categoryId !== entryB.categoryId) {
-        throw new Error("Free-rank matchups cannot cross categories");
-    }
-
-    if (input.winnerId !== entryA.id && input.winnerId !== entryB.id) {
-        throw new Error("Winner must be one of the matchup entries");
-    }
-
-    const entryAWon = input.winnerId === entryA.id;
-    const elo = entryAWon
-        ? updateEloPair(
-            entryA.freeRankElo,
-            entryB.freeRankElo,
-            eloKFactorForMatchCount(matchCount(entryA)),
-            eloKFactorForMatchCount(matchCount(entryB))
-        )
-        : updateEloPair(
-            entryB.freeRankElo,
-            entryA.freeRankElo,
-            eloKFactorForMatchCount(matchCount(entryB)),
-            eloKFactorForMatchCount(matchCount(entryA))
-        );
-    const entryAEloAfter = entryAWon ? elo.winnerElo : elo.loserElo;
-    const entryBEloAfter = entryAWon ? elo.loserElo : elo.winnerElo;
-    const updatedAt = now();
-
-    await db
-        .prepare(
-            `UPDATE entries
-       SET free_rank_elo = ?,
-           free_rank_wins = free_rank_wins + ?,
-           free_rank_losses = free_rank_losses + ?,
-           updated_at = ?
-       WHERE user_id = ? AND id = ?`
-        )
-        .bind(entryAEloAfter, entryAWon ? 1 : 0, entryAWon ? 0 : 1, updatedAt, userId, entryA.id)
-        .run();
-    await db
-        .prepare(
-            `UPDATE entries
-       SET free_rank_elo = ?,
-           free_rank_wins = free_rank_wins + ?,
-           free_rank_losses = free_rank_losses + ?,
-           updated_at = ?
-       WHERE user_id = ? AND id = ?`
-        )
-        .bind(entryBEloAfter, entryAWon ? 0 : 1, entryAWon ? 1 : 0, updatedAt, userId, entryB.id)
-        .run();
-
-    await db
-        .prepare(
-            `INSERT INTO matches (
-         id, user_id, category_id, entry_a_id, entry_b_id, winner_id,
-         match_type, entry_a_elo_before, entry_b_elo_before,
-         entry_a_elo_after, entry_b_elo_after, created_at
-       )
-       VALUES (?, ?, ?, ?, ?, ?, 'free_rank', ?, ?, ?, ?, ?)`
-        )
-        .bind(
-            newId("match"),
-            userId,
-            input.categoryId,
-            entryA.id,
-            entryB.id,
-            input.winnerId,
-            entryA.freeRankElo,
-            entryB.freeRankElo,
-            entryAEloAfter,
-            entryBEloAfter,
-            updatedAt
-        )
-        .run();
-
-    return { entryAEloAfter, entryBEloAfter };
-}
-
 export async function importLegacyEntries(userId: string, parsedImport: ParsedImport) {
     const db = getDb();
     await assertNoActiveBinarySession(userId);
@@ -2174,18 +1987,15 @@ export async function importLegacyEntries(userId: string, parsedImport: ParsedIm
             knownNames.add(entry.name);
             return true;
         });
-        const finalCategorySize = rankPosition + insertableEntries.length;
-
         for (const entry of insertableEntries) {
             const entryId = newId("entry");
             entryInsertStatements.push(
                 db.prepare(
                     `INSERT OR IGNORE INTO entries (
              id, user_id, category_id, name, rank_position, status, image_key,
-             created_at, first_consumed_at, free_rank_elo, free_rank_wins,
-             free_rank_losses, updated_at
+             created_at, first_consumed_at, updated_at
            )
-           VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 0, 0, ?)`
+           VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
                 )
                     .bind(
                         entryId,
@@ -2196,7 +2006,6 @@ export async function importLegacyEntries(userId: string, parsedImport: ParsedIm
                         null,
                         createdAt,
                         entry.firstConsumedAt,
-                        rankPriorElo(rankPosition, finalCategorySize),
                         createdAt
                     )
             );
@@ -2261,28 +2070,6 @@ function parseStoredCategoryStarRatingCurve(value: string | null | undefined) {
     } catch {
         return null;
     }
-}
-
-function weightedRandomCategory(categories: CategoryCountRow[]) {
-    const weightedCategories = categories.map((category) => ({
-        category,
-        weight: category.entry_count * (category.entry_count - 1) / 2
-    }));
-    const totalWeight = weightedCategories.reduce((total, item) => total + item.weight, 0);
-
-    if (totalWeight <= 0) {
-        return categories[Math.floor(Math.random() * categories.length)];
-    }
-
-    let target = Math.random() * totalWeight;
-    for (const item of weightedCategories) {
-        if (target < item.weight) {
-            return item.category;
-        }
-        target -= item.weight;
-    }
-
-    return weightedCategories[weightedCategories.length - 1].category;
 }
 
 async function listQueuedEntries(userId: string): Promise<QueuedEntry[]> {
@@ -2560,12 +2347,6 @@ async function cancelStaleActiveRankingSessions(userId: string) {
         }
 
         statements.push(
-            db
-                .prepare(
-                    `DELETE FROM matches
-           WHERE user_id = ? AND ranking_session_id = ?`
-                )
-                .bind(userId, session.id),
             db
                 .prepare(
                     `UPDATE ranking_sessions
@@ -2914,8 +2695,7 @@ function placeRankedEntryStatements(
     entryId: string,
     categoryId: string,
     rankPosition: number,
-    updatedAt: number,
-    freeRankElo: number | null = null
+    updatedAt: number
 ) {
     return [
         db
@@ -2930,39 +2710,11 @@ function placeRankedEntryStatements(
                 `UPDATE entries
        SET status = 'active',
            rank_position = ?,
-           free_rank_elo = COALESCE(?, free_rank_elo),
            updated_at = ?
        WHERE user_id = ? AND id = ?`
             )
-            .bind(rankPosition, freeRankElo, updatedAt, userId, entryId)
+            .bind(rankPosition, updatedAt, userId, entryId)
     ];
-}
-
-function freeRankEloForBinaryPlacement(
-    session: SessionRow,
-    entry: Entry,
-    finalRankPosition: number,
-    finalCategorySize: number
-) {
-    if (session.source === "new_entry") {
-        return rankPriorElo(finalRankPosition, finalCategorySize);
-    }
-
-    if (session.source === "rerank_entry") {
-        return rebaseEloForRankChange(
-            entry.freeRankElo,
-            session.final_rank_position ?? entry.rankPosition,
-            finalCategorySize,
-            finalRankPosition,
-            finalCategorySize
-        );
-    }
-
-    if (session.source === "switch_category" && matchCount(entry) === 0) {
-        return rankPriorElo(finalRankPosition, finalCategorySize);
-    }
-
-    return null;
 }
 
 function normalizeOperationKind(value: string | null | undefined): RankingOperationKind {
@@ -3231,12 +2983,6 @@ async function cancelRandomAuditSession(
     }
 
     await db.batch([
-        db
-            .prepare(
-                `DELETE FROM matches
-         WHERE user_id = ? AND ranking_session_id = ?`
-            )
-            .bind(userId, session.id),
         ...rewriteCategoryOrderStatements(db, userId, session.category_id, orderedIds, updatedAt),
         db
             .prepare(
@@ -3267,7 +3013,7 @@ async function getOwnedEntry(userId: string, entryId: string) {
         getDb()
             .prepare(
                 `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+                first_consumed_at
          FROM entries
          WHERE user_id = ? AND id = ? AND status != 'deleted'`
             )
@@ -3282,7 +3028,7 @@ async function getOwnedEntryIncludingDeleted(userId: string, entryId: string) {
         getDb()
             .prepare(
                 `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+                first_consumed_at
          FROM entries
          WHERE user_id = ? AND id = ?`
             )
@@ -3297,7 +3043,7 @@ async function getOwnedActiveEntry(userId: string, entryId: string) {
         getDb()
             .prepare(
                 `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+                first_consumed_at
          FROM entries
          WHERE user_id = ? AND id = ? AND status = 'active'`
             )
@@ -3312,7 +3058,7 @@ async function listActiveEntries(userId: string, categoryId: string, excludedEnt
         getDb()
             .prepare(
                 `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at, free_rank_elo, free_rank_wins, free_rank_losses
+                first_consumed_at
          FROM entries
          WHERE user_id = ? AND category_id = ? AND status = 'active'
            AND (? IS NULL OR id != ?)
@@ -3322,39 +3068,6 @@ async function listActiveEntries(userId: string, categoryId: string, excludedEnt
     );
 
     return rows.map(mapEntry);
-}
-
-async function listFreeRankPairHistory(userId: string, categoryId: string): Promise<FreeRankPairHistory[]> {
-    const rows = await all<PairHistoryRow>(
-        getDb()
-            .prepare(
-                `SELECT
-           CASE WHEN entry_a_id < entry_b_id THEN entry_a_id ELSE entry_b_id END AS entry_a_id,
-           CASE WHEN entry_a_id < entry_b_id THEN entry_b_id ELSE entry_a_id END AS entry_b_id,
-           COUNT(*) AS match_count,
-           MAX(created_at) AS last_matched_at
-         FROM (
-           SELECT entry_a_id, entry_b_id, created_at
-           FROM matches
-           WHERE user_id = ?
-             AND category_id = ?
-             AND match_type = 'free_rank'
-           ORDER BY created_at DESC
-           LIMIT ?
-         )
-         GROUP BY
-           CASE WHEN entry_a_id < entry_b_id THEN entry_a_id ELSE entry_b_id END,
-           CASE WHEN entry_a_id < entry_b_id THEN entry_b_id ELSE entry_a_id END`
-            )
-            .bind(userId, categoryId, FREE_RANK_PAIR_HISTORY_LIMIT)
-    );
-
-    return rows.map((row) => ({
-        entryAId: row.entry_a_id,
-        entryBId: row.entry_b_id,
-        matchCount: row.match_count,
-        lastMatchedAt: row.last_matched_at
-    }));
 }
 
 async function getActiveEntryCount(userId: string, categoryId: string) {
@@ -3393,10 +3106,7 @@ function mapEntry(row: EntryRow): Entry {
         rankPosition: row.rank_position,
         imageKey: row.image_key,
         createdAt: row.created_at,
-        firstConsumedAt: row.first_consumed_at,
-        freeRankElo: row.free_rank_elo,
-        freeRankWins: row.free_rank_wins,
-        freeRankLosses: row.free_rank_losses
+        firstConsumedAt: row.first_consumed_at
     };
 }
 

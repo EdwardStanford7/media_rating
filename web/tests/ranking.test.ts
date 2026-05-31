@@ -2,24 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
     chooseBinaryPivot,
     advanceBubbleRepairState,
-    combinedOrder,
-    eloKFactorForMatchCount,
     generateNormalStarRatingCurve,
     parseStarRatingCurveText,
-    rankPriorElo,
     recordBinaryChoice,
     recordLocalRepairChoice,
-    rebaseEloForRankChange,
-    selectFreeRankMatchup,
     startBinaryState,
     startBubbleRepairState,
     startLocalRepairState,
-    starRatingForCombinedRank,
+    starRatingForRank,
     starRatingScaleMax,
-    starRatingsByEntryId,
-    updateEloPair
+    starRatingsByEntryId
 } from "../src/lib/ranking";
-import type { CategoryWithEntries, Entry } from "../src/lib/types";
+import type { Entry } from "../src/lib/types";
 
 describe("pure binary ranking", () => {
     it("places a new entry at the top", () => {
@@ -187,169 +181,19 @@ describe("bubble repair ranking", () => {
     });
 });
 
-describe("free-rank Elo", () => {
-    it("raises the winner and lowers the loser from equal ratings", () => {
-        const result = updateEloPair(1500, 1500);
-        expect(result.winnerElo).toBe(1516);
-        expect(result.loserElo).toBe(1484);
-    });
-
-    it("can update new entries faster with a higher early K-factor", () => {
-        expect(eloKFactorForMatchCount(0)).toBeGreaterThan(eloKFactorForMatchCount(40));
-
-        const result = updateEloPair(
-            1500,
-            1500,
-            eloKFactorForMatchCount(0),
-            eloKFactorForMatchCount(0)
-        );
-        expect(result.winnerElo).toBe(1532);
-        expect(result.loserElo).toBe(1468);
-    });
-});
-
-describe("rank prior Elo", () => {
-    it("seeds top, middle, and bottom entries from binary rank", () => {
-        expect(rankPriorElo(0, 101)).toBe(1900);
-        expect(rankPriorElo(50, 101)).toBe(1500);
-        expect(rankPriorElo(100, 101)).toBe(1100);
-    });
-
-    it("preserves free-rank residual when binary rank changes", () => {
-        const currentElo = rankPriorElo(40, 101) + 75;
-        const rebased = rebaseEloForRankChange(currentElo, 40, 101, 20, 101);
-        expect(rebased).toBe(rankPriorElo(20, 101) + 75);
-    });
-});
-
-describe("free-rank matchup selection", () => {
-    it("picks a random eligible category when category is Any", () => {
-        const categories = [
-            category("Books", [entry("a", 0)]),
-            category("Movies", [entry("b", 0), entry("c", 1)]),
-            category("Games", [entry("d", 0), entry("e", 1)])
-        ];
-
-        const matchup = selectFreeRankMatchup(categories, "any", () => 0.75);
-        expect(matchup?.categoryName).toBe("Games");
-        expect(matchup?.entryA.id).not.toBe(matchup?.entryB.id);
-    });
-
-    it("returns null when the selected category has fewer than two entries", () => {
-        const categories = [category("Books", [entry("a", 0)])];
-        expect(selectFreeRankMatchup(categories, categories[0].id, () => 0)).toBeNull();
-    });
-
-    it("weights Any category selection by possible matchup count", () => {
-        const categories = [
-            category("Small", [entry("a", 0), entry("b", 1)]),
-            category("Large", [entry("c", 0), entry("d", 1), entry("e", 2), entry("f", 3)])
-        ];
-        const random = sequenceRandom([0.2, 0, 0]);
-
-        const matchup = selectFreeRankMatchup(categories, "any", random);
-        expect(matchup?.categoryName).toBe("Large");
-    });
-
-    it("prefers entries with fewer free-rank matches inside the selected category", () => {
-        const categories = [
-            category("Books", [
-                entry("new", 0, 1500, 0, 0),
-                entry("veteran", 1, 1500, 99, 0),
-                entry("middle", 2, 1500, 8, 0)
-            ])
-        ];
-        const random = sequenceRandom([0, 0.4, 0]);
-
-        const matchup = selectFreeRankMatchup(categories, "any", random);
-        expect(matchup?.entryA.id).toBe("new");
-        expect(matchup?.entryB.id).toBe("veteran");
-    });
-
-    it("prefers closer-ranked opponents once the anchor has enough matches", () => {
-        const categories = [
-            category("Books", [
-                entry("anchor", 0, 1900, 30, 0),
-                entry("near", 1, 1840, 30, 0),
-                entry("far", 2, 1100, 30, 0)
-            ])
-        ];
-        const random = sequenceRandom([0, 0, 0.55]);
-
-        const matchup = selectFreeRankMatchup(categories, "books", random);
-        expect(matchup?.entryA.id).toBe("anchor");
-        expect(matchup?.entryB.id).toBe("near");
-    });
-
-    it("penalizes recently repeated free-rank pairs", () => {
-        const categories = [
-            category("Books", [
-                entry("anchor", 0, 1900, 30, 0),
-                entry("repeated", 1, 1840, 30, 0),
-                entry("fresh", 2, 1800, 30, 0)
-            ])
-        ];
-        const random = sequenceRandom([0, 0, 0.1]);
-
-        const matchup = selectFreeRankMatchup(categories, "books", random, {
-            now: 10_000,
-            pairHistory: [
-                {
-                    entryAId: "anchor",
-                    entryBId: "repeated",
-                    matchCount: 5,
-                    lastMatchedAt: 10_000
-                }
-            ]
-        });
-        expect(matchup?.entryA.id).toBe("anchor");
-        expect(matchup?.entryB.id).toBe("fresh");
-    });
-});
-
-describe("combined order", () => {
-    it("keeps binary order dominant with bounded Elo movement", () => {
-        const entries = Array.from({ length: 20 }, (_, index) =>
-            entry(
-                String(index),
-                index,
-                index === 19 ? rankPriorElo(index, 20) + 600 : rankPriorElo(index, 20),
-                10,
-                0
-            )
-        );
-
-        const ordered = combinedOrder(entries);
-        const movedEntryIndex = ordered.findIndex((candidate) => candidate.id === "19");
-        expect(movedEntryIndex).toBeGreaterThanOrEqual(17);
-        expect(movedEntryIndex).toBeLessThan(19);
-    });
-
-    it("uses residual Elo against binary rank prior", () => {
-        const entries = Array.from({ length: 20 }, (_, index) =>
-            entry(String(index), index, rankPriorElo(index, 20), 20, 0)
-        );
-
-        const ordered = combinedOrder(entries);
-        expect(ordered.map((candidate) => candidate.id)).toEqual(
-            entries.map((candidate) => candidate.id)
-        );
-    });
-});
-
 describe("derived star ratings", () => {
-    it("maps combined rank to the default skewed percentile star curve", () => {
-        expect(starRatingForCombinedRank(0, 287)).toBe(5);
-        expect(starRatingForCombinedRank(286, 287)).toBe(1);
-        expect(starRatingForCombinedRank(29, 287)).toBeCloseTo(4.7, 1);
-        expect(starRatingForCombinedRank(143, 287)).toBeCloseTo(3.7, 1);
+    it("maps ordered-list rank to the default skewed percentile star curve", () => {
+        expect(starRatingForRank(0, 287)).toBe(5);
+        expect(starRatingForRank(286, 287)).toBe(1);
+        expect(starRatingForRank(29, 287)).toBeCloseTo(4.7, 1);
+        expect(starRatingForRank(143, 287)).toBeCloseTo(3.7, 1);
     });
 
     it("supports a configurable star curve", () => {
         const curve = parseStarRatingCurveText("0 10\n50 7\n100 1");
         expect(starRatingScaleMax(curve)).toBe(10);
-        expect(starRatingForCombinedRank(5, 11, curve)).toBe(7);
-        expect(starRatingForCombinedRank(10, 11, curve)).toBe(1);
+        expect(starRatingForRank(5, 11, curve)).toBe(7);
+        expect(starRatingForRank(10, 11, curve)).toBe(1);
     });
 
     it("can generate a normal-distribution-style curve from simple settings", () => {
@@ -361,45 +205,22 @@ describe("derived star ratings", () => {
         });
 
         expect(starRatingScaleMax(curve)).toBe(5);
-        expect(starRatingForCombinedRank(0, 101, curve)).toBe(5);
-        expect(starRatingForCombinedRank(50, 101, curve)).toBe(4);
-        expect(starRatingForCombinedRank(100, 101, curve)).toBe(1);
+        expect(starRatingForRank(0, 101, curve)).toBe(5);
+        expect(starRatingForRank(50, 101, curve)).toBe(4);
+        expect(starRatingForRank(100, 101, curve)).toBe(1);
     });
 
-    it("uses ordered-list position rather than Elo state", () => {
+    it("uses ordered-list position", () => {
         const entries = Array.from({ length: 20 }, (_, index) =>
-            entry(
-                String(index),
-                index,
-                index === 19 ? rankPriorElo(index, 20) + 600 : rankPriorElo(index, 20),
-                10,
-                0
-            )
+            entry(String(index), index)
         );
 
         const ratings = starRatingsByEntryId(entries);
-        expect(ratings.get("19")).toBe(starRatingForCombinedRank(19, 20));
+        expect(ratings.get("19")).toBe(starRatingForRank(19, 20));
     });
 });
 
-function category(name: string, entries: Entry[]): CategoryWithEntries {
-    return {
-        id: name.toLowerCase(),
-        name,
-        sortOrder: 0,
-        createdAt: 0,
-        starRatingCurve: null,
-        entries
-    };
-}
-
-function entry(
-    id: string,
-    rankPosition: number,
-    freeRankElo = 1500,
-    freeRankWins = 0,
-    freeRankLosses = 0
-): Entry {
+function entry(id: string, rankPosition: number): Entry {
     return {
         id,
         categoryId: "category",
@@ -407,14 +228,6 @@ function entry(
         rankPosition,
         imageKey: null,
         createdAt: 0,
-        firstConsumedAt: null,
-        freeRankElo,
-        freeRankWins,
-        freeRankLosses
+        firstConsumedAt: null
     };
-}
-
-function sequenceRandom(values: number[]) {
-    let index = 0;
-    return () => values[Math.min(index++, values.length - 1)];
 }

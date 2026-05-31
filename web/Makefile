@@ -4,9 +4,9 @@ R2_BUCKET = media-rating-images
 
 .PHONY: help install check test typecheck build dev preview audit password-reset-link password-reset-link-local \
 	auth-clear-rate-limits auth-clear-rate-limits-local \
-	cf-login cf-whoami cf-create-d1 cf-create-r2 cf-secret-auth cf-secret-signup-invite \
+	cf-login cf-whoami cf-create-d1 cf-create-r2 cf-secret-auth \
 	cf-secret-password-reset \
-	cf-migrate-local cf-migrate-remote cf-reset-free-rank-remote \
+	cf-migrate-local cf-migrate-remote \
 	verify-deploy-config deploy deploy-first
 
 help:
@@ -27,13 +27,11 @@ help:
 	@echo "  make cf-create-d1         Create D1 database and update wrangler.jsonc"
 	@echo "  make cf-create-r2         Create R2 bucket and update wrangler.jsonc"
 	@echo "  make cf-secret-auth       Generate and set BETTER_AUTH_SECRET"
-	@echo "  make cf-secret-signup-invite Generate and set optional signup invite code"
 	@echo "  make cf-secret-password-reset Set Resend password reset email secrets"
-	@echo "  make cf-reset-free-rank-remote Reset remote free-rank Elo/matches after confirmation"
 	@echo ""
 	@echo "Deploy:"
 	@echo "  make verify-deploy-config Validate wrangler.jsonc production settings"
-	@echo "  make deploy               Verify, migrate remote D1, and deploy"
+	@echo "  make deploy               Verify, deploy, and migrate remote D1"
 	@echo "  make deploy-first         Run the first-time Cloudflare setup sequence"
 
 install:
@@ -89,14 +87,6 @@ cf-create-r2:
 cf-secret-auth:
 	openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET
 
-cf-secret-signup-invite:
-	@echo "Optional. Use this only if you want to create additional accounts after the first user."
-	@code=$$(openssl rand -hex 12); \
-	printf "%s" "$$code" | npx wrangler secret put SIGNUP_INVITE_CODE; \
-	echo ""; \
-	echo "Generated SIGNUP_INVITE_CODE: $$code"; \
-	echo "Save this code now. Wrangler will not show it again."
-
 cf-secret-password-reset:
 	@echo "Set these after creating a Resend API key and verified sender/domain."
 	npx wrangler secret put RESEND_API_KEY
@@ -108,25 +98,15 @@ cf-migrate-local:
 cf-migrate-remote:
 	npm run db:migrate:remote
 
-cf-reset-free-rank-remote:
-	@echo "This deletes all remote free-rank matches and resets Elo/wins/losses for every non-deleted entry."
-	@printf "Type RESET to continue: "; \
-	read answer; \
-	if [ "$$answer" = "RESET" ]; then \
-		npx wrangler d1 execute $(D1_NAME) --remote --file scripts/reset-free-rank-data.sql; \
-	else \
-		echo "Cancelled."; \
-	fi
-
 verify-deploy-config:
 	node scripts/verify-deploy-config.mjs
 
-deploy: verify-deploy-config check cf-migrate-remote
+deploy: verify-deploy-config check
 	npm run deploy
+	$(MAKE) cf-migrate-remote
 
 deploy-first: install cf-login cf-create-d1 cf-create-r2 cf-secret-auth
 	@echo ""
 	@echo "Before running make deploy:"
 	@echo "1. Set vars.BETTER_AUTH_URL in wrangler.jsonc to your production HTTPS URL."
 	@echo "2. Run make deploy."
-	@echo "3. Optional: run make cf-secret-signup-invite if you need to invite additional accounts."

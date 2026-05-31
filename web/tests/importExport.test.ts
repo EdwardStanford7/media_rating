@@ -45,9 +45,6 @@ function entry(name: string, rankPosition: number): Entry {
         rankPosition,
         imageKey: null,
         createdAt: 0,
-        firstConsumedAt: null,
-        freeRankElo: 1500,
-        freeRankWins: 0,
-        freeRankLosses: 0
+        firstConsumedAt: null
     };
 }

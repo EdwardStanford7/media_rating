@@ -4,8 +4,6 @@ declare namespace Cloudflare {
         IMAGES: R2Bucket;
         BETTER_AUTH_URL: string;
         BETTER_AUTH_SECRET: string;
-        SIGNUP_INVITE_CODE?: string;
-        ALLOW_PUBLIC_SIGNUPS?: string;
         RESEND_API_KEY?: string;
         PASSWORD_RESET_FROM_EMAIL?: string;
     }

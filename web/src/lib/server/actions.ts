@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { auth, getEmailSignUpOptions } from "./auth";
-import type { DisplayMode, ParsedImport, StarRatingCurvePoint } from "@/lib/types";
+import type { ParsedImport, StarRatingCurvePoint } from "@/lib/types";
 
 export const getAuthOptions = createServerFn({ method: "GET" }).handler(getEmailSignUpOptions);
 
@@ -11,11 +11,10 @@ export const getSession = createServerFn({ method: "GET" }).handler(async () => 
 });
 
 export const loadDashboard = createServerFn({ method: "GET" })
-    .inputValidator((data: { displayMode?: DisplayMode } | undefined) => data ?? {})
-    .handler(async ({ data }) => {
+    .handler(async () => {
         const user = await requireUser();
         const repo = await import("./repository");
-        return repo.loadDashboard(user.id, data.displayMode ?? "ordered list");
+        return repo.loadDashboard(user.id);
     });
 
 export const createCategory = createServerFn({ method: "POST" })
