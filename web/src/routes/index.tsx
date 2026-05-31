@@ -1110,17 +1110,24 @@ function Dashboard({
 
                 {message ? <div className="status">{message}</div> : null}
 
-                {selectedCategory ? (
-                    <>
-                        <form className="panel form-row" onSubmit={handleCreateEntry}>
-                            <input disabled={busy || Boolean(activeSessionId)} name="name" placeholder="New entry" required />
-                            <input disabled={busy || Boolean(activeSessionId)} name="firstConsumedAt" type="date" />
-                            <button className="primary" disabled={busy || Boolean(activeSessionId)} type="submit">
-                                {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
-                            </button>
+                {selectedCategory && !activeSessionId ? (
+                    <div className="entry-control-stack">
+                        <form className="entry-create-form" onSubmit={handleCreateEntry}>
+                            <input disabled={busy} name="name" placeholder="New entry" required />
+                            <div className="entry-create-row">
+                                <input
+                                    className="date-input"
+                                    disabled={busy}
+                                    name="firstConsumedAt"
+                                    type="date"
+                                />
+                                <button className="primary" disabled={busy} type="submit">
+                                    {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
+                                </button>
+                            </div>
                         </form>
 
-                        <div className="panel search-panel">
+                        <div className="entry-search-row">
                             <input
                                 aria-label="Search entries"
                                 value={entrySearch}
@@ -1128,7 +1135,7 @@ function Dashboard({
                                 onChange={(event) => setEntrySearch(event.target.value)}
                             />
                         </div>
-                    </>
+                    </div>
                 ) : null}
 
                 {activeSessionId ? (
@@ -2014,15 +2021,18 @@ function QueuePanel({
             </div>
             <div className="queue-rank-actions">
                 <button
-                    className="primary"
-                    disabled={busy || Boolean(activeSessionId) || readyEntries.length === 0 || queueRankMode}
+                    className={queueRankMode ? undefined : "primary"}
+                    disabled={queueRankMode ? false : busy || Boolean(activeSessionId) || readyEntries.length === 0}
                     type="button"
-                    onClick={() => void onStartQueue()}
+                    onClick={() => {
+                        if (queueRankMode) {
+                            onStopQueue();
+                        } else {
+                            void onStartQueue();
+                        }
+                    }}
                 >
-                    Rank Queue
-                </button>
-                <button disabled={!queueRankMode} type="button" onClick={onStopQueue}>
-                    Stop Queue
+                    {queueRankMode ? "Stop Ranking Queue" : "Rank Queue"}
                 </button>
             </div>
 

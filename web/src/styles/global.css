@@ -215,6 +215,11 @@ textarea {
     flex: 1 1 12rem;
 }
 
+.form-row .date-input {
+    width: 10.5rem;
+    flex: 0 0 10.5rem;
+}
+
 .topbar,
 .toolbar {
     justify-content: space-between;
@@ -244,10 +249,6 @@ textarea {
 .rank-panel,
 .auth-panel {
     padding: 1rem;
-}
-
-.search-panel {
-    padding: 0.75rem;
 }
 
 .auth-page {
@@ -453,8 +454,38 @@ textarea {
 
 .queue-rank-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.45rem;
+}
+
+.entry-control-stack {
+    display: grid;
+    gap: 0.7rem;
+    width: min(34.5rem, 100%);
+    justify-items: stretch;
+}
+
+.entry-create-form,
+.entry-search-row {
+    display: grid;
+    gap: 0.5rem;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.entry-create-row {
+    display: grid;
+    grid-template-columns: minmax(10.5rem, 1fr) auto;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.entry-create-row .date-input {
+    width: 100%;
+    min-width: 0;
+    flex: none;
+}
+
+.entry-search-row input {
+    width: 100%;
 }
 
 .compact-stack {
@@ -995,5 +1026,9 @@ img.match-poster {
     .form-row {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .entry-create-row {
+        grid-template-columns: 1fr;
     }
 }
