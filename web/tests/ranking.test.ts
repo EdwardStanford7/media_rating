@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
     chooseBinaryPivot,
     advanceBubbleRepairState,
+    advanceRandomAuditBubbleState,
     generateNormalStarRatingCurve,
     parseStarRatingCurveText,
     recordBinaryChoice,
     recordLocalRepairChoice,
+    selectRandomAuditIndexes,
     startBinaryState,
     startBubbleRepairState,
+    startRandomAuditBubbleState,
     startLocalRepairState,
     starRatingForRank,
     starRatingScaleMax,
@@ -178,6 +181,59 @@ describe("bubble repair ranking", () => {
             { winnerId: "b-", loserId: "d" }
         ]);
         expect(secondStep.state.currentComparison).not.toEqual(firstStep.state.currentComparison);
+    });
+});
+
+describe("random audit ranking", () => {
+    it("selects bounded pairs with a close-rank bias", () => {
+        expect(selectRandomAuditIndexes(1)).toBeNull();
+        expect(selectRandomAuditIndexes(5, () => 0)).toEqual({
+            higherIndex: 0,
+            lowerIndex: 1
+        });
+
+        const farPair = selectRandomAuditIndexes(5, () => 0.999);
+        expect(farPair).toEqual({
+            higherIndex: 0,
+            lowerIndex: 4
+        });
+    });
+
+    it("repairs a failed audit by bubbling the lower entry up and the higher entry down", () => {
+        let state = startRandomAuditBubbleState(["a", "b", "c", "d", "e"], "b", "d");
+        const comparisons = [
+            { winnerId: "d", loserId: "b" },
+            { winnerId: "d", loserId: "c" },
+            { winnerId: "a", loserId: "d" },
+            { winnerId: "c", loserId: "b" },
+            { winnerId: "b", loserId: "e" }
+        ];
+
+        const result = advanceRandomAuditBubbleState(state, comparisons);
+        state = result.state;
+
+        expect(result.complete).toBe(true);
+        expect(state.workingOrderIds).toEqual(["a", "d", "c", "b", "e"]);
+    });
+
+    it("prompts only for missing audit bubble comparisons", () => {
+        const state = startRandomAuditBubbleState(["a", "b", "c", "d"], "b", "d");
+        const firstStep = advanceRandomAuditBubbleState(state, [
+            { winnerId: "d", loserId: "b" },
+            { winnerId: "d", loserId: "c" }
+        ]);
+
+        expect(firstStep.complete).toBe(false);
+        expect(firstStep.state.currentComparison).toEqual({
+            entryAId: "d",
+            entryBId: "a"
+        });
+
+        const secondStep = advanceRandomAuditBubbleState(firstStep.state, [
+            { winnerId: "d", loserId: "b" },
+            { winnerId: "d", loserId: "c" }
+        ]);
+        expect(secondStep.state.currentComparison).toEqual(firstStep.state.currentComparison);
     });
 });
 

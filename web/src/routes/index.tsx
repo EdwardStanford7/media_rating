@@ -34,6 +34,7 @@ import {
     generateNormalStarRatingCurve,
     orderEntries,
     parseStarRatingCurveText,
+    selectRandomAuditIndexes,
     starRatingForPercentile,
     starRatingScaleMax,
     starRatingCurveToText,
@@ -776,14 +777,12 @@ function Dashboard({
         }
 
         const orderedEntries = orderEntries(selectedCategory.entries);
-        const firstIndex = Math.floor(Math.random() * orderedEntries.length);
-        let secondIndex = Math.floor(Math.random() * (orderedEntries.length - 1));
-        if (secondIndex >= firstIndex) {
-            secondIndex += 1;
+        const auditIndexes = selectRandomAuditIndexes(orderedEntries.length);
+        if (!auditIndexes) {
+            return;
         }
 
-        const higherIndex = Math.min(firstIndex, secondIndex);
-        const lowerIndex = Math.max(firstIndex, secondIndex);
+        const { higherIndex, lowerIndex } = auditIndexes;
         const displayEntries = Math.random() < 0.5
             ? [orderedEntries[higherIndex], orderedEntries[lowerIndex]]
             : [orderedEntries[lowerIndex], orderedEntries[higherIndex]];
