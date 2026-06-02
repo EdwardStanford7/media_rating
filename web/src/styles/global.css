@@ -282,9 +282,9 @@ textarea {
 
 .category-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.4rem;
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
+    position: relative;
 }
 
 .category-button {
@@ -312,17 +312,17 @@ textarea {
     gap: 0.45rem;
 }
 
-.category-menu {
-    position: relative;
-}
-
-.category-menu-button {
-    width: 2.4rem;
-    padding-inline: 0;
-}
-
 .category-menu-panel {
     min-width: 9rem;
+}
+
+.context-menu-host {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    overflow: visible;
 }
 
 .floating-menu-panel {
@@ -520,6 +520,7 @@ textarea {
     gap: 0.55rem;
     min-width: 0;
     padding: 0.65rem;
+    position: relative;
     border: 1px solid var(--line);
     border-radius: 6px;
     background: var(--subtle-panel);
@@ -576,19 +577,6 @@ img.queue-poster {
     flex: 1 1 7rem;
 }
 
-.queue-actions>.queue-menu {
-    flex: 0 0 2.4rem;
-}
-
-.queue-menu {
-    position: relative;
-}
-
-.queue-menu-button {
-    width: 2.4rem;
-    padding-inline: 0;
-}
-
 .queue-overflow-panel {
     min-width: 9rem;
 }
@@ -615,6 +603,7 @@ img.queue-poster {
 
 .entry-card {
     overflow: visible;
+    position: relative;
 }
 
 .entry-poster,
@@ -712,7 +701,7 @@ img.match-poster {
 }
 
 .entry-actions.card-actions {
-    grid-template-columns: minmax(0, 1fr) 1.8rem minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) 1.8rem minmax(0, 1fr);
     gap: 0.35rem;
 }
 
@@ -733,15 +722,6 @@ img.match-poster {
 
 .entry-actions.stacked-action {
     grid-template-columns: 1fr;
-}
-
-.entry-menu-button {
-    width: 2.55rem;
-    padding-inline: 0;
-}
-
-.entry-menu {
-    position: relative;
 }
 
 .entry-move-panel {

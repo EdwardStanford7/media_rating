@@ -1261,7 +1261,10 @@ function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: (
     return ref;
 }
 
-function useFloatingMenu(isOpen: boolean) {
+function useFloatingMenu(
+    isOpen: boolean,
+    anchorPoint: { left: number; top: number } | null = null
+) {
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [style, setStyle] = useState<CSSProperties>({
@@ -1276,23 +1279,33 @@ function useFloatingMenu(isOpen: boolean) {
             return;
         }
 
-        const trigger = triggerRef.current;
         const panel = panelRef.current;
-        if (!trigger || !panel) {
+        if (!panel) {
             return;
         }
 
         const margin = 8;
         const gap = 6;
-        const triggerRect = trigger.getBoundingClientRect();
         const panelWidth = panel.offsetWidth;
         const panelHeight = panel.offsetHeight;
 
         const maxLeft = Math.max(margin, window.innerWidth - panelWidth - margin);
         const maxTop = Math.max(margin, window.innerHeight - panelHeight - margin);
-        const preferredLeft = triggerRect.right - panelWidth;
-        const preferredTop = triggerRect.bottom + gap;
-        const flippedTop = triggerRect.top - panelHeight - gap;
+        const trigger = triggerRef.current;
+        if (!anchorPoint && !trigger) {
+            return;
+        }
+
+        const triggerRect = trigger?.getBoundingClientRect();
+        const preferredLeft = anchorPoint
+            ? anchorPoint.left
+            : (triggerRect?.right ?? margin) - panelWidth;
+        const preferredTop = anchorPoint
+            ? anchorPoint.top
+            : (triggerRect?.bottom ?? margin) + gap;
+        const flippedTop = anchorPoint
+            ? anchorPoint.top - panelHeight
+            : (triggerRect?.top ?? margin) - panelHeight - gap;
 
         const left = Math.max(margin, Math.min(preferredLeft, maxLeft));
         const topCandidate =
@@ -1306,7 +1319,7 @@ function useFloatingMenu(isOpen: boolean) {
             visibility: "visible",
             zIndex: 80
         });
-    }, [isOpen]);
+    }, [anchorPoint, isOpen]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -1404,14 +1417,16 @@ function CategoryListItem({
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [name, setName] = useState(category.name);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
-    const floatingMenu = useFloatingMenu(menuOpen);
+    const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
 
     useEffect(() => {
         setName(category.name);
         setIsRenaming(false);
         setMenuOpen(false);
+        setMenuPoint(null);
     }, [category.name]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1447,43 +1462,41 @@ function CategoryListItem({
     }
 
     return (
-        <div className="category-row">
+        <div
+            className="category-row"
+            onContextMenu={(event) => {
+                event.preventDefault();
+                if (busy) {
+                    return;
+                }
+                setMenuPoint({ left: event.clientX, top: event.clientY });
+                setMenuOpen(true);
+            }}
+        >
             <button
                 className={`category-button ${isActive ? "active" : ""}`}
                 disabled={busy}
+                title="Double-click to rename · Right-click for actions"
                 type="button"
                 onClick={onSelect}
+                onDoubleClick={() => {
+                    if (!busy) {
+                        setMenuOpen(false);
+                        setName(category.name);
+                        setIsRenaming(true);
+                    }
+                }}
             >
                 <strong>{category.name}</strong>
                 <span className="muted"> · {category.entries.length}</span>
             </button>
-            <div className="category-menu" ref={menuRef}>
-                <button
-                    aria-expanded={menuOpen}
-                    aria-label={`Category actions for ${category.name}`}
-                    className="category-menu-button"
-                    disabled={busy}
-                    ref={floatingMenu.triggerRef}
-                    type="button"
-                    onClick={() => setMenuOpen((isOpen) => !isOpen)}
-                >
-                    ...
-                </button>
+            <div className="context-menu-host" ref={menuRef}>
                 {menuOpen ? (
                     <div
                         className="category-menu-panel floating-menu-panel"
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                setIsRenaming(true);
-                            }}
-                        >
-                            Rename
-                        </button>
                         <button
                             className="danger menu-danger"
                             disabled={busy || listLocked}
@@ -2088,14 +2101,16 @@ function QueuedEntryRow({
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [name, setName] = useState(entry.name);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
-    const floatingMenu = useFloatingMenu(menuOpen);
+    const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
 
     useEffect(() => {
         setName(entry.name);
         setIsRenaming(false);
         setMenuOpen(false);
+        setMenuPoint(null);
     }, [entry.name]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -2105,7 +2120,17 @@ function QueuedEntryRow({
     }
 
     return (
-        <div className={`queue-item ${isReady ? "ready" : ""}`}>
+        <div
+            className={`queue-item ${isReady ? "ready" : ""}`}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                if (disabled) {
+                    return;
+                }
+                setMenuPoint({ left: event.clientX, top: event.clientY });
+                setMenuOpen(true);
+            }}
+        >
             <QueuedPoster entry={entry} />
             <div className="queue-item-body">
                 {isRenaming ? (
@@ -2131,7 +2156,16 @@ function QueuedEntryRow({
                         </div>
                     </form>
                 ) : (
-                    <div>
+                    <div
+                        title="Double-click to rename · Right-click for actions"
+                        onDoubleClick={() => {
+                            if (!disabled) {
+                                setMenuOpen(false);
+                                setName(entry.name);
+                                setIsRenaming(true);
+                            }
+                        }}
+                    >
                         <strong>{entry.name}</strong>
                         <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
                     </div>
@@ -2148,47 +2182,27 @@ function QueuedEntryRow({
                     >
                         {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
-                    <div className="queue-menu" ref={menuRef}>
-                        <button
-                            aria-expanded={menuOpen}
-                            aria-label={`More actions for ${entry.name}`}
-                            className="queue-menu-button"
-                            disabled={disabled}
-                            ref={floatingMenu.triggerRef}
-                            type="button"
-                            onClick={() => setMenuOpen((isOpen) => !isOpen)}
-                        >
-                            ...
-                        </button>
-                        {menuOpen ? (
-                            <div
-                                className="queue-overflow-panel floating-menu-panel"
-                                ref={floatingMenu.panelRef}
-                                style={floatingMenu.style}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setMenuOpen(false);
-                                        setIsRenaming(true);
-                                    }}
-                                >
-                                    Rename
-                                </button>
-                                <button
-                                    className="danger menu-danger"
-                                    type="button"
-                                    onClick={() => {
-                                        setMenuOpen(false);
-                                        void onDelete(entry);
-                                    }}
-                                >
-                                    Remove
-                                </button>
-                            </div>
-                        ) : null}
-                    </div>
                 </div>
+            </div>
+            <div className="context-menu-host" ref={menuRef}>
+                {menuOpen ? (
+                    <div
+                        className="queue-overflow-panel floating-menu-panel"
+                        ref={floatingMenu.panelRef}
+                        style={floatingMenu.style}
+                    >
+                        <button
+                            className="danger menu-danger"
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                void onDelete(entry);
+                            }}
+                        >
+                            Remove
+                        </button>
+                    </div>
+                ) : null}
             </div>
         </div>
     );
@@ -2576,15 +2590,17 @@ function EntryCard({
     const [renameValue, setRenameValue] = useState(entry.name);
     const [targetCategoryId, setTargetCategoryId] = useState(selectedCategoryId);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [moveControlsOpen, setMoveControlsOpen] = useState(false);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
-    const floatingMenu = useFloatingMenu(menuOpen);
+    const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
 
     useEffect(() => {
         setIsRenaming(false);
         setRenameValue(entry.name);
         setTargetCategoryId(selectedCategoryId);
         setMenuOpen(false);
+        setMenuPoint(null);
         setMoveControlsOpen(false);
     }, [entry.name, selectedCategoryId]);
 
@@ -2595,7 +2611,15 @@ function EntryCard({
     }
 
     return (
-        <article className="entry-card">
+        <article
+            className="entry-card"
+            onContextMenu={(event) => {
+                event.preventDefault();
+                setMoveControlsOpen(false);
+                setMenuPoint({ left: event.clientX, top: event.clientY });
+                setMenuOpen(true);
+            }}
+        >
             <EntryPoster entry={entry} starRating={starRating} starRatingScale={starRatingScale} />
             <div className="entry-card-body">
                 {isRenaming ? (
@@ -2621,7 +2645,18 @@ function EntryCard({
                         </div>
                     </form>
                 ) : (
-                    <strong className="entry-title" title={`#${entry.rankPosition + 1} ${entry.name}`}>
+                    <strong
+                        className="entry-title"
+                        title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions`}
+                        onDoubleClick={() => {
+                            if (!listLocked) {
+                                setMenuOpen(false);
+                                setMoveControlsOpen(false);
+                                setRenameValue(entry.name);
+                                setIsRenaming(true);
+                            }
+                        }}
+                    >
                         #{entry.rankPosition + 1} {entry.name}
                     </strong>
                 )}
@@ -2655,57 +2690,6 @@ function EntryCard({
                     <button type="button" onClick={onPickImage}>
                         {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                     </button>
-                    <div className="entry-menu" ref={menuRef}>
-                        <button
-                            aria-expanded={menuOpen}
-                            aria-label={`More actions for ${entry.name}`}
-                            className="entry-menu-button"
-                            ref={floatingMenu.triggerRef}
-                            type="button"
-                            onClick={() => setMenuOpen((isOpen) => !isOpen)}
-                        >
-                            ...
-                        </button>
-                        {menuOpen ? (
-                            <div
-                                className="entry-overflow-panel floating-menu-panel"
-                                ref={floatingMenu.panelRef}
-                                style={floatingMenu.style}
-                            >
-                                <button
-                                    disabled={listLocked}
-                                    type="button"
-                                    onClick={() => {
-                                        setMoveControlsOpen(false);
-                                        setMenuOpen(false);
-                                        setIsRenaming(true);
-                                    }}
-                                >
-                                    Rename
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setMoveControlsOpen(true);
-                                        setMenuOpen(false);
-                                    }}
-                                >
-                                    Change Category
-                                </button>
-                                <button
-                                    className="danger menu-danger"
-                                    disabled={listLocked}
-                                    type="button"
-                                    onClick={() => {
-                                        setMenuOpen(false);
-                                        onDelete();
-                                    }}
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        ) : null}
-                    </div>
                 </div>
                 {moveControlsOpen ? (
                     <div className="entry-move-panel">
@@ -2738,6 +2722,36 @@ function EntryCard({
                                 </button>
                             </div>
                         </div>
+                    </div>
+                ) : null}
+            </div>
+            <div className="context-menu-host" ref={menuRef}>
+                {menuOpen ? (
+                    <div
+                        className="entry-overflow-panel floating-menu-panel"
+                        ref={floatingMenu.panelRef}
+                        style={floatingMenu.style}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMoveControlsOpen(true);
+                                setMenuOpen(false);
+                            }}
+                        >
+                            Change Category
+                        </button>
+                        <button
+                            className="danger menu-danger"
+                            disabled={listLocked}
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                onDelete();
+                            }}
+                        >
+                            Delete
+                        </button>
                     </div>
                 ) : null}
             </div>
