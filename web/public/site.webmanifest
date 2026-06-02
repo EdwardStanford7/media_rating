@@ -1,0 +1,14 @@
+{
+  "name": "Rankly",
+  "short_name": "Rankly",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#5748bf",
+  "background_color": "#130c2a",
+  "display": "standalone"
+}

@@ -27,7 +27,7 @@ import {
     updateCategoryStarRatingCurve,
     updateQueueSettings
 } from "@/lib/server/actions";
-import { signIn, signOut } from "@/lib/auth-client";
+import { signIn, signOut, signUp } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
 import {
     DEFAULT_STAR_RATING_CURVE,
@@ -84,8 +84,9 @@ const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
-const THEME_STORAGE_KEY = "media-rating-theme";
+const THEME_STORAGE_KEY = "rankly-theme";
 type ThemeMode = "light" | "dark";
+type AuthMode = "signin" | "signup";
 
 export const Route = createFileRoute("/")({
     loader: async () => {
@@ -125,9 +126,11 @@ function AuthPage({
         minPasswordLength: number;
     };
 }) {
+    const [authMode, setAuthMode] = useState<AuthMode>("signin");
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [resetToken, setResetToken] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
         if (typeof window === "undefined") {
@@ -148,6 +151,7 @@ function AuthPage({
         event.preventDefault();
         setError(null);
         setStatusMessage(null);
+        setSubmitting(true);
         const form = new FormData(event.currentTarget);
         const email = String(form.get("email") ?? "");
         const password = String(form.get("password") ?? "");
@@ -155,13 +159,19 @@ function AuthPage({
 
         try {
             if (mode === "signup") {
+                if (password.length < authOptions.minPasswordLength) {
+                    setError(passwordLengthMessage(authOptions.minPasswordLength));
+                    return;
+                }
                 await signUpWithEmail({ email, password, name });
             } else {
-                await signIn.email({ email, password, callbackURL: "/" });
+                await signInWithEmail({ email, password });
             }
             window.location.assign("/");
         } catch (authError) {
-            setError(authError instanceof Error ? authError.message : "Authentication failed");
+            setError(formatAuthError(authError, mode, authOptions.minPasswordLength));
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -174,16 +184,19 @@ function AuthPage({
 
         setError(null);
         setStatusMessage(null);
+        setSubmitting(true);
         const form = new FormData(event.currentTarget);
         const newPassword = String(form.get("newPassword") ?? "");
         const confirmPassword = String(form.get("confirmPassword") ?? "");
         if (newPassword.length < authOptions.minPasswordLength) {
-            setError(`Password must be at least ${authOptions.minPasswordLength} characters.`);
+            setError(passwordLengthMessage(authOptions.minPasswordLength));
+            setSubmitting(false);
             return;
         }
 
         if (newPassword !== confirmPassword) {
             setError("Passwords do not match.");
+            setSubmitting(false);
             return;
         }
 
@@ -196,76 +209,164 @@ function AuthPage({
             }
         } catch (authError) {
             setError(authError instanceof Error ? authError.message : "Password reset failed");
+        } finally {
+            setSubmitting(false);
         }
     }
 
     return (
         <main className="auth-page">
-            <section className="auth-panel">
-                <div className="stack">
-                    <div>
-                        <h1>Media Rating</h1>
-                        <p className="muted">Personal ranking for anything you want, such as books, movies, shows, games, etc.</p>
+            <div className="auth-shell">
+                <section className="auth-hero" aria-label="Rankly">
+                    <h1>Rankly</h1>
+                    <p>Rank your taste, one choice at a time.</p>
+                </section>
+
+                <section className="auth-panel" aria-labelledby="auth-heading">
+                    <div className="auth-copy">
+                        <p className="auth-kicker">Welcome to Rankly</p>
+                        <h2 id="auth-heading">
+                            {resetToken ? "Reset password" : authMode === "signin" ? "Sign in" : "Create account"}
+                        </h2>
+                        <p className="muted">
+                            {resetToken
+                                ? "Choose a new password to get back to your lists."
+                                : authMode === "signin"
+                                    ? "Pick up where your rankings left off."
+                                    : "Start building rankings that actually reflect your taste."}
+                        </p>
                     </div>
+
                     {error ? <div className="status">{error}</div> : null}
                     {statusMessage ? <div className="status">{statusMessage}</div> : null}
-                </div>
 
-                {resetToken ? (
-                    <form className="stack" onSubmit={handleResetPassword}>
-                        <h2>Reset Password</h2>
-                        <input
-                            name="newPassword"
-                            type="password"
-                            placeholder="New password"
-                            autoComplete="new-password"
-                            minLength={authOptions.minPasswordLength}
-                            required
-                        />
-                        <input
-                            name="confirmPassword"
-                            type="password"
-                            placeholder="Confirm new password"
-                            autoComplete="new-password"
-                            minLength={authOptions.minPasswordLength}
-                            required
-                        />
-                        <button className="primary" type="submit">Update Password</button>
-                    </form>
-                ) : (
-                    <div className="stack">
-                        <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signin")}>
-                            <h2>Sign In</h2>
-                            <input name="email" type="email" placeholder="Email" autoComplete="email" required />
-                            <input
-                                name="password"
-                                type="password"
-                                placeholder="Password"
-                                autoComplete="current-password"
-                                minLength={authOptions.minPasswordLength}
-                                required
-                            />
-                            <button className="primary" type="submit">Sign In</button>
-                        </form>
-
-                        <form className="stack" onSubmit={(event) => handleEmailAuth(event, "signup")}>
-                            <h2>Create Account</h2>
-                            <input name="name" placeholder="Name" autoComplete="name" required />
-                            <input name="email" type="email" placeholder="Email" autoComplete="email" required />
-                            <input
-                                name="password"
-                                type="password"
-                                placeholder="Password"
+                    {resetToken ? (
+                        <form className="auth-form" onSubmit={handleResetPassword}>
+                            <PasswordField
+                                label="New password"
+                                name="newPassword"
+                                placeholder="New password"
                                 autoComplete="new-password"
-                                minLength={authOptions.minPasswordLength}
-                                required
                             />
-                            <button type="submit">Create Account</button>
+                            <PasswordField
+                                label="Confirm password"
+                                name="confirmPassword"
+                                placeholder="Confirm new password"
+                                autoComplete="new-password"
+                            />
+                            <button className="primary auth-submit" disabled={submitting} type="submit">
+                                {submitting ? "Updating..." : "Update password"}
+                            </button>
                         </form>
-                    </div>
-                )}
-            </section>
+                    ) : (
+                        <form className="auth-form" onSubmit={(event) => handleEmailAuth(event, authMode)}>
+                            {authMode === "signup" ? (
+                                <label className="auth-field">
+                                    <span>Name</span>
+                                    <input name="name" placeholder="Jane Doe" autoComplete="name" required />
+                                </label>
+                            ) : null}
+                            <label className="auth-field">
+                                <span>Email</span>
+                                <input name="email" type="email" placeholder="you@example.com" autoComplete="email" required />
+                            </label>
+                            <PasswordField
+                                label="Password"
+                                name="password"
+                                placeholder={authMode === "signin" ? "Password" : "At least 12 characters"}
+                                autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+                            />
+                            <button className="primary auth-submit" disabled={submitting} type="submit">
+                                {submitting
+                                    ? authMode === "signin" ? "Signing in..." : "Creating account..."
+                                    : authMode === "signin" ? "Sign in" : "Create account"}
+                            </button>
+                        </form>
+                    )}
+
+                    {!resetToken ? (
+                        <p className="auth-switch muted">
+                            {authMode === "signin" ? "New to Rankly?" : "Already have an account?"}{" "}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setError(null);
+                                    setStatusMessage(null);
+                                    setAuthMode((currentMode) => currentMode === "signin" ? "signup" : "signin");
+                                }}
+                            >
+                                {authMode === "signin" ? "Create an account" : "Sign in"}
+                            </button>
+                        </p>
+                    ) : null}
+                </section>
+            </div>
         </main>
+    );
+}
+
+function PasswordField({
+    label,
+    name,
+    placeholder,
+    autoComplete
+}: {
+    label: string;
+    name: string;
+    placeholder: string;
+    autoComplete: string;
+}) {
+    const [visible, setVisible] = useState(false);
+
+    return (
+        <label className="auth-field">
+            <span>{label}</span>
+            <span className="password-field">
+                <input
+                    name={name}
+                    type={visible ? "text" : "password"}
+                    placeholder={placeholder}
+                    autoComplete={autoComplete}
+                    required
+                />
+                <button
+                    aria-label={visible ? "Hide password" : "Show password"}
+                    type="button"
+                    onClick={() => setVisible((isVisible) => !isVisible)}
+                >
+                    <EyeIcon hidden={visible} />
+                </button>
+            </span>
+        </label>
+    );
+}
+
+function EyeIcon({ hidden }: { hidden: boolean }) {
+    return (
+        <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
+            <path
+                d="M2.75 12s3.25-6 9.25-6 9.25 6 9.25 6-3.25 6-9.25 6-9.25-6-9.25-6Z"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+            />
+            <path
+                d="M12 14.75a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+            />
+            {hidden ? (
+                <path
+                    d="M4 20 20 4"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeWidth="1.8"
+                />
+            ) : null}
+        </svg>
     );
 }
 
@@ -292,6 +393,24 @@ async function resetPasswordWithToken({
     }
 }
 
+async function signInWithEmail({
+    email,
+    password
+}: {
+    email: string;
+    password: string;
+}) {
+    const result = await signIn.email({
+        email: email.trim(),
+        password,
+        callbackURL: "/"
+    });
+
+    if (result.error) {
+        throw new Error(result.error.message || result.error.code || "Sign in failed");
+    }
+}
+
 async function readAuthError(response: Response, fallback: string) {
     const text = await response.text().catch(() => "");
     const body = text ? safeJsonParse(text) : null;
@@ -312,6 +431,36 @@ async function readAuthError(response: Response, fallback: string) {
     return `${fallback} (${response.status})`;
 }
 
+function formatAuthError(error: unknown, mode: AuthMode, minPasswordLength: number) {
+    const message = error instanceof Error ? error.message : "Authentication failed";
+    const normalizedMessage = message.toLowerCase();
+
+    if (normalizedMessage.includes("too many") || normalizedMessage.includes("rate")) {
+        return "Too many attempts. Try again later.";
+    }
+
+    if (mode === "signin") {
+        return "Email or password is incorrect.";
+    }
+
+    if (
+        normalizedMessage.includes("password") &&
+        (
+            normalizedMessage.includes("character") ||
+            normalizedMessage.includes("length") ||
+            normalizedMessage.includes("short")
+        )
+    ) {
+        return passwordLengthMessage(minPasswordLength);
+    }
+
+    return message;
+}
+
+function passwordLengthMessage(minPasswordLength: number) {
+    return `Use at least ${minPasswordLength} characters.\nLonger passphrases are more secure.`;
+}
+
 function safeJsonParse(text: string) {
     try {
         return JSON.parse(text) as unknown;
@@ -329,21 +478,15 @@ async function signUpWithEmail({
     password: string;
     name: string;
 }) {
-    const response = await fetch("/api/auth/sign-up/email", {
-        method: "POST",
-        headers: {
-            "content-type": "application/json"
-        },
-        body: JSON.stringify({
-            email,
-            password,
-            name,
-            callbackURL: "/"
-        })
+    const result = await signUp.email({
+        email: email.trim(),
+        password,
+        name: name.trim() || email.trim(),
+        callbackURL: "/"
     });
 
-    if (!response.ok) {
-        throw new Error(await readAuthError(response, "Account creation failed"));
+    if (result.error) {
+        throw new Error(result.error.message || result.error.code || "Account creation failed");
     }
 }
 
@@ -996,7 +1139,7 @@ function Dashboard({
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement("a");
             anchor.href = url;
-            anchor.download = "Media Ratings.xlsx";
+            anchor.download = "Rankings.xlsx";
             anchor.click();
             URL.revokeObjectURL(url);
         } catch (error) {
@@ -1034,7 +1177,7 @@ function Dashboard({
             ) : null}
             <aside className="sidebar">
                 <div className="sidebar-header">
-                    <strong className="brand-title">Media Rating</strong>
+                    <strong className="brand-title">Rankly</strong>
                     <AccountMenu
                         busy={busy}
                         busyLabel={busyLabel}

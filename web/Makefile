@@ -1,4 +1,4 @@
-APP_NAME = media-rating-web
+APP_NAME = rankly
 D1_NAME = media-rating
 R2_BUCKET = media-rating-images
 
@@ -10,7 +10,7 @@ R2_BUCKET = media-rating-images
 	verify-deploy-config deploy deploy-first
 
 help:
-	@echo "Media Rating web commands"
+	@echo "Web commands"
 	@echo ""
 	@echo "Local:"
 	@echo "  make install              Install npm dependencies"

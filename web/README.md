@@ -1,4 +1,4 @@
-# Media Rating Web
+# Rankly Web
 
 TanStack Start + Cloudflare Workers port of the Rust media ranking app.
 
@@ -39,7 +39,7 @@ Password reset uses Better Auth reset tokens and sends email through Resend. Cre
 make cf-secret-password-reset
 ```
 
-Set `RESEND_API_KEY` to the API key and `PASSWORD_RESET_FROM_EMAIL` to the sender address, such as `Media Rating <reset@your-domain.com>`. If those values are missing, reset links are written to Worker logs for local/dev testing but no email is sent.
+Set `RESEND_API_KEY` to the API key and `PASSWORD_RESET_FROM_EMAIL` to the sender address, such as `<reset@your-domain.com>`. If those values are missing, reset links are written to Worker logs for local/dev testing but no email is sent.
 
 For one-off admin recovery before email sending is configured, generate a reset link directly from D1:
 

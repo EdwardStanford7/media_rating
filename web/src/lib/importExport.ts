@@ -41,7 +41,7 @@ export async function parseLegacyWorkbook(
 
 export async function writeExportWorkbook(categories: CategoryWithEntries[]) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "Media Rating";
+    workbook.creator = "Rankings";
     workbook.created = new Date();
 
     const sortedSheet = workbook.addWorksheet("Sorted");
