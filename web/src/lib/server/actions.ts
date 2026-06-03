@@ -18,11 +18,58 @@ export const loadDashboard = createServerFn({ method: "GET" })
     });
 
 export const updateUserProfile = createServerFn({ method: "POST" })
-    .inputValidator((data: { name: string }) => data)
+    .inputValidator((data: { name: string; slug?: string; isPublic?: boolean }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
         return repo.updateUserProfile(user.id, data);
+    });
+
+export const loadProfileSettings = createServerFn({ method: "GET" })
+    .handler(async () => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.loadProfileSettings(user.id);
+    });
+
+export const loadPublicProfile = createServerFn({ method: "GET" })
+    .inputValidator((data: { profileSlug: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await getOptionalUser();
+        const repo = await import("./repository");
+        return repo.loadPublicProfile(data.profileSlug, user?.id ?? null);
+    });
+
+export const updateCategoryVisibility = createServerFn({ method: "POST" })
+    .inputValidator((data: { categoryId: string; isPublic: boolean }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.updateCategoryVisibility(user.id, data);
+    });
+
+export const addFriendByProfileSlug = createServerFn({ method: "POST" })
+    .inputValidator((data: { profileSlugOrUrl: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.addFriendByProfileSlug(user.id, data.profileSlugOrUrl);
+    });
+
+export const setProfileFriend = createServerFn({ method: "POST" })
+    .inputValidator((data: { profileUserId: string; isFriend: boolean }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.setProfileFriend(user.id, data);
+    });
+
+export const removeFriend = createServerFn({ method: "POST" })
+    .inputValidator((data: { friendUserId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.removeFriend(user.id, data.friendUserId);
     });
 
 export const createCategory = createServerFn({ method: "POST" })
@@ -239,4 +286,10 @@ async function requireUser() {
     }
 
     return session.user;
+}
+
+async function getOptionalUser() {
+    const headers = getRequestHeaders();
+    const session = await auth.api.getSession({ headers });
+    return session?.user ?? null;
 }

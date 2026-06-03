@@ -643,6 +643,31 @@ textarea {
     font-size: 0.85rem;
 }
 
+a.small-button,
+.link-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+a.small-button:hover,
+.link-button:hover {
+    border-color: var(--accent);
+    background: var(--selected-panel);
+}
+
+.link-button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+}
+
 .account-menu {
     position: relative;
     flex: 0 0 auto;
@@ -735,7 +760,13 @@ textarea {
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    padding: 0.55rem 0.8rem;
     text-align: left;
+    text-decoration: none;
 }
 
 .account-menu-item.active,
@@ -767,6 +798,10 @@ textarea {
     gap: 0.5rem;
 }
 
+.profile-page-avatar-actions {
+    margin-top: 0.65rem;
+}
+
 .file-button.disabled {
     cursor: not-allowed;
     opacity: 0.55;
@@ -775,6 +810,269 @@ textarea {
 .success-status {
     border-left-color: var(--success);
     background: color-mix(in srgb, var(--success) 12%, var(--panel));
+}
+
+.standalone-page,
+.profile-page,
+.public-profile-page {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+}
+
+.standalone-page {
+    display: grid;
+    place-items: center;
+    padding: 2rem;
+}
+
+.standalone-panel {
+    width: min(100%, 34rem);
+    display: grid;
+    gap: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    padding: 1rem;
+}
+
+.profile-page,
+.public-profile-page {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.profile-page-header {
+    width: min(1180px, 100%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0 auto;
+}
+
+.profile-page-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.profile-page-nav a {
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.profile-page-nav a:hover {
+    color: var(--accent-strong);
+}
+
+.profile-page-grid {
+    width: min(1180px, 100%);
+    display: grid;
+    grid-template-columns: minmax(22rem, 1fr) minmax(18rem, 0.8fr);
+    gap: 1rem;
+    margin: 0 auto;
+}
+
+.profile-panel,
+.public-profile-header,
+.public-ranking-section {
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    padding: 1rem;
+}
+
+.profile-main-panel {
+    grid-row: span 2;
+}
+
+.profile-title-row,
+.public-profile-header,
+.friend-row,
+.public-entry-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.profile-title-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    margin-bottom: 1rem;
+}
+
+.profile-title-row h1,
+.public-profile-header h1,
+.section-heading-row h2 {
+    margin: 0;
+    line-height: 1.1;
+}
+
+.profile-avatar {
+    display: block;
+    width: 3rem;
+    height: 3rem;
+    overflow: hidden;
+    border: 1px solid var(--avatar-line);
+    border-radius: 999px;
+    background:
+        radial-gradient(circle at 50% 38%, var(--avatar-ink) 0 21%, transparent 22%),
+        radial-gradient(circle at 50% 110%, var(--avatar-ink) 0 39%, transparent 40%),
+        var(--avatar-bg);
+}
+
+.profile-avatar.public-profile-avatar {
+    width: 4rem;
+    height: 4rem;
+}
+
+.profile-avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-form,
+.friend-add-form {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.profile-form label:not(.profile-switch-row) {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.profile-switch-row {
+    justify-content: start;
+}
+
+.profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.section-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-bottom: 0.8rem;
+}
+
+.profile-category-list,
+.friend-list,
+.public-ranking-list,
+.public-entry-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.profile-category-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--subtle-panel);
+    padding: 0.75rem;
+}
+
+.profile-category-row small,
+.friend-row p {
+    display: block;
+    margin: 0.15rem 0 0;
+}
+
+.profile-category-row input,
+.profile-switch-row input {
+    width: auto;
+}
+
+.friend-add-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-bottom: 0.8rem;
+}
+
+.friend-row {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--subtle-panel);
+    padding: 0.65rem;
+}
+
+.friend-row a {
+    color: var(--ink);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.friend-row a:hover {
+    color: var(--accent-strong);
+}
+
+.public-profile-header,
+.public-ranking-list,
+.public-empty-state,
+.public-profile-status {
+    width: min(960px, 100%);
+    margin: 0 auto;
+}
+
+.public-profile-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.public-ranking-section {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.public-entry-row {
+    grid-template-columns: 3.2rem 3.2rem minmax(0, 1fr);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--subtle-panel);
+    padding: 0.55rem;
+}
+
+.public-rank-number {
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.public-entry-poster {
+    display: block;
+    width: 3.2rem;
+    aspect-ratio: 4 / 5;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--poster-start), var(--poster-end));
+}
+
+.public-entry-poster img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.public-entry-poster.image-placeholder {
+    display: grid;
+    place-items: center;
+    padding: 0.25rem;
+    text-align: center;
 }
 
 .panel-note {

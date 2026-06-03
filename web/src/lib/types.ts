@@ -40,8 +40,15 @@ export interface CategoryWithEntries {
     name: string;
     sortOrder: number;
     createdAt: number;
+    isPublic: boolean;
     starRatingCurve: StarRatingCurvePoint[] | null;
     entries: Entry[];
+}
+
+export interface CurrentUserProfile {
+    userId: string;
+    slug: string;
+    isPublic: boolean;
 }
 
 export interface DashboardData {
@@ -49,6 +56,57 @@ export interface DashboardData {
     queueSettings: QueueSettings;
     queuedEntries: QueuedEntry[];
     activeBinarySession: ActiveBinarySession | null;
+    profile: CurrentUserProfile;
+}
+
+export interface ProfileSettingsCategory {
+    id: string;
+    name: string;
+    sortOrder: number;
+    entryCount: number;
+    isPublic: boolean;
+}
+
+export interface FriendProfileSummary {
+    userId: string;
+    name: string;
+    imageKey: string | null;
+    slug: string;
+    isPublic: boolean;
+    publicCategoryCount: number;
+    friendedAt: number;
+}
+
+export interface ProfileSettingsData {
+    user: {
+        id: string;
+        name: string;
+        imageKey: string | null;
+        slug: string;
+        isPublic: boolean;
+    };
+    categories: ProfileSettingsCategory[];
+    friends: FriendProfileSummary[];
+}
+
+export interface PublicProfileSummary {
+    userId: string;
+    name: string;
+    imageKey: string | null;
+    slug: string;
+    isPublic: boolean;
+    isSelf: boolean;
+    isFriend: boolean;
+}
+
+export interface PublicProfileData {
+    profile: PublicProfileSummary;
+    categories: CategoryWithEntries[];
+    viewer: {
+        isSignedIn: boolean;
+        isSelf: boolean;
+        isFriend: boolean;
+    };
 }
 
 export interface ActiveBinarySession {

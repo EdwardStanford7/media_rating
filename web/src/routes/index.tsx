@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import type { ButtonHTMLAttributes, CSSProperties, ChangeEvent, DragEvent, FormEvent, ReactNode } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, DragEvent, FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     cancelBinarySession,
@@ -27,8 +27,7 @@ import {
     submitBinaryWinner,
     switchEntryCategory,
     updateCategoryStarRatingCurve,
-    updateQueueSettings,
-    updateUserProfile
+    updateQueueSettings
 } from "@/lib/server/actions";
 import { signIn, signOut, signUp } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
@@ -122,7 +121,6 @@ interface ReversibleAction {
 
 const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
-const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 const THEME_STORAGE_KEY = "rankly-theme";
@@ -1037,28 +1035,6 @@ function Dashboard({
         }
     }
 
-    async function handleUserProfile(name: string) {
-        startBusy("Saving profile...");
-        setMessage(null);
-
-        try {
-            const result = await updateUserProfile({ data: { name } });
-            setCurrentUserName(result.name);
-            setMessage("Profile updated.");
-            return true;
-        } catch (error) {
-            setMessage(errorMessage(error));
-            return false;
-        } finally {
-            finishBusy();
-        }
-    }
-
-    function handleProfileImageSaved(imageKey: string | null) {
-        setCurrentUserImage(imageKey);
-        setCurrentUserImageVersion((version) => version + 1);
-    }
-
     async function handleCategoryStarRatingCurve(
         categoryId: string,
         starRatingCurve: QueueSettings["starRatingCurve"] | null,
@@ -1590,10 +1566,8 @@ function Dashboard({
                         settings={dashboard.queueSettings}
                         onExport={handleExport}
                         onImport={handleImport}
-                        onProfileImageSaved={handleProfileImageSaved}
                         onSaveCategoryStarRatingCurve={handleCategoryStarRatingCurve}
                         onSaveSettings={handleQueueSettings}
-                        onSaveUserProfile={handleUserProfile}
                         onThemeChange={setThemeMode}
                         themeMode={themeMode}
                         userImage={currentUserImage}
@@ -2243,10 +2217,8 @@ function AccountMenu({
     settings,
     onExport,
     onImport,
-    onProfileImageSaved,
     onSaveCategoryStarRatingCurve,
     onSaveSettings,
-    onSaveUserProfile,
     onThemeChange,
     themeMode,
     userImage,
@@ -2260,14 +2232,12 @@ function AccountMenu({
     settings: QueueSettings;
     onExport: () => Promise<void>;
     onImport: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
-    onProfileImageSaved: (imageKey: string | null) => void;
     onSaveCategoryStarRatingCurve: (
         categoryId: string,
         starRatingCurve: QueueSettings["starRatingCurve"] | null,
         options?: { quiet?: boolean }
     ) => Promise<void>;
     onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
-    onSaveUserProfile: (name: string) => Promise<boolean>;
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
     userImage: string | null;
@@ -2290,16 +2260,11 @@ function AccountMenu({
     const [starCurveError, setStarCurveError] = useState<string | null>(null);
     const [categoryStarCurveError, setCategoryStarCurveError] = useState<string | null>(null);
     const [quickSaving, setQuickSaving] = useState(false);
-    const [profileName, setProfileName] = useState(userName);
-    const [profileSaving, setProfileSaving] = useState(false);
-    const [profileError, setProfileError] = useState<string | null>(null);
-    const [profileStatus, setProfileStatus] = useState<string | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [activePanel, setActivePanel] = useState<"profile" | "settings" | "import" | null>(null);
+    const [activePanel, setActivePanel] = useState<"settings" | "import" | null>(null);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen);
     const importDisabled = busy || listLocked;
-    const profileDisabled = busy || profileSaving;
 
     useEffect(() => {
         setEnabled(settings.enabled);
@@ -2323,12 +2288,6 @@ function AccountMenu({
         settings.showStarRatings
     ]);
 
-    useEffect(() => {
-        setProfileName(userName);
-        setProfileError(null);
-        setProfileStatus(null);
-    }, [userName]);
-
     async function handleExportClick() {
         await onExport();
         setMenuOpen(false);
@@ -2338,75 +2297,6 @@ function AccountMenu({
         const imported = await onImport(event);
         if (imported) {
             setMenuOpen(false);
-        }
-    }
-
-    async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        setProfileError(null);
-        setProfileStatus(null);
-        const saved = await onSaveUserProfile(profileName);
-        if (saved) {
-            setProfileStatus("Username saved.");
-        } else {
-            setProfileError("Username could not be saved.");
-        }
-    }
-
-    async function handleProfileImageInput(event: ChangeEvent<HTMLInputElement>) {
-        const file = event.currentTarget.files?.[0] ?? null;
-        event.currentTarget.value = "";
-        if (!file) {
-            return;
-        }
-
-        setProfileSaving(true);
-        setProfileError(null);
-        setProfileStatus(null);
-
-        try {
-            const blob = await imageFileToAvatarBlob(file);
-            const response = await fetch("/api/profile-image", {
-                method: "POST",
-                headers: {
-                    "content-type": blob.type || "image/jpeg"
-                },
-                body: blob
-            });
-            const body = await response.json().catch(() => null) as { imageKey?: string; message?: string } | null;
-            if (!response.ok) {
-                throw new Error(body?.message ?? "Profile photo upload failed");
-            }
-
-            onProfileImageSaved(body?.imageKey ?? null);
-            setProfileStatus("Profile photo updated.");
-        } catch (error) {
-            setProfileError(errorMessage(error));
-        } finally {
-            setProfileSaving(false);
-        }
-    }
-
-    async function handleRemoveProfileImage() {
-        setProfileSaving(true);
-        setProfileError(null);
-        setProfileStatus(null);
-
-        try {
-            const response = await fetch("/api/profile-image", {
-                method: "DELETE"
-            });
-            const body = await response.json().catch(() => null) as { message?: string } | null;
-            if (!response.ok) {
-                throw new Error(body?.message ?? "Profile photo could not be removed");
-            }
-
-            onProfileImageSaved(null);
-            setProfileStatus("Profile photo removed.");
-        } catch (error) {
-            setProfileError(errorMessage(error));
-        } finally {
-            setProfileSaving(false);
         }
     }
 
@@ -2523,7 +2413,7 @@ function AccountMenu({
                 type="button"
                 onClick={() => {
                     if (!menuOpen) {
-                        setActivePanel("profile");
+                        setActivePanel("settings");
                     }
                     setMenuOpen((isOpen) => !isOpen);
                 }}
@@ -2553,17 +2443,13 @@ function AccountMenu({
                                     <span className="muted">Account</span>
                                 </div>
                             </div>
-                            <button
-                                aria-expanded={activePanel === "profile"}
-                                className={`account-menu-item has-flyout ${activePanel === "profile" ? "active" : ""}`}
-                                type="button"
-                                onClick={() => setActivePanel("profile")}
-                                onFocus={() => setActivePanel("profile")}
-                                onMouseEnter={() => setActivePanel("profile")}
+                            <Link
+                                className="account-menu-item"
+                                to="/profile"
+                                onClick={() => setMenuOpen(false)}
                             >
                                 <MenuIconLabel icon="edit">Profile</MenuIconLabel>
-                                <span aria-hidden="true">›</span>
-                            </button>
+                            </Link>
                             <button
                                 aria-expanded={activePanel === "settings"}
                                 className={`account-menu-item has-flyout ${activePanel === "settings" ? "active" : ""}`}
@@ -2612,55 +2498,6 @@ function AccountMenu({
                                 <MenuIconLabel icon="cancel">Sign Out</MenuIconLabel>
                             </button>
                         </div>
-
-                        {activePanel === "profile" ? (
-                            <form className="account-flyout stack" onSubmit={handleProfileSubmit}>
-                                <div>
-                                    <strong>Profile</strong>
-                                </div>
-                                <div className="profile-avatar-row">
-                                    <AccountAvatar
-                                        imageKey={userImage}
-                                        imageVersion={userImageVersion}
-                                        large
-                                    />
-                                    <div className="profile-avatar-actions">
-                                        <label className={`file-button ${profileDisabled ? "disabled" : ""}`}>
-                                            <span>{profileSaving ? "Uploading..." : "Upload Photo"}</span>
-                                            <input
-                                                accept="image/*"
-                                                disabled={profileDisabled}
-                                                type="file"
-                                                onChange={(event) => void handleProfileImageInput(event)}
-                                            />
-                                        </label>
-                                        <button
-                                            disabled={profileDisabled || !hasStoredImage(userImage)}
-                                            type="button"
-                                            onClick={() => void handleRemoveProfileImage()}
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
-                                </div>
-                                <label className="stack compact-stack">
-                                    <span className="muted">Username</span>
-                                    <input
-                                        autoComplete="name"
-                                        disabled={profileDisabled}
-                                        value={profileName}
-                                        onChange={(event) => {
-                                            setProfileName(event.target.value);
-                                            setProfileError(null);
-                                            setProfileStatus(null);
-                                        }}
-                                    />
-                                </label>
-                                {profileError ? <div className="status">{profileError}</div> : null}
-                                {profileStatus ? <div className="status success-status">{profileStatus}</div> : null}
-                                <button disabled={profileDisabled} type="submit">Save Profile</button>
-                            </form>
-                        ) : null}
 
                         {activePanel === "settings" ? (
                             <form className="account-flyout stack" onSubmit={handleSubmit}>
@@ -4257,80 +4094,6 @@ function imageBlobToPosterBlob(blob: Blob) {
             reject(new Error("Full-size image could not be loaded"));
         };
         image.src = objectUrl;
-    });
-}
-
-function imageFileToAvatarBlob(file: File) {
-    if (file.size > MAX_LOCAL_IMAGE_BYTES) {
-        throw new Error("Image file is too large");
-    }
-
-    return new Promise<Blob>((resolve, reject) => {
-        const image = new Image();
-        const objectUrl = URL.createObjectURL(file);
-
-        image.onload = () => {
-            imageElementToAvatarBlob(image)
-                .then(resolve)
-                .catch(reject)
-                .finally(() => URL.revokeObjectURL(objectUrl));
-        };
-        image.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error("Image could not be loaded"));
-        };
-        image.src = objectUrl;
-    });
-}
-
-function imageElementToAvatarBlob(image: HTMLImageElement) {
-    return new Promise<Blob>((resolve, reject) => {
-        try {
-            const canvas = document.createElement("canvas");
-            const context = canvas.getContext("2d");
-            if (!context) {
-                throw new Error("Image processing is unavailable");
-            }
-
-            const sourceWidth = image.naturalWidth;
-            const sourceHeight = image.naturalHeight;
-            if (sourceWidth === 0 || sourceHeight === 0) {
-                throw new Error("Image has no dimensions");
-            }
-
-            const cropSize = Math.min(sourceWidth, sourceHeight);
-            const cropX = (sourceWidth - cropSize) / 2;
-            const cropY = (sourceHeight - cropSize) / 2;
-
-            canvas.width = AVATAR_SIZE;
-            canvas.height = AVATAR_SIZE;
-            context.drawImage(
-                image,
-                cropX,
-                cropY,
-                cropSize,
-                cropSize,
-                0,
-                0,
-                AVATAR_SIZE,
-                AVATAR_SIZE
-            );
-
-            canvas.toBlob(
-                (avatarBlob) => {
-                    if (!avatarBlob) {
-                        reject(new Error("Profile photo could not be saved"));
-                        return;
-                    }
-
-                    resolve(avatarBlob);
-                },
-                "image/jpeg",
-                0.88
-            );
-        } catch (error) {
-            reject(error);
-        }
     });
 }
 

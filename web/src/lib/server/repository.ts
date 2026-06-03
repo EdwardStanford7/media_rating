@@ -14,13 +14,17 @@ import type {
     ActiveBinarySession,
     BinarySessionView,
     CategoryWithEntries,
+    CurrentUserProfile,
     DashboardData,
     Entry,
+    FriendProfileSummary,
     ParsedImport,
+    ProfileSettingsData,
     QueuedEntry,
     QueueSettings,
     RankingOperationKind,
-    RankingSource
+    RankingSource,
+    PublicProfileData
 } from "@/lib/types";
 import { env } from "cloudflare:workers";
 import { NO_IMAGE_KEY, hasStoredImage } from "@/lib/images";
@@ -31,7 +35,44 @@ interface CategoryRow {
     name: string;
     sort_order: number;
     created_at: number;
+    is_public?: number;
     star_rating_curve?: string | null;
+}
+
+interface ProfileRow {
+    user_id: string;
+    name: string;
+    image: string | null;
+    slug: string;
+    is_public: number;
+    created_at: number;
+    updated_at: number;
+}
+
+interface UserIdentityRow {
+    id: string;
+    name: string;
+    image: string | null;
+    createdAt: number;
+    updatedAt: number;
+}
+
+interface ProfileSettingsCategoryRow {
+    id: string;
+    name: string;
+    sort_order: number;
+    entry_count: number;
+    is_public: number;
+}
+
+interface FriendProfileRow {
+    user_id: string;
+    name: string;
+    image: string | null;
+    slug: string;
+    is_public: number;
+    public_category_count: number;
+    friended_at: number;
 }
 
 interface EntryRow {
@@ -156,6 +197,8 @@ const DEFAULT_QUEUE_DELAY_DAYS = 3;
 const MAX_QUEUE_DELAY_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_USER_NAME_LENGTH = 80;
+const MIN_PROFILE_SLUG_LENGTH = 3;
+const MAX_PROFILE_SLUG_LENGTH = 40;
 const DELETED_ITEM_RETENTION_MS = 30 * DAY_MS;
 const DELETED_CLEANUP_LIMIT = 50;
 
@@ -179,13 +222,14 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
     const db = getDb();
     await repairInterruptedRankingState(userId);
     await purgeExpiredDeletedItems(userId);
+    const profile = await ensureUserProfile(userId);
     const queueSettings = await getQueueSettings(userId);
     const queuedEntries = await listQueuedEntries(userId);
     const activeBinarySession = await getActiveBinarySession(userId);
     const categories = await all<CategoryRow>(
         db
             .prepare(
-                `SELECT id, name, sort_order, created_at, star_rating_curve
+                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
          FROM categories
          WHERE user_id = ?
          ORDER BY sort_order ASC, name ASC`
@@ -194,7 +238,13 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
     );
 
     if (categories.length === 0) {
-        return { categories: [], queueSettings, queuedEntries, activeBinarySession };
+        return {
+            categories: [],
+            queueSettings,
+            queuedEntries,
+            activeBinarySession,
+            profile: mapCurrentUserProfile(profile)
+        };
     }
 
     const entryRows = await all<EntryRow>(
@@ -221,16 +271,22 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
             name: category.name,
             sortOrder: category.sort_order,
             createdAt: category.created_at,
+            isPublic: Boolean(category.is_public),
             starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
             entries: orderEntries(entriesByCategory.get(category.id) ?? [])
         })),
         queueSettings,
         queuedEntries,
-        activeBinarySession
+        activeBinarySession,
+        profile: mapCurrentUserProfile(profile)
     };
 }
 
-export async function updateUserProfile(userId: string, input: { name: string }) {
+export async function updateUserProfile(
+    userId: string,
+    input: { name: string; slug?: string; isPublic?: boolean }
+) {
+    const profile = await ensureUserProfile(userId);
     const cleanName = input.name.trim();
     if (!cleanName) {
         throw new Error("Username is required");
@@ -240,17 +296,169 @@ export async function updateUserProfile(userId: string, input: { name: string })
         throw new Error(`Username must be ${MAX_USER_NAME_LENGTH} characters or fewer`);
     }
 
+    const nextSlug = input.slug === undefined
+        ? profile.slug
+        : normalizeProfileSlug(input.slug);
+    if (nextSlug !== profile.slug) {
+        await assertProfileSlugAvailable(userId, nextSlug);
+    }
+
+    const nextIsPublic = input.isPublic === undefined ? Boolean(profile.is_public) : input.isPublic;
     const updatedAt = now();
-    await getDb()
-        .prepare(
-            `UPDATE "user"
+    const db = getDb();
+    await db.batch([
+        db
+            .prepare(
+                `UPDATE "user"
        SET name = ?, updatedAt = ?
        WHERE id = ?`
+            )
+            .bind(cleanName, updatedAt, userId),
+        db
+            .prepare(
+                `UPDATE user_profiles
+       SET slug = ?, is_public = ?, updated_at = ?
+       WHERE user_id = ?`
+            )
+            .bind(nextSlug, nextIsPublic ? 1 : 0, updatedAt, userId)
+    ]);
+
+    return {
+        name: cleanName,
+        profileSlug: nextSlug,
+        profileIsPublic: nextIsPublic
+    };
+}
+
+export async function loadProfileSettings(userId: string): Promise<ProfileSettingsData> {
+    const profile = await ensureUserProfile(userId);
+    const categories = await all<ProfileSettingsCategoryRow>(
+        getDb()
+            .prepare(
+                `SELECT categories.id, categories.name, categories.sort_order,
+                categories.is_public, COUNT(entries.id) AS entry_count
+         FROM categories
+         LEFT JOIN entries ON entries.category_id = categories.id
+           AND entries.user_id = categories.user_id
+           AND entries.status = 'active'
+         WHERE categories.user_id = ?
+         GROUP BY categories.id, categories.name, categories.sort_order, categories.is_public
+         ORDER BY categories.sort_order ASC, categories.name ASC`
+            )
+            .bind(userId)
+    );
+
+    return {
+        user: {
+            id: profile.user_id,
+            name: profile.name,
+            imageKey: profile.image,
+            slug: profile.slug,
+            isPublic: Boolean(profile.is_public)
+        },
+        categories: categories.map((category) => ({
+            id: category.id,
+            name: category.name,
+            sortOrder: category.sort_order,
+            entryCount: category.entry_count,
+            isPublic: Boolean(category.is_public)
+        })),
+        friends: await listFriendProfiles(userId)
+    };
+}
+
+export async function updateCategoryVisibility(
+    userId: string,
+    input: { categoryId: string; isPublic: boolean }
+) {
+    const category = await getOwnedCategory(userId, input.categoryId);
+    assertOwned(category, "Category");
+
+    await getDb()
+        .prepare(
+            `UPDATE categories
+       SET is_public = ?, updated_at = ?
+       WHERE user_id = ? AND id = ?`
         )
-        .bind(cleanName, updatedAt, userId)
+        .bind(input.isPublic ? 1 : 0, now(), userId, input.categoryId)
         .run();
 
-    return { name: cleanName };
+    return { categoryId: input.categoryId, isPublic: input.isPublic };
+}
+
+export async function addFriendByProfileSlug(userId: string, profileSlugOrUrl: string) {
+    const slug = parseProfileSlugInput(profileSlugOrUrl);
+    const profile = await getPublicProfileBySlug(slug);
+    if (!profile || !profile.is_public) {
+        throw new Error("Public profile not found");
+    }
+
+    await addFriend(userId, profile.user_id);
+    return getFriendProfile(userId, profile.user_id);
+}
+
+export async function setProfileFriend(
+    userId: string,
+    input: { profileUserId: string; isFriend: boolean }
+) {
+    if (input.isFriend) {
+        await addFriend(userId, input.profileUserId);
+    } else {
+        await removeFriend(userId, input.profileUserId);
+    }
+
+    return { profileUserId: input.profileUserId, isFriend: input.isFriend };
+}
+
+export async function removeFriend(userId: string, friendUserId: string) {
+    await getDb()
+        .prepare(
+            `DELETE FROM user_friends
+       WHERE user_id = ? AND friend_user_id = ?`
+        )
+        .bind(userId, friendUserId)
+        .run();
+
+    return { friendUserId };
+}
+
+export async function loadPublicProfile(
+    profileSlug: string,
+    viewerUserId: string | null
+): Promise<PublicProfileData | null> {
+    const slug = parseProfileSlugInput(profileSlug);
+    const profile = await getProfileBySlug(slug);
+    if (!profile) {
+        return null;
+    }
+
+    const isSelf = viewerUserId === profile.user_id;
+    if (!profile.is_public && !isSelf) {
+        return null;
+    }
+
+    const isFriend = viewerUserId
+        ? await isFriendProfile(viewerUserId, profile.user_id)
+        : false;
+    const categories = await loadPublicCategories(profile.user_id);
+
+    return {
+        profile: {
+            userId: profile.user_id,
+            name: profile.name,
+            imageKey: profile.image,
+            slug: profile.slug,
+            isPublic: Boolean(profile.is_public),
+            isSelf,
+            isFriend
+        },
+        categories,
+        viewer: {
+            isSignedIn: Boolean(viewerUserId),
+            isSelf,
+            isFriend
+        }
+    };
 }
 
 export async function createCategory(userId: string, name: string) {
@@ -2200,6 +2408,326 @@ function parseStoredCategoryStarRatingCurve(value: string | null | undefined) {
     }
 }
 
+async function ensureUserProfile(userId: string): Promise<ProfileRow> {
+    const existingProfile = await getProfileByUserId(userId);
+    if (existingProfile) {
+        return existingProfile;
+    }
+
+    const user = await first<UserIdentityRow>(
+        getDb()
+            .prepare(
+                `SELECT id, name, image, createdAt, updatedAt
+         FROM "user"
+         WHERE id = ?`
+            )
+            .bind(userId)
+    );
+    assertOwned(user, "User");
+
+    const createdAt = now();
+    const slugBase = slugifyProfileName(user.name || "user");
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const slug = attempt === 0
+            ? slugBase
+            : `${slugBase.slice(0, Math.max(MIN_PROFILE_SLUG_LENGTH, MAX_PROFILE_SLUG_LENGTH - 9))}-${randomSlugSuffix()}`;
+        if (await profileSlugExists(slug)) {
+            continue;
+        }
+
+        try {
+            await getDb()
+                .prepare(
+                    `INSERT INTO user_profiles (user_id, slug, is_public, created_at, updated_at)
+             VALUES (?, ?, 0, ?, ?)`
+                )
+                .bind(userId, slug, createdAt, createdAt)
+                .run();
+            return {
+                user_id: user.id,
+                name: user.name,
+                image: user.image,
+                slug,
+                is_public: 0,
+                created_at: createdAt,
+                updated_at: createdAt
+            };
+        } catch (error) {
+            if (attempt === 7) {
+                throw error;
+            }
+        }
+    }
+
+    throw new Error("Profile handle could not be created");
+}
+
+async function getProfileByUserId(userId: string) {
+    return first<ProfileRow>(
+        getDb()
+            .prepare(
+                `SELECT "user".id AS user_id, "user".name, "user".image,
+                user_profiles.slug, user_profiles.is_public,
+                user_profiles.created_at, user_profiles.updated_at
+         FROM user_profiles
+         INNER JOIN "user" ON "user".id = user_profiles.user_id
+         WHERE user_profiles.user_id = ?`
+            )
+            .bind(userId)
+    );
+}
+
+async function getProfileBySlug(profileSlug: string) {
+    return first<ProfileRow>(
+        getDb()
+            .prepare(
+                `SELECT "user".id AS user_id, "user".name, "user".image,
+                user_profiles.slug, user_profiles.is_public,
+                user_profiles.created_at, user_profiles.updated_at
+         FROM user_profiles
+         INNER JOIN "user" ON "user".id = user_profiles.user_id
+         WHERE user_profiles.slug = ?`
+            )
+            .bind(profileSlug)
+    );
+}
+
+async function getPublicProfileBySlug(profileSlug: string) {
+    return first<ProfileRow>(
+        getDb()
+            .prepare(
+                `SELECT "user".id AS user_id, "user".name, "user".image,
+                user_profiles.slug, user_profiles.is_public,
+                user_profiles.created_at, user_profiles.updated_at
+         FROM user_profiles
+         INNER JOIN "user" ON "user".id = user_profiles.user_id
+         WHERE user_profiles.slug = ? AND user_profiles.is_public = 1`
+            )
+            .bind(profileSlug)
+    );
+}
+
+async function profileSlugExists(profileSlug: string) {
+    const row = await first<{ slug: string }>(
+        getDb()
+            .prepare(`SELECT slug FROM user_profiles WHERE slug = ?`)
+            .bind(profileSlug)
+    );
+
+    return Boolean(row);
+}
+
+async function assertProfileSlugAvailable(userId: string, profileSlug: string) {
+    const existing = await first<{ user_id: string }>(
+        getDb()
+            .prepare(`SELECT user_id FROM user_profiles WHERE slug = ? AND user_id != ?`)
+            .bind(profileSlug, userId)
+    );
+    if (existing) {
+        throw new Error("That public handle is already taken");
+    }
+}
+
+function mapCurrentUserProfile(profile: ProfileRow): CurrentUserProfile {
+    return {
+        userId: profile.user_id,
+        slug: profile.slug,
+        isPublic: Boolean(profile.is_public)
+    };
+}
+
+async function loadPublicCategories(userId: string): Promise<CategoryWithEntries[]> {
+    const categories = await all<CategoryRow>(
+        getDb()
+            .prepare(
+                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
+         FROM categories
+         WHERE user_id = ? AND is_public = 1
+         ORDER BY sort_order ASC, name ASC`
+            )
+            .bind(userId)
+    );
+
+    if (categories.length === 0) {
+        return [];
+    }
+
+    const entryRows = await all<EntryRow>(
+        getDb()
+            .prepare(
+                `SELECT entries.id, entries.category_id, entries.name, entries.rank_position,
+                entries.image_key, entries.created_at, entries.first_consumed_at
+         FROM entries
+         INNER JOIN categories ON categories.id = entries.category_id
+         WHERE entries.user_id = ? AND entries.status = 'active'
+           AND categories.user_id = entries.user_id
+           AND categories.is_public = 1
+         ORDER BY entries.category_id ASC, entries.rank_position ASC`
+            )
+            .bind(userId)
+    );
+    const entriesByCategory = new Map<string, Entry[]>();
+    for (const row of entryRows) {
+        const entries = entriesByCategory.get(row.category_id) ?? [];
+        entries.push(mapEntry(row));
+        entriesByCategory.set(row.category_id, entries);
+    }
+
+    return categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        sortOrder: category.sort_order,
+        createdAt: category.created_at,
+        isPublic: Boolean(category.is_public),
+        starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
+        entries: orderEntries(entriesByCategory.get(category.id) ?? [])
+    }));
+}
+
+async function listFriendProfiles(userId: string): Promise<FriendProfileSummary[]> {
+    const rows = await all<FriendProfileRow>(
+        getDb()
+            .prepare(
+                `SELECT "user".id AS user_id, "user".name, "user".image,
+                user_profiles.slug, user_profiles.is_public,
+                user_friends.created_at AS friended_at,
+                COUNT(categories.id) AS public_category_count
+         FROM user_friends
+         INNER JOIN "user" ON "user".id = user_friends.friend_user_id
+         INNER JOIN user_profiles ON user_profiles.user_id = user_friends.friend_user_id
+         LEFT JOIN categories ON categories.user_id = user_friends.friend_user_id
+           AND categories.is_public = 1
+         WHERE user_friends.user_id = ?
+         GROUP BY "user".id, "user".name, "user".image, user_profiles.slug,
+           user_profiles.is_public, user_friends.created_at
+         ORDER BY lower("user".name) ASC, user_profiles.slug ASC`
+            )
+            .bind(userId)
+    );
+
+    return rows.map(mapFriendProfile);
+}
+
+async function getFriendProfile(userId: string, friendUserId: string) {
+    const friend = await first<FriendProfileRow>(
+        getDb()
+            .prepare(
+                `SELECT "user".id AS user_id, "user".name, "user".image,
+                user_profiles.slug, user_profiles.is_public,
+                user_friends.created_at AS friended_at,
+                COUNT(categories.id) AS public_category_count
+         FROM user_friends
+         INNER JOIN "user" ON "user".id = user_friends.friend_user_id
+         INNER JOIN user_profiles ON user_profiles.user_id = user_friends.friend_user_id
+         LEFT JOIN categories ON categories.user_id = user_friends.friend_user_id
+           AND categories.is_public = 1
+         WHERE user_friends.user_id = ? AND user_friends.friend_user_id = ?
+         GROUP BY "user".id, "user".name, "user".image, user_profiles.slug,
+           user_profiles.is_public, user_friends.created_at`
+            )
+            .bind(userId, friendUserId)
+    );
+    assertOwned(friend, "Friend profile");
+
+    return mapFriendProfile(friend);
+}
+
+function mapFriendProfile(row: FriendProfileRow): FriendProfileSummary {
+    return {
+        userId: row.user_id,
+        name: row.name,
+        imageKey: row.image,
+        slug: row.slug,
+        isPublic: Boolean(row.is_public),
+        publicCategoryCount: row.public_category_count,
+        friendedAt: row.friended_at
+    };
+}
+
+async function addFriend(userId: string, friendUserId: string) {
+    if (userId === friendUserId) {
+        throw new Error("You cannot add yourself as a friend");
+    }
+
+    const friendProfile = await getProfileByUserId(friendUserId);
+    assertOwned(friendProfile, "Profile");
+    if (!friendProfile.is_public) {
+        throw new Error("Public profile not found");
+    }
+
+    await getDb()
+        .prepare(
+            `INSERT OR IGNORE INTO user_friends (user_id, friend_user_id, created_at)
+       VALUES (?, ?, ?)`
+        )
+        .bind(userId, friendUserId, now())
+        .run();
+}
+
+async function isFriendProfile(userId: string, profileUserId: string) {
+    if (userId === profileUserId) {
+        return false;
+    }
+
+    const row = await first<{ friend_user_id: string }>(
+        getDb()
+            .prepare(
+                `SELECT friend_user_id
+         FROM user_friends
+         WHERE user_id = ? AND friend_user_id = ?`
+            )
+            .bind(userId, profileUserId)
+    );
+
+    return Boolean(row);
+}
+
+function normalizeProfileSlug(value: string) {
+    const slug = slugifyProfileInput(value);
+    if (slug.length < MIN_PROFILE_SLUG_LENGTH) {
+        throw new Error(`Public handle must be at least ${MIN_PROFILE_SLUG_LENGTH} characters`);
+    }
+
+    return slug;
+}
+
+function parseProfileSlugInput(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        throw new Error("Public handle is required");
+    }
+
+    try {
+        const url = new URL(trimmed);
+        const profilePathIndex = url.pathname.split("/").findIndex((part) => part === "u");
+        const profilePathSlug = profilePathIndex >= 0
+            ? url.pathname.split("/")[profilePathIndex + 1]
+            : url.pathname.split("/").filter(Boolean).at(-1);
+        return normalizeProfileSlug(profilePathSlug ?? trimmed);
+    } catch {
+        return normalizeProfileSlug(trimmed.replace(/^@/, ""));
+    }
+}
+
+function slugifyProfileName(value: string) {
+    const slug = slugifyProfileInput(value);
+    return slug.length >= MIN_PROFILE_SLUG_LENGTH ? slug : `user-${randomSlugSuffix()}`;
+}
+
+function slugifyProfileInput(value: string) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, MAX_PROFILE_SLUG_LENGTH)
+        .replace(/-+$/g, "");
+}
+
+function randomSlugSuffix() {
+    return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+}
+
 async function listQueuedEntries(userId: string): Promise<QueuedEntry[]> {
     const rows = await all<QueuedEntryRow>(
         getDb()
@@ -3194,7 +3722,7 @@ async function getOwnedCategory(userId: string, categoryId: string) {
     return first<CategoryRow>(
         getDb()
             .prepare(
-                `SELECT id, name, sort_order, created_at
+                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
          FROM categories
          WHERE user_id = ? AND id = ?`
             )

@@ -9,17 +9,31 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as UProfileSlugRouteImport } from './routes/u/$profileSlug'
 import { Route as ApiProfileImageRouteImport } from './routes/api/profile-image'
 import { Route as ApiImageSearchRouteImport } from './routes/api/image-search'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 import { Route as ApiQueuedImagesQueuedEntryIdRouteImport } from './routes/api/queued-images/$queuedEntryId'
+import { Route as ApiPublicProfileImageUserIdRouteImport } from './routes/api/public-profile-image/$userId'
+import { Route as ApiPublicImagesEntryIdRouteImport } from './routes/api/public-images/$entryId'
 import { Route as ApiImagesEntryIdRouteImport } from './routes/api/images/$entryId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UProfileSlugRoute = UProfileSlugRouteImport.update({
+  id: '/u/$profileSlug',
+  path: '/u/$profileSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProfileImageRoute = ApiProfileImageRouteImport.update({
@@ -43,6 +57,17 @@ const ApiQueuedImagesQueuedEntryIdRoute =
     path: '/api/queued-images/$queuedEntryId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicProfileImageUserIdRoute =
+  ApiPublicProfileImageUserIdRouteImport.update({
+    id: '/api/public-profile-image/$userId',
+    path: '/api/public-profile-image/$userId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicImagesEntryIdRoute = ApiPublicImagesEntryIdRouteImport.update({
+  id: '/api/public-images/$entryId',
+  path: '/api/public-images/$entryId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiImagesEntryIdRoute = ApiImagesEntryIdRouteImport.update({
   id: '/api/images/$entryId',
   path: '/api/images/$entryId',
@@ -56,79 +81,121 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/profile': typeof ProfileRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
+  '/u/$profileSlug': typeof UProfileSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
+  '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
+  '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/profile': typeof ProfileRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
+  '/u/$profileSlug': typeof UProfileSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
+  '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
+  '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/profile': typeof ProfileRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
+  '/u/$profileSlug': typeof UProfileSlugRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
+  '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
+  '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/profile'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
+    | '/u/$profileSlug'
     | '/api/auth/$'
     | '/api/images/$entryId'
+    | '/api/public-images/$entryId'
+    | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/profile'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
+    | '/u/$profileSlug'
     | '/api/auth/$'
     | '/api/images/$entryId'
+    | '/api/public-images/$entryId'
+    | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
   id:
     | '__root__'
     | '/'
+    | '/profile'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
+    | '/u/$profileSlug'
     | '/api/auth/$'
     | '/api/images/$entryId'
+    | '/api/public-images/$entryId'
+    | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ProfileRoute: typeof ProfileRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
   ApiImageSearchRoute: typeof ApiImageSearchRoute
   ApiProfileImageRoute: typeof ApiProfileImageRoute
+  UProfileSlugRoute: typeof UProfileSlugRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiImagesEntryIdRoute: typeof ApiImagesEntryIdRoute
+  ApiPublicImagesEntryIdRoute: typeof ApiPublicImagesEntryIdRoute
+  ApiPublicProfileImageUserIdRoute: typeof ApiPublicProfileImageUserIdRoute
   ApiQueuedImagesQueuedEntryIdRoute: typeof ApiQueuedImagesQueuedEntryIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/u/$profileSlug': {
+      id: '/u/$profileSlug'
+      path: '/u/$profileSlug'
+      fullPath: '/u/$profileSlug'
+      preLoaderRoute: typeof UProfileSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/profile-image': {
@@ -159,6 +226,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiQueuedImagesQueuedEntryIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public-profile-image/$userId': {
+      id: '/api/public-profile-image/$userId'
+      path: '/api/public-profile-image/$userId'
+      fullPath: '/api/public-profile-image/$userId'
+      preLoaderRoute: typeof ApiPublicProfileImageUserIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public-images/$entryId': {
+      id: '/api/public-images/$entryId'
+      path: '/api/public-images/$entryId'
+      fullPath: '/api/public-images/$entryId'
+      preLoaderRoute: typeof ApiPublicImagesEntryIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/images/$entryId': {
       id: '/api/images/$entryId'
       path: '/api/images/$entryId'
@@ -178,11 +259,15 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ProfileRoute: ProfileRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
   ApiImageSearchRoute: ApiImageSearchRoute,
   ApiProfileImageRoute: ApiProfileImageRoute,
+  UProfileSlugRoute: UProfileSlugRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiImagesEntryIdRoute: ApiImagesEntryIdRoute,
+  ApiPublicImagesEntryIdRoute: ApiPublicImagesEntryIdRoute,
+  ApiPublicProfileImageUserIdRoute: ApiPublicProfileImageUserIdRoute,
   ApiQueuedImagesQueuedEntryIdRoute: ApiQueuedImagesQueuedEntryIdRoute,
 }
 export const routeTree = rootRouteImport
