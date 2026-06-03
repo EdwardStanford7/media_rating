@@ -878,8 +878,7 @@ a.small-button:hover,
 }
 
 .profile-panel,
-.public-profile-header,
-.public-ranking-section {
+.public-profile-header {
     min-width: 0;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -909,7 +908,8 @@ a.small-button:hover,
 
 .profile-title-row h1,
 .public-profile-header h1,
-.section-heading-row h2 {
+.section-heading-row h2,
+.public-category-panel-heading h2 {
     margin: 0;
     line-height: 1.1;
 }
@@ -970,7 +970,6 @@ a.small-button:hover,
 
 .profile-category-list,
 .friend-list,
-.public-ranking-list,
 .public-entry-list {
     display: grid;
     gap: 0.65rem;
@@ -1021,7 +1020,6 @@ a.small-button:hover,
 }
 
 .public-profile-header,
-.public-ranking-list,
 .public-empty-state,
 .public-profile-status {
     width: min(960px, 100%);
@@ -1039,11 +1037,11 @@ a.small-button:hover,
 }
 
 .public-entry-row {
-    grid-template-columns: 3.2rem 3.2rem minmax(0, 1fr);
+    grid-template-columns: 3.2rem 5rem minmax(0, 1fr);
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--subtle-panel);
-    padding: 0.55rem;
+    padding: 0.65rem 0.55rem;
 }
 
 .public-rank-number {
@@ -1053,7 +1051,7 @@ a.small-button:hover,
 
 .public-entry-poster {
     display: block;
-    width: 3.2rem;
+    width: 5rem;
     aspect-ratio: 4 / 5;
     overflow: hidden;
     border: 1px solid var(--line);
@@ -1073,6 +1071,76 @@ a.small-button:hover,
     place-items: center;
     padding: 0.25rem;
     text-align: center;
+}
+
+.public-profile-body {
+    width: min(960px, 100%);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    align-items: start;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.public-category-sidebar {
+    display: grid;
+    align-content: start;
+    gap: 2px;
+    padding: 0.65rem;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+}
+
+.public-category-tab {
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem;
+    box-shadow: none;
+}
+
+.public-category-tab:not(:disabled):hover {
+    background: var(--panel-alt);
+    border-color: var(--line);
+}
+
+.public-category-tab.active {
+    border-color: var(--accent);
+    background: var(--selected-panel);
+    color: var(--accent-strong);
+    font-weight: 700;
+}
+
+.public-category-tab-name {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.92rem;
+}
+
+.public-category-panel {
+    min-width: 0;
+    padding: 1rem;
+}
+
+.public-category-panel-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-bottom: 0.8rem;
 }
 
 .panel-note {
@@ -1578,6 +1646,7 @@ img.match-poster {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+
     .brand-link:hover,
     button:not(:disabled):hover,
     .match-choice:not(:disabled):hover,
@@ -1916,5 +1985,28 @@ img.match-poster {
 
     .entry-create-row {
         grid-template-columns: 1fr;
+    }
+
+    .public-profile-body {
+        grid-template-columns: 1fr;
+    }
+
+    .public-category-sidebar {
+        position: static;
+        max-height: none;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 4px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 0.5rem;
+    }
+
+    .public-category-tab {
+        flex: 0 0 auto;
+        width: auto;
     }
 }

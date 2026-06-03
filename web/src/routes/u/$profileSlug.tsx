@@ -22,10 +22,14 @@ function PublicProfileRoute() {
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
     const [friendSaving, setFriendSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+        loaderData?.categories[0]?.id ?? null
+    );
 
     useEffect(() => {
         setProfileData(loaderData);
         setError(null);
+        setSelectedCategoryId(loaderData?.categories[0]?.id ?? null);
     }, [loaderData]);
 
     async function handleFriendToggle() {
@@ -106,14 +110,37 @@ function PublicProfileRoute() {
             {error ? <div className="status public-profile-status">{error}</div> : null}
 
             {profileData.categories.length > 0 ? (
-                <div className="public-ranking-list">
-                    {profileData.categories.map((category) => (
-                        <PublicCategory
-                            category={category}
-                            key={category.id}
-                            usePrivateImages={viewer.isSelf}
-                        />
-                    ))}
+                <div className="public-profile-body">
+                    <nav className="public-category-sidebar" aria-label="Categories">
+                        {profileData.categories.map((category) => {
+                            const isActive = category.id === selectedCategoryId;
+                            return (
+                                <button
+                                    className={`public-category-tab${isActive ? " active" : ""}`}
+                                    key={category.id}
+                                    type="button"
+                                    aria-current={isActive ? "true" : undefined}
+                                    onClick={() => setSelectedCategoryId(category.id)}
+                                >
+                                    <span className="public-category-tab-name">{category.name}</span>
+                                </button>
+                            );
+                        })}
+                    </nav>
+                    <div className="public-category-panel">
+                        {(() => {
+                            const category = profileData.categories.find(
+                                (c) => c.id === selectedCategoryId
+                            );
+                            if (!category) return null;
+                            return (
+                                <PublicCategory
+                                    category={category}
+                                    usePrivateImages={viewer.isSelf}
+                                />
+                            );
+                        })()}
+                    </div>
                 </div>
             ) : (
                 <section className="empty-state public-empty-state">
@@ -163,9 +190,9 @@ function PublicCategory({
 
     return (
         <section className="public-ranking-section">
-            <div className="section-heading-row">
+            <div className="public-category-panel-heading">
                 <h2>{category.name}</h2>
-                <span className="muted">{entries.length}</span>
+                <span className="muted">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
             </div>
             <div className="public-entry-list">
                 {entries.map((entry) => (
