@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { writeExportWorkbook } from "../src/lib/importExport";
+import { parseLegacyWorkbook, writeExportWorkbook } from "../src/lib/importExport";
 import type { CategoryWithEntries, Entry } from "../src/lib/types";
 
 describe("xlsx export", () => {
@@ -23,6 +23,20 @@ describe("xlsx export", () => {
         expect(sheet?.getCell(3, 1).value).toBeNull();
         expect(sheet?.getCell(4, 1).value).toBeNull();
         expect(sheet?.getCell(4, 2).value).toBe("Heat");
+    });
+
+    it("rejects exports with no entries", async () => {
+        await expect(writeExportWorkbook([category("Books", [])])).rejects.toThrow("at least one entry");
+    });
+});
+
+describe("xlsx import", () => {
+    it("rejects spreadsheets with no importable entries", async () => {
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Blank");
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        await expect(parseLegacyWorkbook(buffer, null)).rejects.toThrow("no importable entries");
     });
 });
 

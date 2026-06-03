@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import type { ButtonHTMLAttributes, CSSProperties, ChangeEvent, DragEvent, FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     cancelBinarySession,
@@ -15,17 +15,20 @@ import {
     importLegacyEntries,
     loadDashboard,
     markImageUnavailable,
-    moveEntryOnePosition,
+    moveEntryRelativeToEntry,
     renameCategory,
     renameEntry,
     renameQueuedEntry,
+    restoreEntry,
+    restoreQueuedEntry,
     startRandomAuditRanking,
     startRerankEntry,
     startQueuedEntryRanking,
     submitBinaryWinner,
     switchEntryCategory,
     updateCategoryStarRatingCurve,
-    updateQueueSettings
+    updateQueueSettings,
+    updateUserProfile
 } from "@/lib/server/actions";
 import { signIn, signOut, signUp } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
@@ -80,11 +83,71 @@ interface StarCurveBuilderState {
     withinOneStarPercent: number;
 }
 
+type IconName =
+    | "audit"
+    | "cancel"
+    | "category"
+    | "close"
+    | "delete"
+    | "down"
+    | "edit"
+    | "export"
+    | "image"
+    | "import"
+    | "move"
+    | "rank"
+    | "rerank"
+    | "reset"
+    | "search"
+    | "settings"
+    | "undo"
+    | "up";
+
+interface AppToast {
+    id: number;
+    message: string;
+    variant?: "default" | "success" | "danger";
+    actionLabel?: string;
+    onAction?: () => Promise<void> | void;
+}
+
+interface ReversibleAction {
+    id: number;
+    undoToastMessage: string;
+    redoToastMessage: string;
+    variant?: AppToast["variant"];
+    undo: () => Promise<void>;
+    redo: () => Promise<void>;
+}
+
 const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
+const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 const THEME_STORAGE_KEY = "rankly-theme";
+const TOAST_TIMEOUT_MS = 7000;
+const UNDO_STACK_LIMIT = 20;
+const ICONS: Record<IconName, string> = {
+    audit: "◎",
+    cancel: "×",
+    category: "⇄",
+    close: "×",
+    delete: "⌫",
+    down: "↓",
+    edit: "✎",
+    export: "⇡",
+    image: "▣",
+    import: "⇣",
+    move: "⇄",
+    rank: "▶",
+    rerank: "↻",
+    reset: "↺",
+    search: "⌕",
+    settings: "⚙",
+    undo: "↶",
+    up: "↑"
+};
 type ThemeMode = "light" | "dark";
 type AuthMode = "signin" | "signup";
 
@@ -116,7 +179,13 @@ function Home() {
         return <AuthPage authOptions={authOptions} />;
     }
 
-    return <Dashboard initialDashboard={dashboard} userName={session.user.name} />;
+    return (
+        <Dashboard
+            initialDashboard={dashboard}
+            userImage={session.user.image ?? null}
+            userName={session.user.name}
+        />
+    );
 }
 
 function AuthPage({
@@ -492,9 +561,11 @@ async function signUpWithEmail({
 
 function Dashboard({
     initialDashboard,
+    userImage,
     userName
 }: {
     initialDashboard: DashboardData;
+    userImage: string | null;
     userName: string;
 }) {
     const initialActiveSessionId = initialDashboard.activeBinarySession?.id ?? null;
@@ -509,6 +580,7 @@ function Dashboard({
     const [queueRankMode, setQueueRankMode] = useState(false);
     const queueRankModeRef = useRef(false);
     const [busy, setBusy] = useState(false);
+    const busyRef = useRef(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [auditPair, setAuditPair] = useState<RandomAuditPair | null>(null);
@@ -517,7 +589,17 @@ function Dashboard({
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialThemeMode());
+    const [currentUserName, setCurrentUserName] = useState(userName);
+    const [currentUserImage, setCurrentUserImage] = useState(userImage);
+    const [currentUserImageVersion, setCurrentUserImageVersion] = useState(0);
+    const [toasts, setToasts] = useState<AppToast[]>([]);
+    const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
     const mainRef = useRef<HTMLElement | null>(null);
+    const reversibleActionIdRef = useRef(0);
+    const undoStackRef = useRef<ReversibleAction[]>([]);
+    const redoStackRef = useRef<ReversibleAction[]>([]);
+    const toastIdRef = useRef(0);
+    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
 
     const selectedCategory = useMemo(
         () =>
@@ -554,6 +636,12 @@ function Dashboard({
         () => starRatingScaleMax(activeStarRatingCurve),
         [activeStarRatingCurve]
     );
+    const canDragReorderEntries = Boolean(
+        selectedCategory &&
+        !activeSessionId &&
+        !entrySearch.trim() &&
+        selectedCategory.entries.length > 1
+    );
 
     function setActiveBinarySessionId(sessionId: string | null) {
         activeSessionIdRef.current = sessionId;
@@ -572,8 +660,35 @@ function Dashboard({
     }, [themeMode]);
 
     useEffect(() => {
+        busyRef.current = busy;
+    }, [busy]);
+
+    useEffect(() => () => {
+        for (const timeoutId of toastTimeoutsRef.current.values()) {
+            window.clearTimeout(timeoutId);
+        }
+        toastTimeoutsRef.current.clear();
+    }, []);
+
+    useEffect(() => {
+        setCurrentUserName(userName);
+    }, [userName]);
+
+    useEffect(() => {
+        setCurrentUserImage(userImage);
+        setCurrentUserImageVersion((version) => version + 1);
+    }, [userImage]);
+
+    useEffect(() => {
         setAuditPair(null);
+        setDraggedEntryId(null);
     }, [selectedCategoryId]);
+
+    useEffect(() => {
+        if (!canDragReorderEntries) {
+            setDraggedEntryId(null);
+        }
+    }, [canDragReorderEntries]);
 
     useEffect(() => {
         if (
@@ -600,11 +715,13 @@ function Dashboard({
     }
 
     function startBusy(label: string) {
+        busyRef.current = true;
         setBusy(true);
         setBusyLabel(label);
     }
 
     function finishBusy() {
+        busyRef.current = false;
         setBusy(false);
         setBusyLabel(null);
     }
@@ -615,6 +732,155 @@ function Dashboard({
             window.scrollTo({ top: 0, behavior: "smooth" });
         });
     }
+
+    function dismissToast(toastId: number) {
+        const timeoutId = toastTimeoutsRef.current.get(toastId);
+        if (timeoutId !== undefined) {
+            window.clearTimeout(timeoutId);
+            toastTimeoutsRef.current.delete(toastId);
+        }
+
+        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
+    }
+
+    function pushToast(toast: Omit<AppToast, "id">) {
+        const id = toastIdRef.current + 1;
+        toastIdRef.current = id;
+        const nextToast = { ...toast, id };
+        setToasts((currentToasts) => [...currentToasts.filter((item) => item.id !== id), nextToast]);
+
+        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
+        toastTimeoutsRef.current.set(id, timeoutId);
+        return id;
+    }
+
+    function takeReversibleAction(stack: ReversibleAction[], actionId?: number) {
+        const actionIndex = actionId === undefined
+            ? stack.length - 1
+            : stack.findIndex((action) => action.id === actionId);
+        if (actionIndex < 0) {
+            return { action: null, nextStack: stack };
+        }
+
+        return {
+            action: stack[actionIndex],
+            nextStack: [
+                ...stack.slice(0, actionIndex),
+                ...stack.slice(actionIndex + 1)
+            ]
+        };
+    }
+
+    function addReversibleAction(stack: ReversibleAction[], action: ReversibleAction) {
+        return [...stack, action].slice(-UNDO_STACK_LIMIT);
+    }
+
+    function registerReversibleAction(actionOptions: Omit<ReversibleAction, "id">) {
+        const action = {
+            ...actionOptions,
+            id: reversibleActionIdRef.current + 1
+        };
+        reversibleActionIdRef.current = action.id;
+        undoStackRef.current = addReversibleAction(undoStackRef.current, action);
+        redoStackRef.current = [];
+
+        pushToast({
+            actionLabel: "Undo",
+            message: action.redoToastMessage,
+            onAction: () => performUndo(action.id),
+            variant: action.variant
+        });
+    }
+
+    async function performUndo(actionId?: number) {
+        if (busyRef.current) {
+            return;
+        }
+
+        const { action, nextStack } = takeReversibleAction(undoStackRef.current, actionId);
+        if (!action) {
+            return;
+        }
+
+        startBusy("Undoing...");
+        setMessage(null);
+
+        try {
+            await action.undo();
+            undoStackRef.current = nextStack;
+            redoStackRef.current = addReversibleAction(redoStackRef.current, action);
+            pushToast({
+                actionLabel: "Redo",
+                message: action.undoToastMessage,
+                onAction: () => performRedo(action.id),
+                variant: "success"
+            });
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
+    async function performRedo(actionId?: number) {
+        if (busyRef.current) {
+            return;
+        }
+
+        const { action, nextStack } = takeReversibleAction(redoStackRef.current, actionId);
+        if (!action) {
+            return;
+        }
+
+        startBusy("Redoing...");
+        setMessage(null);
+
+        try {
+            await action.redo();
+            redoStackRef.current = nextStack;
+            undoStackRef.current = addReversibleAction(undoStackRef.current, action);
+            pushToast({
+                actionLabel: "Undo",
+                message: action.redoToastMessage,
+                onAction: () => performUndo(action.id),
+                variant: action.variant
+            });
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+        }
+    }
+
+    useEffect(() => {
+        function handleUndoRedoShortcut(event: KeyboardEvent) {
+            if (
+                event.defaultPrevented ||
+                event.altKey ||
+                !(event.metaKey || event.ctrlKey) ||
+                isEditableShortcutTarget(event.target)
+            ) {
+                return;
+            }
+
+            const key = event.key.toLowerCase();
+            const isUndo = key === "z" && !event.shiftKey;
+            const isRedo = (key === "z" && event.shiftKey) || key === "y";
+            if (!isUndo && !isRedo) {
+                return;
+            }
+
+            event.preventDefault();
+            if (isRedo) {
+                void performRedo();
+            } else {
+                void performUndo();
+            }
+        }
+
+        document.addEventListener("keydown", handleUndoRedoShortcut);
+        return () => document.removeEventListener("keydown", handleUndoRedoShortcut);
+    }, []);
 
     const requestImageForMatch = useCallback(
         (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => {
@@ -681,6 +947,10 @@ function Dashboard({
             await deleteCategory({ data: { categoryId: category.id } });
             setSelectedCategoryId(nextCategory?.id ?? "");
             await refresh();
+            pushToast({
+                message: `Deleted ${category.name}.`,
+                variant: "danger"
+            });
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
@@ -765,6 +1035,28 @@ function Dashboard({
                 finishBusy();
             }
         }
+    }
+
+    async function handleUserProfile(name: string) {
+        startBusy("Saving profile...");
+        setMessage(null);
+
+        try {
+            const result = await updateUserProfile({ data: { name } });
+            setCurrentUserName(result.name);
+            setMessage("Profile updated.");
+            return true;
+        } catch (error) {
+            setMessage(errorMessage(error));
+            return false;
+        } finally {
+            finishBusy();
+        }
+    }
+
+    function handleProfileImageSaved(imageKey: string | null) {
+        setCurrentUserImage(imageKey);
+        setCurrentUserImageVersion((version) => version + 1);
     }
 
     async function handleCategoryStarRatingCurve(
@@ -867,13 +1159,29 @@ function Dashboard({
         setMessage(activeSessionId ? "Queue ranking will stop after the current item." : "Queue ranking stopped.");
     }
 
+    async function removeQueuedEntryForHistory(entry: QueuedEntry) {
+        await deleteQueuedEntry({ data: { queuedEntryId: entry.id } });
+        await refresh();
+    }
+
+    async function restoreQueuedEntryForHistory(entry: QueuedEntry) {
+        await restoreQueuedEntry({ data: { queuedEntryId: entry.id } });
+        await refresh();
+    }
+
     async function handleDeleteQueuedEntry(entry: QueuedEntry) {
         startBusy("Removing queued entry...");
         setMessage(null);
 
         try {
-            await deleteQueuedEntry({ data: { queuedEntryId: entry.id } });
-            await refresh();
+            await removeQueuedEntryForHistory(entry);
+            registerReversibleAction({
+                redo: () => removeQueuedEntryForHistory(entry),
+                redoToastMessage: `Removed ${entry.name} from the queue.`,
+                undo: () => restoreQueuedEntryForHistory(entry),
+                undoToastMessage: `Restored ${entry.name} to the queue.`,
+                variant: "danger"
+            });
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
@@ -975,18 +1283,80 @@ function Dashboard({
         }
     }
 
-    async function handleMoveEntry(entryId: string, direction: "up" | "down") {
-        startBusy(direction === "up" ? "Moving entry up..." : "Moving entry down...");
+    async function handleMoveEntryRelativeToEntry(
+        entryId: string,
+        targetEntryId: string,
+        placement: "before" | "after"
+    ) {
+        if (entryId === targetEntryId) {
+            return;
+        }
+
+        const orderedEntryIds = selectedCategory ? orderEntries(selectedCategory.entries).map((entry) => entry.id) : [];
+        const originalEntryIndex = orderedEntryIds.indexOf(entryId);
+        const targetEntryIndex = orderedEntryIds.indexOf(targetEntryId);
+        if (
+            originalEntryIndex >= 0 &&
+            targetEntryIndex >= 0 &&
+            (
+                (placement === "before" && targetEntryIndex === originalEntryIndex + 1) ||
+                (placement === "after" && targetEntryIndex === originalEntryIndex - 1)
+            )
+        ) {
+            setDraggedEntryId(null);
+            return;
+        }
+
+        const previousEntryId = originalEntryIndex > 0 ? orderedEntryIds[originalEntryIndex - 1] : null;
+        const nextEntryId = originalEntryIndex >= 0 ? orderedEntryIds[originalEntryIndex + 1] ?? null : null;
+        startBusy("Reordering entries...");
         setMessage(null);
 
         try {
-            await moveEntryOnePosition({ data: { entryId, direction } });
-            await refresh();
+            const result = await moveEntryRelativeToEntryForHistory(entryId, targetEntryId, placement);
+            if (result.moved && originalEntryIndex >= 0) {
+                registerReversibleAction({
+                    redo: () => moveEntryRelativeToEntryForHistory(entryId, targetEntryId, placement).then(() => undefined),
+                    redoToastMessage: "Reordered entries.",
+                    undo: () => restoreEntryOrderForHistory(entryId, previousEntryId, nextEntryId),
+                    undoToastMessage: "Restored the previous order.",
+                    variant: "success"
+                });
+            }
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
             finishBusy();
+            setDraggedEntryId(null);
         }
+    }
+
+    async function moveEntryRelativeToEntryForHistory(
+        entryId: string,
+        targetEntryId: string,
+        placement: "before" | "after"
+    ) {
+        const result = await moveEntryRelativeToEntry({ data: { entryId, targetEntryId, placement } });
+        await refresh();
+        return result;
+    }
+
+    async function restoreEntryOrderForHistory(
+        entryId: string,
+        previousEntryId: string | null,
+        nextEntryId: string | null
+    ) {
+        if (nextEntryId) {
+            await moveEntryRelativeToEntryForHistory(entryId, nextEntryId, "before");
+            return;
+        }
+
+        if (previousEntryId) {
+            await moveEntryRelativeToEntryForHistory(entryId, previousEntryId, "after");
+            return;
+        }
+
+        await refresh();
     }
 
     async function handleRename(entryId: string, name: string) {
@@ -1003,13 +1373,29 @@ function Dashboard({
         }
     }
 
-    async function handleDelete(entryId: string) {
+    async function deleteEntryForHistory(entry: Entry) {
+        await deleteEntry({ data: { entryId: entry.id } });
+        await refresh();
+    }
+
+    async function restoreEntryForHistory(entry: Entry) {
+        await restoreEntry({ data: { entryId: entry.id } });
+        await refresh();
+    }
+
+    async function handleDelete(entry: Entry) {
         startBusy("Deleting entry...");
         setMessage(null);
 
         try {
-            await deleteEntry({ data: { entryId } });
-            await refresh();
+            await deleteEntryForHistory(entry);
+            registerReversibleAction({
+                redo: () => deleteEntryForHistory(entry),
+                redoToastMessage: `Deleted ${entry.name}.`,
+                undo: () => restoreEntryForHistory(entry),
+                undoToastMessage: `Restored ${entry.name}.`,
+                variant: "danger"
+            });
         } catch (error) {
             setMessage(errorMessage(error));
         } finally {
@@ -1098,8 +1484,9 @@ function Dashboard({
         const file = form.get("workbook");
 
         if (!(file instanceof File) || file.size === 0) {
+            setMessage("Choose an .xlsx file to import.");
             finishBusy();
-            return;
+            return false;
         }
 
         try {
@@ -1109,6 +1496,9 @@ function Dashboard({
             setBusyLabel("Parsing spreadsheet...");
             await nextPaint();
             const parsed = await parseLegacyWorkbook(buffer, firstConsumedAt);
+            if (parsed.entries.length === 0) {
+                throw new Error("Spreadsheet contains no importable entries. Put category names in the first row and entries below them.");
+            }
             setBusyLabel(`Importing ${parsed.entries.length} entries...`);
             await nextPaint();
             const result = await importLegacyEntries({ data: parsed });
@@ -1120,8 +1510,10 @@ function Dashboard({
             );
             formElement.reset();
             await refresh();
+            return true;
         } catch (error) {
             setMessage(errorMessage(error));
+            return false;
         } finally {
             finishBusy();
         }
@@ -1132,6 +1524,14 @@ function Dashboard({
         setMessage(null);
         try {
             await nextPaint();
+            const entryCount = dashboard.categories.reduce(
+                (count, category) => count + category.entries.length,
+                0
+            );
+            if (entryCount === 0) {
+                setMessage("Nothing to export yet. Add or import entries first.");
+                return;
+            }
             const buffer = await writeExportWorkbook(dashboard.categories);
             const blob = new Blob([buffer], {
                 type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1152,6 +1552,7 @@ function Dashboard({
     return (
         <main className="app-shell" aria-busy={busy}>
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
+            <ToastStack toasts={toasts} onDismiss={dismissToast} />
             {imagePickerTarget ? (
                 <ImagePickerModal
                     target={imagePickerTarget}
@@ -1177,7 +1578,10 @@ function Dashboard({
             ) : null}
             <aside className="sidebar">
                 <div className="sidebar-header">
-                    <strong className="brand-title">Rankly</strong>
+                    <Link className="brand-link" to="/">
+                        <img src="/favicon.svg" alt="" aria-hidden="true" />
+                        <span>Rankly</span>
+                    </Link>
                     <AccountMenu
                         busy={busy}
                         busyLabel={busyLabel}
@@ -1186,11 +1590,15 @@ function Dashboard({
                         settings={dashboard.queueSettings}
                         onExport={handleExport}
                         onImport={handleImport}
+                        onProfileImageSaved={handleProfileImageSaved}
                         onSaveCategoryStarRatingCurve={handleCategoryStarRatingCurve}
                         onSaveSettings={handleQueueSettings}
+                        onSaveUserProfile={handleUserProfile}
                         onThemeChange={setThemeMode}
                         themeMode={themeMode}
-                        userName={userName}
+                        userImage={currentUserImage}
+                        userImageVersion={currentUserImageVersion}
+                        userName={currentUserName}
                     />
                 </div>
 
@@ -1212,6 +1620,15 @@ function Dashboard({
                             onSelect={() => setSelectedCategoryId(category.id)}
                         />
                     ))}
+                    {dashboard.categories.length === 0 ? (
+                        <EmptyState
+                            compact
+                            icon="category"
+                            title="No Categories"
+                        >
+                            Add a category to start building a ranked list.
+                        </EmptyState>
+                    ) : null}
                 </div>
 
                 <QueuePanel
@@ -1246,11 +1663,21 @@ function Dashboard({
                         type="button"
                         onClick={handleStartRandomAudit}
                     >
-                        Random Audit
+                        <Icon name="audit" />
+                        <span>Random Audit</span>
                     </button>
                 </div>
 
                 {message ? <div className="status">{message}</div> : null}
+
+                {dashboard.categories.length === 0 ? (
+                    <EmptyState
+                        icon="category"
+                        title="Create Your First Category"
+                    >
+                        Categories keep each ranked list separate. Use the sidebar form to add one.
+                    </EmptyState>
+                ) : null}
 
                 {selectedCategory && !activeSessionId ? (
                     <div className="entry-control-stack">
@@ -1315,17 +1742,18 @@ function Dashboard({
                             entry={entry}
                             categories={dashboard.categories}
                             key={entry.id}
-                            canMoveDown={entry.rankPosition < selectedCategory.entries.length - 1}
-                            canMoveUp={entry.rankPosition > 0}
+                            canDragReorder={canDragReorderEntries}
+                            isDragging={draggedEntryId === entry.id}
                             listLocked={Boolean(activeSessionId)}
                             selectedCategoryId={selectedCategory.id}
                             starRating={dashboard.queueSettings.showStarRatings
                                 ? starRatings.get(entry.id) ?? starRatingScale
                                 : null}
                             starRatingScale={starRatingScale}
-                            onDelete={() => handleDelete(entry.id)}
-                            onMoveDown={() => handleMoveEntry(entry.id, "down")}
-                            onMoveUp={() => handleMoveEntry(entry.id, "up")}
+                            onDelete={() => handleDelete(entry)}
+                            onDragEnd={() => setDraggedEntryId(null)}
+                            onDragStart={() => setDraggedEntryId(entry.id)}
+                            onDropEntry={handleMoveEntryRelativeToEntry}
                             onPickImage={() => setImagePickerTarget({
                                 kind: "entry",
                                 item: entry,
@@ -1338,7 +1766,16 @@ function Dashboard({
                     )) : null}
                 </section>
                 {selectedCategory && displayedEntries.length === 0 ? (
-                    <div className="muted">No entries match that search.</div>
+                    <EmptyState
+                        icon={entrySearch.trim() ? "search" : "rank"}
+                        title={entrySearch.trim() ? "No Matches" : "No Entries Yet"}
+                    >
+                        {entrySearch.trim()
+                            ? "Try a different search term or clear the search field."
+                            : dashboard.queueSettings.enabled
+                                ? "Add entries above to queue them for ranking."
+                                : "Add an entry above to start ranking this category."}
+                    </EmptyState>
                 ) : null}
             </section>
         </main>
@@ -1373,6 +1810,14 @@ function readInitialThemeMode(): ThemeMode {
     }
 
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function isEditableShortcutTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    return target.isContentEditable || target.matches("input, textarea, select");
 }
 
 function useDismissibleMenu<T extends HTMLElement>(isOpen: boolean, onDismiss: () => void) {
@@ -1541,6 +1986,124 @@ function ConfirmDialog({
     );
 }
 
+function Icon({ name }: { name: IconName }) {
+    return (
+        <span aria-hidden="true" className="button-icon">
+            {ICONS[name]}
+        </span>
+    );
+}
+
+function IconButton({
+    className = "",
+    icon,
+    label,
+    title,
+    ...props
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
+    icon: IconName;
+    label: string;
+}) {
+    return (
+        <button
+            {...props}
+            aria-label={label}
+            className={`icon-button ${className}`.trim()}
+            title={title ?? label}
+        >
+            <Icon name={icon} />
+        </button>
+    );
+}
+
+function MenuIconLabel({
+    children,
+    icon
+}: {
+    children: ReactNode;
+    icon: IconName;
+}) {
+    return (
+        <span className="menu-icon-label">
+            <Icon name={icon} />
+            <span>{children}</span>
+        </span>
+    );
+}
+
+function EmptyState({
+    children,
+    compact = false,
+    icon,
+    title
+}: {
+    children: ReactNode;
+    compact?: boolean;
+    icon: IconName;
+    title: string;
+}) {
+    return (
+        <section className={`empty-state ${compact ? "compact" : ""}`}>
+            <div className="empty-state-icon">
+                <Icon name={icon} />
+            </div>
+            <div>
+                <strong>{title}</strong>
+                <p className="muted">{children}</p>
+            </div>
+        </section>
+    );
+}
+
+function ToastStack({
+    onDismiss,
+    toasts
+}: {
+    onDismiss: (toastId: number) => void;
+    toasts: AppToast[];
+}) {
+    const [activeActionId, setActiveActionId] = useState<number | null>(null);
+
+    if (toasts.length === 0) {
+        return null;
+    }
+
+    return (
+        <div aria-live="polite" className="toast-stack">
+            {toasts.map((toast) => (
+                <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
+                    <span>{toast.message}</span>
+                    {toast.actionLabel && toast.onAction ? (
+                        <button
+                            className="small-button toast-action"
+                            disabled={activeActionId === toast.id}
+                            type="button"
+                            onClick={async () => {
+                                setActiveActionId(toast.id);
+                                try {
+                                    await toast.onAction?.();
+                                    onDismiss(toast.id);
+                                } finally {
+                                    setActiveActionId(null);
+                                }
+                            }}
+                        >
+                            {activeActionId === toast.id ? "Working..." : toast.actionLabel}
+                        </button>
+                    ) : null}
+                    <IconButton
+                        className="toast-close-button"
+                        icon="close"
+                        label="Dismiss notification"
+                        type="button"
+                        onClick={() => onDismiss(toast.id)}
+                    />
+                </div>
+            ))}
+        </div>
+    );
+}
+
 function CategoryListItem({
     category,
     isActive,
@@ -1649,7 +2212,7 @@ function CategoryListItem({
                                 onDelete();
                             }}
                         >
-                            Delete
+                            <MenuIconLabel icon="delete">Delete</MenuIconLabel>
                         </button>
                     </div>
                 ) : null}
@@ -1680,10 +2243,14 @@ function AccountMenu({
     settings,
     onExport,
     onImport,
+    onProfileImageSaved,
     onSaveCategoryStarRatingCurve,
     onSaveSettings,
+    onSaveUserProfile,
     onThemeChange,
     themeMode,
+    userImage,
+    userImageVersion,
     userName
 }: {
     busy: boolean;
@@ -1692,15 +2259,19 @@ function AccountMenu({
     selectedCategory: CategoryWithEntries | null;
     settings: QueueSettings;
     onExport: () => Promise<void>;
-    onImport: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+    onImport: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+    onProfileImageSaved: (imageKey: string | null) => void;
     onSaveCategoryStarRatingCurve: (
         categoryId: string,
         starRatingCurve: QueueSettings["starRatingCurve"] | null,
         options?: { quiet?: boolean }
     ) => Promise<void>;
     onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
+    onSaveUserProfile: (name: string) => Promise<boolean>;
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
+    userImage: string | null;
+    userImageVersion: number;
     userName: string;
 }) {
     const [enabled, setEnabled] = useState(settings.enabled);
@@ -1719,11 +2290,16 @@ function AccountMenu({
     const [starCurveError, setStarCurveError] = useState<string | null>(null);
     const [categoryStarCurveError, setCategoryStarCurveError] = useState<string | null>(null);
     const [quickSaving, setQuickSaving] = useState(false);
+    const [profileName, setProfileName] = useState(userName);
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [profileError, setProfileError] = useState<string | null>(null);
+    const [profileStatus, setProfileStatus] = useState<string | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [activePanel, setActivePanel] = useState<"settings" | "import" | null>(null);
+    const [activePanel, setActivePanel] = useState<"profile" | "settings" | "import" | null>(null);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen);
     const importDisabled = busy || listLocked;
+    const profileDisabled = busy || profileSaving;
 
     useEffect(() => {
         setEnabled(settings.enabled);
@@ -1747,14 +2323,91 @@ function AccountMenu({
         settings.showStarRatings
     ]);
 
+    useEffect(() => {
+        setProfileName(userName);
+        setProfileError(null);
+        setProfileStatus(null);
+    }, [userName]);
+
     async function handleExportClick() {
         await onExport();
         setMenuOpen(false);
     }
 
     async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
-        await onImport(event);
-        setMenuOpen(false);
+        const imported = await onImport(event);
+        if (imported) {
+            setMenuOpen(false);
+        }
+    }
+
+    async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setProfileError(null);
+        setProfileStatus(null);
+        const saved = await onSaveUserProfile(profileName);
+        if (saved) {
+            setProfileStatus("Username saved.");
+        } else {
+            setProfileError("Username could not be saved.");
+        }
+    }
+
+    async function handleProfileImageInput(event: ChangeEvent<HTMLInputElement>) {
+        const file = event.currentTarget.files?.[0] ?? null;
+        event.currentTarget.value = "";
+        if (!file) {
+            return;
+        }
+
+        setProfileSaving(true);
+        setProfileError(null);
+        setProfileStatus(null);
+
+        try {
+            const blob = await imageFileToAvatarBlob(file);
+            const response = await fetch("/api/profile-image", {
+                method: "POST",
+                headers: {
+                    "content-type": blob.type || "image/jpeg"
+                },
+                body: blob
+            });
+            const body = await response.json().catch(() => null) as { imageKey?: string; message?: string } | null;
+            if (!response.ok) {
+                throw new Error(body?.message ?? "Profile photo upload failed");
+            }
+
+            onProfileImageSaved(body?.imageKey ?? null);
+            setProfileStatus("Profile photo updated.");
+        } catch (error) {
+            setProfileError(errorMessage(error));
+        } finally {
+            setProfileSaving(false);
+        }
+    }
+
+    async function handleRemoveProfileImage() {
+        setProfileSaving(true);
+        setProfileError(null);
+        setProfileStatus(null);
+
+        try {
+            const response = await fetch("/api/profile-image", {
+                method: "DELETE"
+            });
+            const body = await response.json().catch(() => null) as { message?: string } | null;
+            if (!response.ok) {
+                throw new Error(body?.message ?? "Profile photo could not be removed");
+            }
+
+            onProfileImageSaved(null);
+            setProfileStatus("Profile photo removed.");
+        } catch (error) {
+            setProfileError(errorMessage(error));
+        } finally {
+            setProfileSaving(false);
+        }
     }
 
     async function saveSettingsImmediately(nextSettings: QueueSettings) {
@@ -1863,211 +2516,411 @@ function AccountMenu({
     return (
         <div className="account-menu" ref={menuRef}>
             <button
+                aria-label="Account menu"
                 aria-expanded={menuOpen}
                 className="account-menu-toggle"
                 ref={floatingMenu.triggerRef}
                 type="button"
                 onClick={() => {
                     if (!menuOpen) {
-                        setActivePanel(null);
+                        setActivePanel("profile");
                     }
                     setMenuOpen((isOpen) => !isOpen);
                 }}
             >
-                <span className="account-avatar" aria-hidden="true" />
+                <AccountAvatar
+                    imageKey={userImage}
+                    imageVersion={userImageVersion}
+                />
             </button>
 
             {menuOpen ? (
                 <div
-                    className="stack account-menu-panel floating-menu-panel"
+                    className="account-menu-panel floating-menu-panel"
                     ref={floatingMenu.panelRef}
                     style={floatingMenu.style}
                 >
-                    {activePanel === "settings" ? (
-                        <>
+                    <div className="account-menu-layout">
+                        <div className="account-menu-primary">
                             <div className="account-menu-header">
-                                <button className="small-button" type="button" onClick={() => setActivePanel(null)}>
-                                    Back
-                                </button>
-                                <strong>Settings</strong>
+                                <AccountAvatar
+                                    imageKey={userImage}
+                                    imageVersion={userImageVersion}
+                                    large
+                                />
+                                <div>
+                                    <strong className="account-display-name">{userName}</strong>
+                                    <span className="muted">Account</span>
+                                </div>
                             </div>
-                            <form className="stack account-subpanel" onSubmit={handleSubmit}>
-                                <label className="checkbox-row">
-                                    <input
-                                        checked={enabled}
-                                        disabled={busy || quickSaving}
-                                        type="checkbox"
-                                        onChange={(event) => void updateToggle("enabled", event.target.checked)}
+                            <button
+                                aria-expanded={activePanel === "profile"}
+                                className={`account-menu-item has-flyout ${activePanel === "profile" ? "active" : ""}`}
+                                type="button"
+                                onClick={() => setActivePanel("profile")}
+                                onFocus={() => setActivePanel("profile")}
+                                onMouseEnter={() => setActivePanel("profile")}
+                            >
+                                <MenuIconLabel icon="edit">Profile</MenuIconLabel>
+                                <span aria-hidden="true">›</span>
+                            </button>
+                            <button
+                                aria-expanded={activePanel === "settings"}
+                                className={`account-menu-item has-flyout ${activePanel === "settings" ? "active" : ""}`}
+                                type="button"
+                                onClick={() => setActivePanel("settings")}
+                                onFocus={() => setActivePanel("settings")}
+                                onMouseEnter={() => setActivePanel("settings")}
+                            >
+                                <MenuIconLabel icon="settings">Settings</MenuIconLabel>
+                                <span aria-hidden="true">›</span>
+                            </button>
+                            <button
+                                className="account-menu-item"
+                                type="button"
+                                onClick={() => onThemeChange(themeMode === "dark" ? "light" : "dark")}
+                            >
+                                <MenuIconLabel icon="reset">
+                                    Switch to {themeMode === "dark" ? "Light" : "Dark"} Mode
+                                </MenuIconLabel>
+                            </button>
+                            <button
+                                aria-expanded={activePanel === "import"}
+                                className={`account-menu-item has-flyout ${activePanel === "import" ? "active" : ""}`}
+                                disabled={importDisabled}
+                                type="button"
+                                onClick={() => setActivePanel("import")}
+                                onFocus={() => setActivePanel("import")}
+                                onMouseEnter={() => setActivePanel("import")}
+                            >
+                                <MenuIconLabel icon="import">Import xlsx</MenuIconLabel>
+                                <span aria-hidden="true">›</span>
+                            </button>
+                            <button
+                                className="account-menu-item"
+                                disabled={busy}
+                                type="button"
+                                onClick={() => void handleExportClick()}
+                            >
+                                <MenuIconLabel icon="export">Export xlsx</MenuIconLabel>
+                            </button>
+                            <button
+                                className="account-menu-item danger menu-danger"
+                                type="button"
+                                onClick={() => signOut().then(() => window.location.assign("/"))}
+                            >
+                                <MenuIconLabel icon="cancel">Sign Out</MenuIconLabel>
+                            </button>
+                        </div>
+
+                        {activePanel === "profile" ? (
+                            <form className="account-flyout stack" onSubmit={handleProfileSubmit}>
+                                <div>
+                                    <strong>Profile</strong>
+                                </div>
+                                <div className="profile-avatar-row">
+                                    <AccountAvatar
+                                        imageKey={userImage}
+                                        imageVersion={userImageVersion}
+                                        large
                                     />
-                                    <span>Queue new entries</span>
-                                </label>
-                                <label className="checkbox-row">
-                                    <input
-                                        checked={promptForMissingImages}
-                                        disabled={busy || quickSaving}
-                                        type="checkbox"
-                                        onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
-                                    />
-                                    <span>Prompt for missing images</span>
-                                </label>
-                                <label className="checkbox-row">
-                                    <input
-                                        checked={showStarRatings}
-                                        disabled={busy || quickSaving}
-                                        type="checkbox"
-                                        onChange={(event) => void updateToggle("showStarRatings", event.target.checked)}
-                                    />
-                                    <span>Show star ratings</span>
-                                </label>
-                                <label className="stack compact-stack">
-                                    <span className="muted">Queue delay (days)</span>
-                                    <input
-                                        disabled={busy}
-                                        min={0}
-                                        max={365}
-                                        type="number"
-                                        value={delayDays}
-                                        onChange={(event) => setDelayDays(Number(event.target.value))}
-                                    />
-                                </label>
-                                {showStarRatings ? (
-                                    <details className="stack compact-stack star-curve-editor">
-                                        <summary>Global star curve</summary>
-                                        <StarCurveBuilder
-                                            disabled={busy}
-                                            value={globalCurveBuilder}
-                                            onApply={() => applyCurveBuilder("global")}
-                                            onChange={setGlobalCurveBuilder}
-                                        />
-                                        <textarea
-                                            aria-label="Global star curve"
-                                            disabled={busy}
-                                            rows={9}
-                                            spellCheck={false}
-                                            value={starCurveText}
-                                            onChange={(event) => {
-                                                setStarCurveText(event.target.value);
-                                                setStarCurveError(null);
-                                            }}
-                                        />
-                                        {starCurveError ? <div className="status">{starCurveError}</div> : null}
-                                        <button
-                                            className="small-button"
-                                            disabled={busy}
-                                            type="button"
-                                            onClick={() => {
-                                                setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
-                                                setStarCurveError(null);
-                                            }}
-                                        >
-                                            Reset Curve
-                                        </button>
-                                    </details>
-                                ) : null}
-                                {showStarRatings && selectedCategory ? (
-                                    <details className="stack compact-stack star-curve-editor">
-                                        <summary>{selectedCategory.name} star curve</summary>
-                                        <label className="checkbox-row">
+                                    <div className="profile-avatar-actions">
+                                        <label className={`file-button ${profileDisabled ? "disabled" : ""}`}>
+                                            <span>{profileSaving ? "Uploading..." : "Upload Photo"}</span>
                                             <input
-                                                checked={useCategoryStarCurve}
-                                                disabled={busy || quickSaving}
-                                                type="checkbox"
-                                                onChange={(event) => void updateCategoryCurveEnabled(event.target.checked)}
+                                                accept="image/*"
+                                                disabled={profileDisabled}
+                                                type="file"
+                                                onChange={(event) => void handleProfileImageInput(event)}
                                             />
-                                            <span>Use custom curve for this category</span>
                                         </label>
-                                        {useCategoryStarCurve ? (
-                                            <>
-                                                <StarCurveBuilder
-                                                    disabled={busy}
-                                                    value={categoryCurveBuilder}
-                                                    onApply={() => applyCurveBuilder("category")}
-                                                    onChange={setCategoryCurveBuilder}
-                                                />
-                                                <textarea
-                                                    aria-label={`${selectedCategory.name} star curve`}
-                                                    disabled={busy}
-                                                    rows={9}
-                                                    spellCheck={false}
-                                                    value={categoryStarCurveText}
-                                                    onChange={(event) => {
-                                                        setCategoryStarCurveText(event.target.value);
-                                                        setCategoryStarCurveError(null);
-                                                    }}
-                                                />
-                                                {categoryStarCurveError ? <div className="status">{categoryStarCurveError}</div> : null}
-                                                <button
-                                                    className="small-button"
-                                                    disabled={busy}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setCategoryStarCurveText(starRatingCurveToText(settings.starRatingCurve));
-                                                        setCategoryStarCurveError(null);
-                                                    }}
-                                                >
-                                                    Use Global Curve Text
-                                                </button>
-                                            </>
-                                        ) : null}
-                                    </details>
+                                        <button
+                                            disabled={profileDisabled || !hasStoredImage(userImage)}
+                                            type="button"
+                                            onClick={() => void handleRemoveProfileImage()}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                                <label className="stack compact-stack">
+                                    <span className="muted">Username</span>
+                                    <input
+                                        autoComplete="name"
+                                        disabled={profileDisabled}
+                                        value={profileName}
+                                        onChange={(event) => {
+                                            setProfileName(event.target.value);
+                                            setProfileError(null);
+                                            setProfileStatus(null);
+                                        }}
+                                    />
+                                </label>
+                                {profileError ? <div className="status">{profileError}</div> : null}
+                                {profileStatus ? <div className="status success-status">{profileStatus}</div> : null}
+                                <button disabled={profileDisabled} type="submit">Save Profile</button>
+                            </form>
+                        ) : null}
+
+                        {activePanel === "settings" ? (
+                            <form className="account-flyout stack" onSubmit={handleSubmit}>
+                                <div>
+                                    <strong>Settings</strong>
+                                </div>
+                                <div className="settings-toggle-grid">
+                                    <label className="checkbox-row">
+                                        <input
+                                            checked={enabled}
+                                            disabled={busy || quickSaving}
+                                            type="checkbox"
+                                            onChange={(event) => void updateToggle("enabled", event.target.checked)}
+                                        />
+                                        <span>Queue entries</span>
+                                    </label>
+                                    <label className="checkbox-row">
+                                        <input
+                                            checked={promptForMissingImages}
+                                            disabled={busy || quickSaving}
+                                            type="checkbox"
+                                            onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
+                                        />
+                                        <span>Image prompts</span>
+                                    </label>
+                                    <label className="checkbox-row">
+                                        <input
+                                            checked={showStarRatings}
+                                            disabled={busy || quickSaving}
+                                            type="checkbox"
+                                            onChange={(event) => void updateToggle("showStarRatings", event.target.checked)}
+                                        />
+                                        <span>Star ratings</span>
+                                    </label>
+                                    <label className="stack compact-stack">
+                                        <span className="muted">Delay days</span>
+                                        <input
+                                            disabled={busy}
+                                            min={0}
+                                            max={365}
+                                            type="number"
+                                            value={delayDays}
+                                            onChange={(event) => setDelayDays(Number(event.target.value))}
+                                        />
+                                    </label>
+                                </div>
+
+                                {showStarRatings ? (
+                                    <StarCurvePanel
+                                        builder={globalCurveBuilder}
+                                        disabled={busy}
+                                        error={starCurveError}
+                                        resetLabel="Default"
+                                        text={starCurveText}
+                                        title="Global Curve"
+                                        onApply={() => applyCurveBuilder("global")}
+                                        onBuilderChange={setGlobalCurveBuilder}
+                                        onReset={() => {
+                                            setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
+                                            setStarCurveError(null);
+                                        }}
+                                        onTextChange={(text) => {
+                                            setStarCurveText(text);
+                                            setStarCurveError(null);
+                                        }}
+                                    />
                                 ) : null}
+
+                                {showStarRatings && selectedCategory ? (
+                                    <section className="star-curve-toggle-section">
+                                        <div className="star-curve-card-header">
+                                            <strong>{selectedCategory.name}</strong>
+                                            <label className="switch-row">
+                                                <input
+                                                    checked={useCategoryStarCurve}
+                                                    disabled={busy || quickSaving}
+                                                    type="checkbox"
+                                                    onChange={(event) => void updateCategoryCurveEnabled(event.target.checked)}
+                                                />
+                                                <span>Custom</span>
+                                            </label>
+                                        </div>
+                                        {useCategoryStarCurve ? (
+                                            <StarCurvePanel
+                                                builder={categoryCurveBuilder}
+                                                disabled={busy}
+                                                error={categoryStarCurveError}
+                                                resetLabel="Use Global"
+                                                text={categoryStarCurveText}
+                                                title="Category Curve"
+                                                onApply={() => applyCurveBuilder("category")}
+                                                onBuilderChange={setCategoryCurveBuilder}
+                                                onReset={() => {
+                                                    setCategoryStarCurveText(starRatingCurveToText(settings.starRatingCurve));
+                                                    setCategoryStarCurveError(null);
+                                                }}
+                                                onTextChange={(text) => {
+                                                    setCategoryStarCurveText(text);
+                                                    setCategoryStarCurveError(null);
+                                                }}
+                                            />
+                                        ) : (
+                                            <p className="muted panel-note">Using the global curve.</p>
+                                        )}
+                                    </section>
+                                ) : null}
+
                                 <button disabled={busy} type="submit">Save Settings</button>
                             </form>
-                        </>
-                    ) : activePanel === "import" ? (
-                        <>
-                            <div className="account-menu-header">
-                                <button className="small-button" type="button" onClick={() => setActivePanel(null)}>
-                                    Back
-                                </button>
-                                <strong>Import Spreadsheet</strong>
-                            </div>
-                            <form className="stack account-subpanel" onSubmit={handleImportSubmit}>
-                                <input disabled={importDisabled} name="firstConsumedAt" type="date" />
-                                <input disabled={importDisabled} name="workbook" type="file" accept=".xlsx" />
+                        ) : null}
+
+                        {activePanel === "import" ? (
+                            <form className="account-flyout stack" onSubmit={handleImportSubmit}>
+                                <div>
+                                    <strong>Import Spreadsheet</strong>
+                                </div>
+                                <label className="stack compact-stack">
+                                    <span className="muted">First consumed date</span>
+                                    <input disabled={importDisabled} name="firstConsumedAt" type="date" />
+                                </label>
+                                <label className="stack compact-stack">
+                                    <span className="muted">Workbook</span>
+                                    <input disabled={importDisabled} name="workbook" type="file" accept=".xlsx" />
+                                </label>
                                 <button disabled={importDisabled} type="submit">
                                     {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
                                 </button>
                             </form>
-                        </>
-                    ) : (
-                        <>
-                            <div className="account-menu-header">
-                                <span className="account-avatar large" aria-hidden="true" />
-                                <div>
-                                    <strong>{userName}</strong>
-                                </div>
-                            </div>
-                            <button type="button" onClick={() => setActivePanel("settings")}>
-                                Settings
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => onThemeChange(themeMode === "dark" ? "light" : "dark")}
-                            >
-                                Switch to {themeMode === "dark" ? "Light" : "Dark"} Mode
-                            </button>
-                            <button
-                                disabled={importDisabled}
-                                type="button"
-                                onClick={() => setActivePanel("import")}
-                            >
-                                Import xlsx
-                            </button>
-                            <button disabled={busy} type="button" onClick={() => void handleExportClick()}>
-                                Export xlsx
-                            </button>
-                            <button
-                                className="danger menu-danger"
-                                type="button"
-                                onClick={() => signOut().then(() => window.location.assign("/"))}
-                            >
-                                Sign Out
-                            </button>
-                        </>
-                    )}
+                        ) : null}
+                    </div>
                 </div>
             ) : null}
+        </div>
+    );
+}
+
+function AccountAvatar({
+    imageKey,
+    imageVersion,
+    large = false
+}: {
+    imageKey: string | null;
+    imageVersion: number;
+    large?: boolean;
+}) {
+    const [imageFailed, setImageFailed] = useState(false);
+
+    useEffect(() => {
+        setImageFailed(false);
+    }, [imageKey, imageVersion]);
+
+    const src = hasStoredImage(imageKey) && !imageFailed
+        ? `/api/profile-image?v=${encodeURIComponent(`${imageVersion}:${imageKey}`)}`
+        : null;
+
+    return (
+        <span className={`account-avatar ${large ? "large" : ""}`} aria-hidden="true">
+            {src ? (
+                <img
+                    alt=""
+                    decoding="async"
+                    src={src}
+                    onError={() => setImageFailed(true)}
+                />
+            ) : null}
+        </span>
+    );
+}
+
+function StarCurvePanel({
+    builder,
+    disabled,
+    error,
+    resetLabel,
+    text,
+    title,
+    onApply,
+    onBuilderChange,
+    onReset,
+    onTextChange
+}: {
+    builder: StarCurveBuilderState;
+    disabled: boolean;
+    error: string | null;
+    resetLabel: string;
+    text: string;
+    title: string;
+    onApply: () => void;
+    onBuilderChange: (value: StarCurveBuilderState) => void;
+    onReset: () => void;
+    onTextChange: (value: string) => void;
+}) {
+    return (
+        <section className="star-curve-card">
+            <div className="star-curve-card-header">
+                <strong>{title}</strong>
+                <button className="small-button" disabled={disabled} type="button" onClick={onReset}>
+                    {resetLabel}
+                </button>
+            </div>
+            <StarCurveBuilder
+                disabled={disabled}
+                value={builder}
+                onApply={onApply}
+                onChange={onBuilderChange}
+            />
+            <StarCurvePreview curveText={text} />
+            <textarea
+                aria-label={title}
+                disabled={disabled}
+                rows={7}
+                spellCheck={false}
+                value={text}
+                onChange={(event) => onTextChange(event.target.value)}
+            />
+            {error ? <div className="status">{error}</div> : null}
+        </section>
+    );
+}
+
+function StarCurvePreview({ curveText }: { curveText: string }) {
+    let curve: QueueSettings["starRatingCurve"];
+    try {
+        curve = parseStarRatingCurveText(curveText);
+    } catch {
+        return (
+            <div className="star-curve-preview unavailable">
+                <span className="muted">Preview updates after a valid curve.</span>
+            </div>
+        );
+    }
+
+    const scale = starRatingScaleMax(curve);
+    const checkpoints = [
+        { label: "Top", percentile: 0 },
+        { label: "10%", percentile: 0.1 },
+        { label: "25%", percentile: 0.25 },
+        { label: "Mid", percentile: 0.5 },
+        { label: "75%", percentile: 0.75 },
+        { label: "90%", percentile: 0.9 },
+        { label: "Bottom", percentile: 1 }
+    ];
+
+    return (
+        <div className="star-curve-preview" aria-label="Star curve preview">
+            {checkpoints.map((point) => {
+                const stars = starRatingForPercentile(point.percentile, curve);
+                const fill = scale > 0 ? Math.max(4, Math.min(100, (stars / scale) * 100)) : 4;
+                return (
+                    <div
+                        className="star-curve-preview-point"
+                        key={point.label}
+                        style={{ "--curve-fill": `${fill}%` } as CSSProperties}
+                        title={`${point.label}: ${formatRatingNumber(stars)} stars`}
+                    >
+                        <span>{point.label}</span>
+                        <strong>{formatRatingNumber(stars)}</strong>
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -2090,8 +2943,9 @@ function StarCurveBuilder({
     return (
         <div className="star-curve-builder">
             <label>
-                <span className="muted">Max stars</span>
+                <span className="muted">Top score</span>
                 <input
+                    aria-label="Top score"
                     disabled={disabled}
                     min={1}
                     max={100}
@@ -2102,10 +2956,24 @@ function StarCurveBuilder({
                 />
             </label>
             <label>
-                <span className="muted">Average item</span>
+                <span className="muted">Floor</span>
                 <input
+                    aria-label="Floor score"
                     disabled={disabled}
                     min={0}
+                    max={value.maxStars}
+                    step={0.5}
+                    type="number"
+                    value={value.minStars}
+                    onChange={(event) => update("minStars", Number(event.target.value))}
+                />
+            </label>
+            <label>
+                <span className="muted">Midpoint</span>
+                <input
+                    aria-label="Midpoint score"
+                    disabled={disabled}
+                    min={value.minStars}
                     max={value.maxStars}
                     step={0.1}
                     type="number"
@@ -2114,8 +2982,9 @@ function StarCurveBuilder({
                 />
             </label>
             <label>
-                <span className="muted">Within ±1</span>
+                <span className="muted">Tightness %</span>
                 <input
+                    aria-label="Tightness percent"
                     disabled={disabled}
                     min={5}
                     max={98}
@@ -2126,7 +2995,7 @@ function StarCurveBuilder({
                 />
             </label>
             <button className="small-button" disabled={disabled} type="button" onClick={onApply}>
-                Generate Curve
+                Apply Shape
             </button>
         </div>
     );
@@ -2187,7 +3056,8 @@ function QueuePanel({
                         }
                     }}
                 >
-                    {queueRankMode ? "Stop Ranking Queue" : "Rank Queue"}
+                    <Icon name={queueRankMode ? "cancel" : "rank"} />
+                    <span>{queueRankMode ? "Stop Ranking Queue" : "Rank Queue"}</span>
                 </button>
             </div>
 
@@ -2219,7 +3089,11 @@ function QueuePanel({
                     ))}
                 </div>
             ) : (
-                <div className="muted">No queued entries.</div>
+                <EmptyState compact icon="rank" title="Queue Empty">
+                    {activeSessionId
+                        ? "Queue controls will return after the active ranking finishes."
+                        : "Queued entries will appear here after you add them."}
+                </EmptyState>
             )}
         </section>
     );
@@ -2314,17 +3188,21 @@ function QueuedEntryRow({
                     </div>
                 )}
                 <div className="queue-actions">
-                    <button disabled={disabled} type="button" onClick={() => void onStart(entry)}>
-                        Rank Now
-                    </button>
-                    <button
+                    <IconButton
+                        disabled={disabled}
+                        icon="rank"
+                        label={`Rank ${entry.name} now`}
+                        type="button"
+                        onClick={() => void onStart(entry)}
+                    />
+                    <IconButton
                         className="queue-image-button"
                         disabled={disabled}
+                        icon="image"
+                        label={hasStoredImage(entry.imageKey) ? `Change image for ${entry.name}` : `Pick image for ${entry.name}`}
                         type="button"
                         onClick={() => onPickImage(entry)}
-                    >
-                        {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
-                    </button>
+                    />
                 </div>
             </div>
             <div className="context-menu-host" ref={menuRef}>
@@ -2342,7 +3220,7 @@ function QueuedEntryRow({
                                 void onDelete(entry);
                             }}
                         >
-                            Remove
+                            <MenuIconLabel icon="delete">Remove</MenuIconLabel>
                         </button>
                     </div>
                 ) : null}
@@ -2699,15 +3577,16 @@ function ImagePickerModal({
 function EntryCard({
     entry,
     categories,
-    canMoveDown,
-    canMoveUp,
+    canDragReorder,
+    isDragging,
     listLocked,
     selectedCategoryId,
     starRating,
     starRatingScale,
     onDelete,
-    onMoveDown,
-    onMoveUp,
+    onDragEnd,
+    onDragStart,
+    onDropEntry,
     onPickImage,
     onRename,
     onRerank,
@@ -2715,15 +3594,16 @@ function EntryCard({
 }: {
     entry: Entry;
     categories: CategoryWithEntries[];
-    canMoveDown: boolean;
-    canMoveUp: boolean;
+    canDragReorder: boolean;
+    isDragging: boolean;
     listLocked: boolean;
     selectedCategoryId: string;
     starRating: number | null;
     starRatingScale: number;
     onDelete: () => void;
-    onMoveDown: () => void;
-    onMoveUp: () => void;
+    onDragEnd: () => void;
+    onDragStart: () => void;
+    onDropEntry: (entryId: string, targetEntryId: string, placement: "before" | "after") => Promise<void>;
     onPickImage: () => void;
     onRename: (name: string) => Promise<void>;
     onRerank: () => void;
@@ -2735,6 +3615,7 @@ function EntryCard({
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [moveControlsOpen, setMoveControlsOpen] = useState(false);
+    const [dropPlacement, setDropPlacement] = useState<"before" | "after" | null>(null);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
 
@@ -2745,6 +3626,7 @@ function EntryCard({
         setMenuOpen(false);
         setMenuPoint(null);
         setMoveControlsOpen(false);
+        setDropPlacement(null);
     }, [entry.name, selectedCategoryId]);
 
     async function handleRenameSubmit(event: FormEvent<HTMLFormElement>) {
@@ -2753,9 +3635,61 @@ function EntryCard({
         setIsRenaming(false);
     }
 
+    function dragPlacementForEvent(event: DragEvent<HTMLElement>) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        return event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+    }
+
+    const isEntryDraggable = canDragReorder && !isRenaming && !moveControlsOpen;
+
     return (
         <article
-            className="entry-card"
+            className={`entry-card ${isEntryDraggable ? "draggable" : ""} ${isDragging ? "dragging" : ""} ${dropPlacement ? `drop-${dropPlacement}` : ""}`}
+            draggable={isEntryDraggable}
+            onDragEnd={() => {
+                setDropPlacement(null);
+                onDragEnd();
+            }}
+            onDragLeave={(event) => {
+                const relatedTarget = event.relatedTarget;
+                if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+                    setDropPlacement(null);
+                }
+            }}
+            onDragOver={(event) => {
+                if (!isEntryDraggable || isDragging) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setDropPlacement(dragPlacementForEvent(event));
+            }}
+            onDragStart={(event) => {
+                if (!isEntryDraggable) {
+                    event.preventDefault();
+                    return;
+                }
+
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", entry.id);
+                setMenuOpen(false);
+                setMoveControlsOpen(false);
+                onDragStart();
+            }}
+            onDrop={(event) => {
+                if (!isEntryDraggable || isDragging) {
+                    return;
+                }
+
+                event.preventDefault();
+                const placement = dropPlacement ?? dragPlacementForEvent(event);
+                const draggedEntryId = event.dataTransfer.getData("text/plain");
+                setDropPlacement(null);
+                if (draggedEntryId) {
+                    void onDropEntry(draggedEntryId, entry.id, placement);
+                }
+            }}
             onContextMenu={(event) => {
                 event.preventDefault();
                 setMoveControlsOpen(false);
@@ -2790,7 +3724,7 @@ function EntryCard({
                 ) : (
                     <strong
                         className="entry-title"
-                        title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions`}
+                        title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
                         onDoubleClick={() => {
                             if (!listLocked) {
                                 setMenuOpen(false);
@@ -2808,32 +3742,6 @@ function EntryCard({
                         <span className="metric">{formatDate(entry.firstConsumedAt)}</span>
                     </div>
                 ) : null}
-                <div className="entry-actions card-actions">
-                    <button disabled={listLocked} type="button" onClick={onRerank}>Rerank</button>
-                    <div className="rank-step-group">
-                        <button
-                            aria-label={`Move ${entry.name} up one spot`}
-                            className="rank-step-button"
-                            disabled={listLocked || !canMoveUp}
-                            type="button"
-                            onClick={onMoveUp}
-                        >
-                            ↑
-                        </button>
-                        <button
-                            aria-label={`Move ${entry.name} down one spot`}
-                            className="rank-step-button"
-                            disabled={listLocked || !canMoveDown}
-                            type="button"
-                            onClick={onMoveDown}
-                        >
-                            ↓
-                        </button>
-                    </div>
-                    <button type="button" onClick={onPickImage}>
-                        {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
-                    </button>
-                </div>
                 {moveControlsOpen ? (
                     <div className="entry-move-panel">
                         <strong>Change Category</strong>
@@ -2876,13 +3784,47 @@ function EntryCard({
                         style={floatingMenu.style}
                     >
                         <button
+                            disabled={listLocked}
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                setMoveControlsOpen(false);
+                                setRenameValue(entry.name);
+                                setIsRenaming(true);
+                            }}
+                        >
+                            <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                        </button>
+                        <button
+                            disabled={listLocked}
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                onRerank();
+                            }}
+                        >
+                            <MenuIconLabel icon="rerank">Rerank</MenuIconLabel>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                onPickImage();
+                            }}
+                        >
+                            <MenuIconLabel icon="image">
+                                {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
+                            </MenuIconLabel>
+                        </button>
+                        <button
+                            disabled={listLocked}
                             type="button"
                             onClick={() => {
                                 setMoveControlsOpen(true);
                                 setMenuOpen(false);
                             }}
                         >
-                            Change Category
+                            <MenuIconLabel icon="category">Change Category</MenuIconLabel>
                         </button>
                         <button
                             className="danger menu-danger"
@@ -2893,7 +3835,7 @@ function EntryCard({
                                 onDelete();
                             }}
                         >
-                            Delete
+                            <MenuIconLabel icon="delete">Delete</MenuIconLabel>
                         </button>
                     </div>
                 ) : null}
@@ -3219,7 +4161,7 @@ function formatRatingNumber(value: number) {
 
 function curveBuilderDefaults(curve: QueueSettings["starRatingCurve"]): StarCurveBuilderState {
     return {
-        minStars: 1,
+        minStars: starRatingForPercentile(1, curve),
         maxStars: starRatingScaleMax(curve),
         averageStars: starRatingForPercentile(0.5, curve),
         withinOneStarPercent: 75
@@ -3315,6 +4257,80 @@ function imageBlobToPosterBlob(blob: Blob) {
             reject(new Error("Full-size image could not be loaded"));
         };
         image.src = objectUrl;
+    });
+}
+
+function imageFileToAvatarBlob(file: File) {
+    if (file.size > MAX_LOCAL_IMAGE_BYTES) {
+        throw new Error("Image file is too large");
+    }
+
+    return new Promise<Blob>((resolve, reject) => {
+        const image = new Image();
+        const objectUrl = URL.createObjectURL(file);
+
+        image.onload = () => {
+            imageElementToAvatarBlob(image)
+                .then(resolve)
+                .catch(reject)
+                .finally(() => URL.revokeObjectURL(objectUrl));
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("Image could not be loaded"));
+        };
+        image.src = objectUrl;
+    });
+}
+
+function imageElementToAvatarBlob(image: HTMLImageElement) {
+    return new Promise<Blob>((resolve, reject) => {
+        try {
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            if (!context) {
+                throw new Error("Image processing is unavailable");
+            }
+
+            const sourceWidth = image.naturalWidth;
+            const sourceHeight = image.naturalHeight;
+            if (sourceWidth === 0 || sourceHeight === 0) {
+                throw new Error("Image has no dimensions");
+            }
+
+            const cropSize = Math.min(sourceWidth, sourceHeight);
+            const cropX = (sourceWidth - cropSize) / 2;
+            const cropY = (sourceHeight - cropSize) / 2;
+
+            canvas.width = AVATAR_SIZE;
+            canvas.height = AVATAR_SIZE;
+            context.drawImage(
+                image,
+                cropX,
+                cropY,
+                cropSize,
+                cropSize,
+                0,
+                0,
+                AVATAR_SIZE,
+                AVATAR_SIZE
+            );
+
+            canvas.toBlob(
+                (avatarBlob) => {
+                    if (!avatarBlob) {
+                        reject(new Error("Profile photo could not be saved"));
+                        return;
+                    }
+
+                    resolve(avatarBlob);
+                },
+                "image/jpeg",
+                0.88
+            );
+        } catch (error) {
+            reject(error);
+        }
     });
 }
 

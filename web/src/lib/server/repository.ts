@@ -44,6 +44,10 @@ interface EntryRow {
     first_consumed_at: number | null;
 }
 
+interface EntryStatusRow extends EntryRow {
+    status: string;
+}
+
 interface ExistingEntryRow {
     category_id: string;
     name: string;
@@ -67,6 +71,15 @@ interface QueuedEntryRow {
     first_consumed_at: number | null;
     available_at: number;
     created_at: number;
+}
+
+interface QueuedEntryStatusRow extends QueuedEntryRow {
+    status: string;
+}
+
+interface DeletedImageRow {
+    id: string;
+    image_key: string | null;
 }
 
 interface SessionRow {
@@ -142,6 +155,9 @@ const IMPORT_BATCH_SIZE = 100;
 const DEFAULT_QUEUE_DELAY_DAYS = 3;
 const MAX_QUEUE_DELAY_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_USER_NAME_LENGTH = 80;
+const DELETED_ITEM_RETENTION_MS = 30 * DAY_MS;
+const DELETED_CLEANUP_LIMIT = 50;
 
 interface RandomAuditOperationState {
     kind: "random_audit";
@@ -162,6 +178,7 @@ interface RankingOperationStateEnvelope {
 export async function loadDashboard(userId: string): Promise<DashboardData> {
     const db = getDb();
     await repairInterruptedRankingState(userId);
+    await purgeExpiredDeletedItems(userId);
     const queueSettings = await getQueueSettings(userId);
     const queuedEntries = await listQueuedEntries(userId);
     const activeBinarySession = await getActiveBinarySession(userId);
@@ -211,6 +228,29 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
         queuedEntries,
         activeBinarySession
     };
+}
+
+export async function updateUserProfile(userId: string, input: { name: string }) {
+    const cleanName = input.name.trim();
+    if (!cleanName) {
+        throw new Error("Username is required");
+    }
+
+    if (cleanName.length > MAX_USER_NAME_LENGTH) {
+        throw new Error(`Username must be ${MAX_USER_NAME_LENGTH} characters or fewer`);
+    }
+
+    const updatedAt = now();
+    await getDb()
+        .prepare(
+            `UPDATE "user"
+       SET name = ?, updatedAt = ?
+       WHERE id = ?`
+        )
+        .bind(cleanName, updatedAt, userId)
+        .run();
+
+    return { name: cleanName };
 }
 
 export async function createCategory(userId: string, name: string) {
@@ -648,9 +688,31 @@ export async function deleteQueuedEntry(userId: string, queuedEntryId: string) {
         .bind(updatedAt, queuedEntryId, userId)
         .run();
 
-    if (hasStoredImage(queuedEntry.imageKey)) {
-        await env.IMAGES.delete(queuedEntry.imageKey);
+}
+
+export async function restoreQueuedEntry(userId: string, queuedEntryId: string) {
+    const queuedEntry = await getOwnedQueuedEntryIncludingDeleted(userId, queuedEntryId);
+    assertOwned(queuedEntry, "Queued entry");
+
+    if (queuedEntry.status === "queued") {
+        return;
     }
+
+    if (queuedEntry.status !== "deleted") {
+        throw new Error("Queued entry cannot be restored");
+    }
+
+    await assertEntryNameAvailable(userId, queuedEntry.category_id, queuedEntry.name, queuedEntry.id);
+    const updatedAt = now();
+
+    await getDb()
+        .prepare(
+            `UPDATE entry_queue
+       SET status = 'queued', updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'deleted'`
+        )
+        .bind(updatedAt, queuedEntryId, userId)
+        .run();
 }
 
 export async function renameQueuedEntry(userId: string, queuedEntryId: string, name: string) {
@@ -795,53 +857,36 @@ export async function startRandomAuditRanking(
     return startRandomAuditBubbleSession(db, userId, input.categoryId, nextState, operationState, updatedAt);
 }
 
-export async function moveEntryOnePosition(
+export async function moveEntryRelativeToEntry(
     userId: string,
-    input: { entryId: string; direction: "up" | "down" }
+    input: { entryId: string; targetEntryId: string; placement: "before" | "after" }
 ) {
     await assertNoActiveBinarySession(userId);
+    if (input.entryId === input.targetEntryId) {
+        return { moved: false };
+    }
+
     const entry = await getOwnedActiveEntry(userId, input.entryId);
     assertOwned(entry, "Entry");
+    const targetEntry = await getOwnedActiveEntry(userId, input.targetEntryId);
+    assertOwned(targetEntry, "Target entry");
 
-    const targetRankPosition = input.direction === "up"
-        ? entry.rankPosition - 1
-        : entry.rankPosition + 1;
-    if (targetRankPosition < 0) {
-        return { moved: false };
+    if (entry.categoryId !== targetEntry.categoryId) {
+        throw new Error("Entries must be in the same category");
     }
 
+    const orderedEntryIds = orderEntries(await listActiveEntries(userId, entry.categoryId))
+        .map((candidate) => candidate.id)
+        .filter((entryId) => entryId !== entry.id);
+    const targetIndex = orderedEntryIds.indexOf(targetEntry.id);
+    if (targetIndex === -1) {
+        throw new Error("Target entry not found");
+    }
+
+    const insertionIndex = input.placement === "after" ? targetIndex + 1 : targetIndex;
+    orderedEntryIds.splice(insertionIndex, 0, entry.id);
     const db = getDb();
-    const neighbor = await first<EntryRow>(
-        db
-            .prepare(
-                `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at
-         FROM entries
-         WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position = ?`
-            )
-            .bind(userId, entry.categoryId, targetRankPosition)
-    );
-    if (!neighbor) {
-        return { moved: false };
-    }
-
-    const updatedAt = now();
-    await db.batch([
-        db
-            .prepare(
-                `UPDATE entries
-         SET rank_position = ?, updated_at = ?
-         WHERE user_id = ? AND id = ? AND status = 'active'`
-            )
-            .bind(targetRankPosition, updatedAt, userId, entry.id),
-        db
-            .prepare(
-                `UPDATE entries
-         SET rank_position = ?, updated_at = ?
-         WHERE user_id = ? AND id = ? AND status = 'active'`
-            )
-            .bind(entry.rankPosition, updatedAt, userId, neighbor.id)
-    ]);
+    await db.batch(rewriteCategoryOrderStatements(db, userId, entry.categoryId, orderedEntryIds, now()));
 
     return { moved: true };
 }
@@ -888,6 +933,46 @@ export async function deleteEntry(userId: string, entryId: string) {
         )
         .bind(updatedAt, userId, entry.categoryId, entry.rankPosition)
         .run();
+}
+
+export async function restoreEntry(userId: string, entryId: string) {
+    await assertNoActiveBinarySession(userId);
+    const entry = await getOwnedEntryWithStatus(userId, entryId);
+    assertOwned(entry, "Entry");
+
+    if (entry.status === "active") {
+        return;
+    }
+
+    if (entry.status !== "deleted") {
+        throw new Error("Entry cannot be restored");
+    }
+
+    const category = await getOwnedCategory(userId, entry.category_id);
+    assertOwned(category, "Category");
+    await assertEntryNameAvailable(userId, entry.category_id, entry.name);
+
+    const activeEntryCount = await getActiveEntryCount(userId, entry.category_id);
+    const restoreRankPosition = Math.max(0, Math.min(entry.rank_position, activeEntryCount));
+    const updatedAt = now();
+    const db = getDb();
+
+    await db.batch([
+        db
+            .prepare(
+                `UPDATE entries
+       SET rank_position = rank_position + 1, updated_at = ?
+       WHERE user_id = ? AND category_id = ? AND status = 'active' AND rank_position >= ?`
+            )
+            .bind(updatedAt, userId, entry.category_id, restoreRankPosition),
+        db
+            .prepare(
+                `UPDATE entries
+       SET status = 'active', rank_position = ?, updated_at = ?
+       WHERE user_id = ? AND id = ? AND status = 'deleted'`
+            )
+            .bind(restoreRankPosition, updatedAt, userId, entryId)
+    ]);
 }
 
 export async function switchEntryCategory(
@@ -2008,6 +2093,68 @@ async function runBatches(db: D1Database, statements: D1PreparedStatement[]) {
     }
 }
 
+async function purgeExpiredDeletedItems(userId: string) {
+    const cutoff = now() - DELETED_ITEM_RETENTION_MS;
+    const db = getDb();
+    await purgeDeletedRows({
+        db,
+        cutoff,
+        tableName: "entries",
+        userId
+    });
+    await purgeDeletedRows({
+        db,
+        cutoff,
+        tableName: "entry_queue",
+        userId
+    });
+}
+
+async function purgeDeletedRows({
+    cutoff,
+    db,
+    tableName,
+    userId
+}: {
+    cutoff: number;
+    db: D1Database;
+    tableName: "entries" | "entry_queue";
+    userId: string;
+}) {
+    const deletedRows = await all<DeletedImageRow>(
+        db
+            .prepare(
+                `SELECT id, image_key
+         FROM ${tableName}
+         WHERE user_id = ? AND status = 'deleted' AND updated_at < ?
+         ORDER BY updated_at ASC
+         LIMIT ?`
+            )
+            .bind(userId, cutoff, DELETED_CLEANUP_LIMIT)
+    );
+
+    if (deletedRows.length === 0) {
+        return;
+    }
+
+    const imageKeys = Array.from(new Set(
+        deletedRows
+            .map((row) => row.image_key)
+            .filter((imageKey): imageKey is string => hasStoredImage(imageKey))
+    ));
+    await Promise.all(imageKeys.map((imageKey) => env.IMAGES.delete(imageKey)));
+    await db.batch(
+        deletedRows.map((row) =>
+            db
+                .prepare(
+                    `DELETE FROM ${tableName}
+             WHERE user_id = ? AND id = ? AND status = 'deleted' AND updated_at < ?`
+                )
+                .bind(userId, row.id, cutoff)
+        )
+    );
+}
+
 async function getQueueSettings(userId: string): Promise<QueueSettings> {
     const row = await first<QueueSettingsRow>(
         getDb()
@@ -2086,6 +2233,21 @@ async function getOwnedQueuedEntry(userId: string, queuedEntryId: string) {
     );
 
     return row ? mapQueuedEntry(row) : null;
+}
+
+async function getOwnedQueuedEntryIncludingDeleted(userId: string, queuedEntryId: string) {
+    return first<QueuedEntryStatusRow>(
+        getDb()
+            .prepare(
+                `SELECT entry_queue.id, entry_queue.category_id, categories.name AS category_name,
+                entry_queue.name, entry_queue.image_key, entry_queue.first_consumed_at, entry_queue.available_at,
+                entry_queue.created_at, entry_queue.status
+         FROM entry_queue
+         INNER JOIN categories ON categories.id = entry_queue.category_id
+         WHERE entry_queue.id = ? AND entry_queue.user_id = ?`
+            )
+            .bind(queuedEntryId, userId)
+    );
 }
 
 async function assertEntryNameAvailable(
@@ -3068,6 +3230,19 @@ async function getOwnedEntryIncludingDeleted(userId: string, entryId: string) {
     );
 
     return row ? mapEntry(row) : null;
+}
+
+async function getOwnedEntryWithStatus(userId: string, entryId: string) {
+    return first<EntryStatusRow>(
+        getDb()
+            .prepare(
+                `SELECT id, category_id, name, rank_position, image_key, created_at,
+                first_consumed_at, status
+         FROM entries
+         WHERE user_id = ? AND id = ?`
+            )
+            .bind(userId, entryId)
+    );
 }
 
 async function getOwnedActiveEntry(userId: string, entryId: string) {

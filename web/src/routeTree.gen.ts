@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiProfileImageRouteImport } from './routes/api/profile-image'
 import { Route as ApiImageSearchRouteImport } from './routes/api/image-search'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 import { Route as ApiQueuedImagesQueuedEntryIdRouteImport } from './routes/api/queued-images/$queuedEntryId'
@@ -19,6 +20,11 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiProfileImageRoute = ApiProfileImageRouteImport.update({
+  id: '/api/profile-image',
+  path: '/api/profile-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiImageSearchRoute = ApiImageSearchRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
+  '/api/profile-image': typeof ApiProfileImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
+  '/api/profile-image': typeof ApiProfileImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
+  '/api/profile-image': typeof ApiProfileImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$entryId': typeof ApiImagesEntryIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/image-proxy'
     | '/api/image-search'
+    | '/api/profile-image'
     | '/api/auth/$'
     | '/api/images/$entryId'
     | '/api/queued-images/$queuedEntryId'
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/image-proxy'
     | '/api/image-search'
+    | '/api/profile-image'
     | '/api/auth/$'
     | '/api/images/$entryId'
     | '/api/queued-images/$queuedEntryId'
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/image-proxy'
     | '/api/image-search'
+    | '/api/profile-image'
     | '/api/auth/$'
     | '/api/images/$entryId'
     | '/api/queued-images/$queuedEntryId'
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
   ApiImageSearchRoute: typeof ApiImageSearchRoute
+  ApiProfileImageRoute: typeof ApiProfileImageRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiImagesEntryIdRoute: typeof ApiImagesEntryIdRoute
   ApiQueuedImagesQueuedEntryIdRoute: typeof ApiQueuedImagesQueuedEntryIdRoute
@@ -116,6 +129,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/profile-image': {
+      id: '/api/profile-image'
+      path: '/api/profile-image'
+      fullPath: '/api/profile-image'
+      preLoaderRoute: typeof ApiProfileImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/image-search': {
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
   ApiImageSearchRoute: ApiImageSearchRoute,
+  ApiProfileImageRoute: ApiProfileImageRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiImagesEntryIdRoute: ApiImagesEntryIdRoute,
   ApiQueuedImagesQueuedEntryIdRoute: ApiQueuedImagesQueuedEntryIdRoute,

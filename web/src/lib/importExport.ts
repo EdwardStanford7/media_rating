@@ -11,6 +11,10 @@ export async function parseLegacyWorkbook(
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
     const sheet = workbook.worksheets[0];
+    if (!sheet) {
+        throw new Error("Spreadsheet contains no importable entries. Put category names in the first row and entries below them.");
+    }
+
     const headers = rowValues(sheet.getRow(1));
     const entries = [];
 
@@ -36,10 +40,19 @@ export async function parseLegacyWorkbook(
         }
     }
 
+    if (entries.length === 0) {
+        throw new Error("Spreadsheet contains no importable entries. Put category names in the first row and entries below them.");
+    }
+
     return { entries };
 }
 
 export async function writeExportWorkbook(categories: CategoryWithEntries[]) {
+    const entryCount = categories.reduce((count, category) => count + category.entries.length, 0);
+    if (entryCount === 0) {
+        throw new Error("Export requires at least one entry");
+    }
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Rankings";
     workbook.created = new Date();

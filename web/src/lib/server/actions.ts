@@ -17,6 +17,14 @@ export const loadDashboard = createServerFn({ method: "GET" })
         return repo.loadDashboard(user.id);
     });
 
+export const updateUserProfile = createServerFn({ method: "POST" })
+    .inputValidator((data: { name: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.updateUserProfile(user.id, data);
+    });
+
 export const createCategory = createServerFn({ method: "POST" })
     .inputValidator((data: { name: string }) => data)
     .handler(async ({ data }) => {
@@ -118,6 +126,14 @@ export const deleteQueuedEntry = createServerFn({ method: "POST" })
         return repo.deleteQueuedEntry(user.id, data.queuedEntryId);
     });
 
+export const restoreQueuedEntry = createServerFn({ method: "POST" })
+    .inputValidator((data: { queuedEntryId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.restoreQueuedEntry(user.id, data.queuedEntryId);
+    });
+
 export const renameQueuedEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { queuedEntryId: string; name: string }) => data)
     .handler(async ({ data }) => {
@@ -142,12 +158,12 @@ export const startRandomAuditRanking = createServerFn({ method: "POST" })
         return repo.startRandomAuditRanking(user.id, data);
     });
 
-export const moveEntryOnePosition = createServerFn({ method: "POST" })
-    .inputValidator((data: { entryId: string; direction: "up" | "down" }) => data)
+export const moveEntryRelativeToEntry = createServerFn({ method: "POST" })
+    .inputValidator((data: { entryId: string; targetEntryId: string; placement: "before" | "after" }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
-        return repo.moveEntryOnePosition(user.id, data);
+        return repo.moveEntryRelativeToEntry(user.id, data);
     });
 
 export const renameEntry = createServerFn({ method: "POST" })
@@ -164,6 +180,14 @@ export const deleteEntry = createServerFn({ method: "POST" })
         const user = await requireUser();
         const repo = await import("./repository");
         return repo.deleteEntry(user.id, data.entryId);
+    });
+
+export const restoreEntry = createServerFn({ method: "POST" })
+    .inputValidator((data: { entryId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.restoreEntry(user.id, data.entryId);
     });
 
 export const switchEntryCategory = createServerFn({ method: "POST" })
