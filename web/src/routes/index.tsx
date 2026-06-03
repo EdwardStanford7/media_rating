@@ -3024,23 +3024,6 @@ function QueuedEntryRow({
                         <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
                     </div>
                 )}
-                <div className="queue-actions">
-                    <IconButton
-                        disabled={disabled}
-                        icon="rank"
-                        label={`Rank ${entry.name} now`}
-                        type="button"
-                        onClick={() => void onStart(entry)}
-                    />
-                    <IconButton
-                        className="queue-image-button"
-                        disabled={disabled}
-                        icon="image"
-                        label={hasStoredImage(entry.imageKey) ? `Change image for ${entry.name}` : `Pick image for ${entry.name}`}
-                        type="button"
-                        onClick={() => onPickImage(entry)}
-                    />
-                </div>
             </div>
             <div className="context-menu-host" ref={menuRef}>
                 {menuOpen ? (
@@ -3049,6 +3032,28 @@ function QueuedEntryRow({
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                void onStart(entry);
+                            }}
+                        >
+                            <MenuIconLabel icon="rank">
+                                Rank Now
+                            </MenuIconLabel>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                onPickImage(entry);
+                            }}
+                        >
+                            <MenuIconLabel icon="image">
+                                {hasStoredImage(entry.imageKey) ? `Change image` : `Pick image`}
+                            </MenuIconLabel>
+                        </button>
                         <button
                             className="danger menu-danger"
                             type="button"
