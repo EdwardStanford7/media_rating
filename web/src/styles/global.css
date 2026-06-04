@@ -1037,7 +1037,10 @@ a.small-button:hover,
 }
 
 .public-entry-row {
+    display: grid;
     grid-template-columns: 3.2rem 5rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.65rem;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--subtle-panel);
@@ -1453,7 +1456,8 @@ img.queue-poster {
     transition:
         border-color 150ms ease,
         box-shadow 150ms ease,
-        opacity 150ms ease;
+        opacity 150ms ease,
+        background-color 150ms ease;
 }
 
 .entry-card.draggable {
@@ -1461,34 +1465,23 @@ img.queue-poster {
 }
 
 .entry-card.dragging {
-    opacity: 0.45;
+    border-color: var(--accent);
+    border-style: dashed;
+    background: var(--selected-panel);
+    box-shadow: none;
     cursor: grabbing;
 }
 
-.entry-card.drop-before,
-.entry-card.drop-after {
-    border-color: var(--accent);
+.entry-card.dragging>.entry-poster-frame,
+.entry-card.dragging>.entry-card-body {
+    opacity: 0;
+}
+
+.entry-drag-image {
+    max-width: none;
+    opacity: 0.96;
+    transform: rotate(0.5deg);
     box-shadow: var(--floating-shadow);
-}
-
-.entry-card.drop-before::before,
-.entry-card.drop-after::after {
-    content: "";
-    position: absolute;
-    left: 0.75rem;
-    right: 0.75rem;
-    z-index: 4;
-    height: 3px;
-    border-radius: 999px;
-    background: var(--accent);
-}
-
-.entry-card.drop-before::before {
-    top: -0.5rem;
-}
-
-.entry-card.drop-after::after {
-    bottom: -0.5rem;
 }
 
 .entry-poster,

@@ -75,6 +75,14 @@ interface RandomAuditPair {
     rightEntry: Entry;
 }
 
+type EntryDropPlacement = "before" | "after";
+
+interface EntryDragPreview {
+    draggedEntryId: string;
+    targetEntryId: string;
+    placement: EntryDropPlacement;
+}
+
 interface StarCurveBuilderState {
     minStars: number;
     maxStars: number;
@@ -592,6 +600,7 @@ function Dashboard({
     const [currentUserImageVersion, setCurrentUserImageVersion] = useState(0);
     const [toasts, setToasts] = useState<AppToast[]>([]);
     const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
+    const [entryDragPreview, setEntryDragPreview] = useState<EntryDragPreview | null>(null);
     const mainRef = useRef<HTMLElement | null>(null);
     const reversibleActionIdRef = useRef(0);
     const undoStackRef = useRef<ReversibleAction[]>([]);
@@ -618,6 +627,10 @@ function Dashboard({
 
         return orderEntries(entries);
     }, [entrySearch, selectedCategory]);
+    const previewedEntries = useMemo(
+        () => previewEntryReorder(displayedEntries, entryDragPreview),
+        [displayedEntries, entryDragPreview]
+    );
     const activeStarRatingCurve = selectedCategory?.starRatingCurve ?? dashboard.queueSettings.starRatingCurve;
     const starRatings = useMemo(() => {
         if (!selectedCategory || !dashboard.queueSettings.showStarRatings) {
@@ -640,6 +653,11 @@ function Dashboard({
         !entrySearch.trim() &&
         selectedCategory.entries.length > 1
     );
+
+    useEffect(() => {
+        setDraggedEntryId(null);
+        setEntryDragPreview(null);
+    }, [activeSessionId, entrySearch, selectedCategoryId]);
 
     function setActiveBinarySessionId(sessionId: string | null) {
         activeSessionIdRef.current = sessionId;
@@ -1259,27 +1277,65 @@ function Dashboard({
         }
     }
 
+    function handleEntryDragStart(entryId: string) {
+        setDraggedEntryId(entryId);
+        setEntryDragPreview(null);
+    }
+
+    function handleEntryDragPreview(
+        entryId: string,
+        targetEntryId: string,
+        placement: EntryDropPlacement
+    ) {
+        if (!canDragReorderEntries || entryId === targetEntryId) {
+            return;
+        }
+
+        setEntryDragPreview((currentPreview) => {
+            if (
+                currentPreview?.draggedEntryId === entryId &&
+                currentPreview.targetEntryId === targetEntryId &&
+                currentPreview.placement === placement
+            ) {
+                return currentPreview;
+            }
+
+            return { draggedEntryId: entryId, targetEntryId, placement };
+        });
+    }
+
+    function handleEntryDragEnd() {
+        setDraggedEntryId(null);
+        setEntryDragPreview(null);
+    }
+
+    function handleCommitEntryDragPreview() {
+        if (!entryDragPreview) {
+            handleEntryDragEnd();
+            return;
+        }
+
+        void handleMoveEntryRelativeToEntry(
+            entryDragPreview.draggedEntryId,
+            entryDragPreview.targetEntryId,
+            entryDragPreview.placement
+        );
+    }
+
     async function handleMoveEntryRelativeToEntry(
         entryId: string,
         targetEntryId: string,
-        placement: "before" | "after"
+        placement: EntryDropPlacement
     ) {
         if (entryId === targetEntryId) {
+            handleEntryDragEnd();
             return;
         }
 
         const orderedEntryIds = selectedCategory ? orderEntries(selectedCategory.entries).map((entry) => entry.id) : [];
         const originalEntryIndex = orderedEntryIds.indexOf(entryId);
-        const targetEntryIndex = orderedEntryIds.indexOf(targetEntryId);
-        if (
-            originalEntryIndex >= 0 &&
-            targetEntryIndex >= 0 &&
-            (
-                (placement === "before" && targetEntryIndex === originalEntryIndex + 1) ||
-                (placement === "after" && targetEntryIndex === originalEntryIndex - 1)
-            )
-        ) {
-            setDraggedEntryId(null);
+        if (isEntryReorderNoop(orderedEntryIds, entryId, targetEntryId, placement)) {
+            handleEntryDragEnd();
             return;
         }
 
@@ -1303,14 +1359,14 @@ function Dashboard({
             setMessage(errorMessage(error));
         } finally {
             finishBusy();
-            setDraggedEntryId(null);
+            handleEntryDragEnd();
         }
     }
 
     async function moveEntryRelativeToEntryForHistory(
         entryId: string,
         targetEntryId: string,
-        placement: "before" | "after"
+        placement: EntryDropPlacement
     ) {
         const result = await moveEntryRelativeToEntry({ data: { entryId, targetEntryId, placement } });
         await refresh();
@@ -1710,13 +1766,32 @@ function Dashboard({
                     />
                 ) : null}
 
-                <section className="entries-grid">
-                    {selectedCategory ? displayedEntries.map((entry) => (
+                <section
+                    className="entries-grid"
+                    onDragOver={(event) => {
+                        if (!draggedEntryId || !entryDragPreview) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(event) => {
+                        if (!draggedEntryId || !entryDragPreview) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        handleCommitEntryDragPreview();
+                    }}
+                >
+                    {selectedCategory ? previewedEntries.map((entry) => (
                         <EntryCard
                             entry={entry}
                             categories={dashboard.categories}
                             key={entry.id}
                             canDragReorder={canDragReorderEntries}
+                            draggedEntryId={draggedEntryId}
                             isDragging={draggedEntryId === entry.id}
                             listLocked={Boolean(activeSessionId)}
                             selectedCategoryId={selectedCategory.id}
@@ -1725,8 +1800,10 @@ function Dashboard({
                                 : null}
                             starRatingScale={starRatingScale}
                             onDelete={() => handleDelete(entry)}
-                            onDragEnd={() => setDraggedEntryId(null)}
-                            onDragStart={() => setDraggedEntryId(entry.id)}
+                            onDragEnd={handleEntryDragEnd}
+                            onDragPreview={handleEntryDragPreview}
+                            onDragStart={() => handleEntryDragStart(entry.id)}
+                            onDropPreview={handleCommitEntryDragPreview}
                             onDropEntry={handleMoveEntryRelativeToEntry}
                             onPickImage={() => setImagePickerTarget({
                                 kind: "entry",
@@ -1754,6 +1831,51 @@ function Dashboard({
             </section>
         </main>
     );
+}
+
+function isEntryReorderNoop(
+    orderedEntryIds: string[],
+    entryId: string,
+    targetEntryId: string,
+    placement: EntryDropPlacement
+) {
+    if (entryId === targetEntryId) {
+        return true;
+    }
+
+    const originalEntryIndex = orderedEntryIds.indexOf(entryId);
+    const targetEntryIndex = orderedEntryIds.indexOf(targetEntryId);
+    return originalEntryIndex >= 0 &&
+        targetEntryIndex >= 0 &&
+        (
+            (placement === "before" && targetEntryIndex === originalEntryIndex + 1) ||
+            (placement === "after" && targetEntryIndex === originalEntryIndex - 1)
+        );
+}
+
+function previewEntryReorder(entries: Entry[], preview: EntryDragPreview | null) {
+    if (!preview || preview.draggedEntryId === preview.targetEntryId) {
+        return entries;
+    }
+
+    const draggedIndex = entries.findIndex((entry) => entry.id === preview.draggedEntryId);
+    const targetIndex = entries.findIndex((entry) => entry.id === preview.targetEntryId);
+    if (draggedIndex < 0 || targetIndex < 0) {
+        return entries;
+    }
+
+    const nextEntries = entries.slice();
+    const [draggedEntry] = nextEntries.splice(draggedIndex, 1);
+    const targetIndexAfterRemoval = nextEntries.findIndex((entry) => entry.id === preview.targetEntryId);
+    if (!draggedEntry || targetIndexAfterRemoval < 0) {
+        return entries;
+    }
+
+    const insertionIndex = preview.placement === "before"
+        ? targetIndexAfterRemoval
+        : targetIndexAfterRemoval + 1;
+    nextEntries.splice(insertionIndex, 0, draggedEntry);
+    return nextEntries;
 }
 
 function useEscapeKey(isActive: boolean, onEscape: () => void) {
@@ -3442,6 +3564,7 @@ function EntryCard({
     entry,
     categories,
     canDragReorder,
+    draggedEntryId,
     isDragging,
     listLocked,
     selectedCategoryId,
@@ -3449,8 +3572,10 @@ function EntryCard({
     starRatingScale,
     onDelete,
     onDragEnd,
+    onDragPreview,
     onDragStart,
     onDropEntry,
+    onDropPreview,
     onPickImage,
     onRename,
     onRerank,
@@ -3459,6 +3584,7 @@ function EntryCard({
     entry: Entry;
     categories: CategoryWithEntries[];
     canDragReorder: boolean;
+    draggedEntryId: string | null;
     isDragging: boolean;
     listLocked: boolean;
     selectedCategoryId: string;
@@ -3466,8 +3592,10 @@ function EntryCard({
     starRatingScale: number;
     onDelete: () => void;
     onDragEnd: () => void;
+    onDragPreview: (entryId: string, targetEntryId: string, placement: EntryDropPlacement) => void;
     onDragStart: () => void;
-    onDropEntry: (entryId: string, targetEntryId: string, placement: "before" | "after") => Promise<void>;
+    onDropEntry: (entryId: string, targetEntryId: string, placement: EntryDropPlacement) => Promise<void>;
+    onDropPreview: () => void;
     onPickImage: () => void;
     onRename: (name: string) => Promise<void>;
     onRerank: () => void;
@@ -3479,7 +3607,6 @@ function EntryCard({
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [moveControlsOpen, setMoveControlsOpen] = useState(false);
-    const [dropPlacement, setDropPlacement] = useState<"before" | "after" | null>(null);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
 
@@ -3490,7 +3617,6 @@ function EntryCard({
         setMenuOpen(false);
         setMenuPoint(null);
         setMoveControlsOpen(false);
-        setDropPlacement(null);
     }, [entry.name, selectedCategoryId]);
 
     async function handleRenameSubmit(event: FormEvent<HTMLFormElement>) {
@@ -3499,35 +3625,55 @@ function EntryCard({
         setIsRenaming(false);
     }
 
-    function dragPlacementForEvent(event: DragEvent<HTMLElement>) {
+    function dragPlacementForEvent(event: DragEvent<HTMLElement>): EntryDropPlacement {
         const rect = event.currentTarget.getBoundingClientRect();
-        return event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const horizontalIntent =
+            Math.abs((event.clientX - centerX) / rect.width) >
+            Math.abs((event.clientY - centerY) / rect.height);
+        return horizontalIntent
+            ? event.clientX > centerX ? "after" : "before"
+            : event.clientY > centerY ? "after" : "before";
     }
 
-    const isEntryDraggable = canDragReorder && !isRenaming && !moveControlsOpen;
+    function setCardDragImage(event: DragEvent<HTMLElement>) {
+        const card = event.currentTarget;
+        const rect = card.getBoundingClientRect();
+        const dragImage = card.cloneNode(true) as HTMLElement;
+        dragImage.classList.remove("dragging");
+        dragImage.classList.add("entry-drag-image");
+        dragImage.style.width = `${rect.width}px`;
+        dragImage.style.height = `${rect.height}px`;
+        dragImage.style.position = "fixed";
+        dragImage.style.left = "-10000px";
+        dragImage.style.top = "-10000px";
+        dragImage.style.pointerEvents = "none";
+        dragImage.querySelector(".context-menu-host")?.remove();
+        document.body.appendChild(dragImage);
+
+        const offsetX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+        const offsetY = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
+        event.dataTransfer.setDragImage(dragImage, offsetX, offsetY);
+        window.setTimeout(() => dragImage.remove(), 0);
+    }
+
+    const isEntryDraggable = canDragReorder && !isRenaming && !moveControlsOpen && !menuOpen;
 
     return (
         <article
-            className={`entry-card ${isEntryDraggable ? "draggable" : ""} ${isDragging ? "dragging" : ""} ${dropPlacement ? `drop-${dropPlacement}` : ""}`}
+            className={`entry-card ${isEntryDraggable ? "draggable" : ""} ${isDragging ? "dragging" : ""}`}
+            data-entry-id={entry.id}
             draggable={isEntryDraggable}
-            onDragEnd={() => {
-                setDropPlacement(null);
-                onDragEnd();
-            }}
-            onDragLeave={(event) => {
-                const relatedTarget = event.relatedTarget;
-                if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
-                    setDropPlacement(null);
-                }
-            }}
+            onDragEnd={onDragEnd}
             onDragOver={(event) => {
-                if (!isEntryDraggable || isDragging) {
+                if (!isEntryDraggable || !draggedEntryId || isDragging) {
                     return;
                 }
 
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
-                setDropPlacement(dragPlacementForEvent(event));
+                onDragPreview(draggedEntryId, entry.id, dragPlacementForEvent(event));
             }}
             onDragStart={(event) => {
                 if (!isEntryDraggable) {
@@ -3536,22 +3682,30 @@ function EntryCard({
                 }
 
                 event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("application/x-rankly-entry-id", entry.id);
                 event.dataTransfer.setData("text/plain", entry.id);
+                setCardDragImage(event);
                 setMenuOpen(false);
                 setMoveControlsOpen(false);
                 onDragStart();
             }}
             onDrop={(event) => {
-                if (!isEntryDraggable || isDragging) {
+                if (!isEntryDraggable) {
                     return;
                 }
 
                 event.preventDefault();
-                const placement = dropPlacement ?? dragPlacementForEvent(event);
-                const draggedEntryId = event.dataTransfer.getData("text/plain");
-                setDropPlacement(null);
-                if (draggedEntryId) {
-                    void onDropEntry(draggedEntryId, entry.id, placement);
+                event.stopPropagation();
+                const droppedEntryId =
+                    event.dataTransfer.getData("application/x-rankly-entry-id") ||
+                    event.dataTransfer.getData("text/plain") ||
+                    draggedEntryId;
+                if (droppedEntryId && droppedEntryId !== entry.id) {
+                    void onDropEntry(droppedEntryId, entry.id, dragPlacementForEvent(event));
+                } else if (droppedEntryId) {
+                    onDropPreview();
+                } else {
+                    onDragEnd();
                 }
             }}
             onContextMenu={(event) => {
@@ -3730,6 +3884,7 @@ function EntryPoster({
                     className="entry-poster"
                     src={`/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                     alt=""
+                    draggable={false}
                     loading="lazy"
                     decoding="async"
                     onError={() => setImageFailed(true)}
