@@ -2178,6 +2178,16 @@ function CategoryListItem({
                         style={floatingMenu.style}
                     >
                         <button
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                setName(category.name);
+                                setIsRenaming(true);
+                            }}
+                        >
+                            <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                        </button>
+                        <button
                             className="danger menu-danger"
                             disabled={busy || listLocked}
                             type="button"
@@ -3041,6 +3051,18 @@ function QueuedEntryRow({
                         >
                             <MenuIconLabel icon="rank">
                                 Rank Now
+                            </MenuIconLabel>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMenuOpen(false);
+                                setName(entry.name);
+                                setIsRenaming(true);
+                            }}
+                        >
+                            <MenuIconLabel icon="edit">
+                                Rename
                             </MenuIconLabel>
                         </button>
                         <button
