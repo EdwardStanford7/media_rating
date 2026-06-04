@@ -2223,6 +2223,7 @@ function CategoryListItem({
     const [name, setName] = useState(category.name);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
+    useEscapeKey(isRenaming, () => { setName(category.name); setIsRenaming(false); });
 
     useEffect(() => {
         setName(category.name);
@@ -3091,6 +3092,7 @@ function QueuedEntryRow({
     const [name, setName] = useState(entry.name);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
+    useEscapeKey(isRenaming, () => { setName(entry.name); setIsRenaming(false); });
 
     useEffect(() => {
         setName(entry.name);
@@ -3609,6 +3611,7 @@ function EntryCard({
     const [moveControlsOpen, setMoveControlsOpen] = useState(false);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
+    useEscapeKey(isRenaming, () => { setRenameValue(entry.name); setIsRenaming(false); });
 
     useEffect(() => {
         setIsRenaming(false);
