@@ -5,7 +5,6 @@ import {
     advanceBubbleRepairState,
     advanceRandomAuditBubbleState,
     chooseBinaryPivot,
-    normalizeStarRatingCurve,
     orderEntries,
     startBubbleRepairState,
     startRandomAuditBubbleState
@@ -36,7 +35,6 @@ interface CategoryRow {
     sort_order: number;
     created_at: number;
     is_public?: number;
-    star_rating_curve?: string | null;
 }
 
 interface ProfileRow {
@@ -99,8 +97,6 @@ interface QueueSettingsRow {
     enabled: number;
     delay_days: number;
     prompt_missing_images: number;
-    show_star_ratings: number;
-    star_rating_curve: string | null;
 }
 
 interface QueuedEntryRow {
@@ -229,7 +225,7 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
     const categories = await all<CategoryRow>(
         db
             .prepare(
-                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
+                `SELECT id, name, sort_order, created_at, is_public
          FROM categories
          WHERE user_id = ?
          ORDER BY sort_order ASC, name ASC`
@@ -272,7 +268,6 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
             sortOrder: category.sort_order,
             createdAt: category.created_at,
             isPublic: Boolean(category.is_public),
-            starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
             entries: orderEntries(entriesByCategory.get(category.id) ?? [])
         })),
         queueSettings,
@@ -528,7 +523,7 @@ export async function moveCategoryRelativeToCategory(
     const categories = await all<CategoryRow>(
         db
             .prepare(
-                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
+                `SELECT id, name, sort_order, created_at, is_public
          FROM categories
          WHERE user_id = ?
          ORDER BY sort_order ASC, name ASC`
@@ -779,27 +774,21 @@ export async function updateQueueSettings(
         enabled: boolean;
         delayDays: number;
         promptForMissingImages: boolean;
-        showStarRatings: boolean;
-        starRatingCurve: QueueSettings["starRatingCurve"];
     }
 ) {
     const delayDays = normalizeQueueDelayDays(input.delayDays);
-    const starRatingCurve = normalizeStarRatingCurve(input.starRatingCurve);
     const updatedAt = now();
 
     await getDb()
         .prepare(
             `INSERT INTO queue_settings (
-         user_id, enabled, delay_days, prompt_missing_images, show_star_ratings,
-         star_rating_curve, created_at, updated_at
+         user_id, enabled, delay_days, prompt_missing_images, created_at, updated_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          enabled = excluded.enabled,
          delay_days = excluded.delay_days,
          prompt_missing_images = excluded.prompt_missing_images,
-         show_star_ratings = excluded.show_star_ratings,
-         star_rating_curve = excluded.star_rating_curve,
          updated_at = excluded.updated_at`
         )
         .bind(
@@ -807,41 +796,12 @@ export async function updateQueueSettings(
             input.enabled ? 1 : 0,
             delayDays,
             input.promptForMissingImages ? 1 : 0,
-            input.showStarRatings ? 1 : 0,
-            JSON.stringify(starRatingCurve),
             updatedAt,
             updatedAt
         )
         .run();
 
     return getQueueSettings(userId);
-}
-
-export async function updateCategoryStarRatingCurve(
-    userId: string,
-    input: {
-        categoryId: string;
-        starRatingCurve: QueueSettings["starRatingCurve"] | null;
-    }
-) {
-    const category = await getOwnedCategory(userId, input.categoryId);
-    assertOwned(category, "Category");
-
-    const updatedAt = now();
-    const starRatingCurve = input.starRatingCurve
-        ? JSON.stringify(normalizeStarRatingCurve(input.starRatingCurve))
-        : null;
-
-    await getDb()
-        .prepare(
-            `UPDATE categories
-       SET star_rating_curve = ?, updated_at = ?
-       WHERE user_id = ? AND id = ?`
-        )
-        .bind(starRatingCurve, updatedAt, userId, input.categoryId)
-        .run();
-
-    return parseStoredCategoryStarRatingCurve(starRatingCurve);
 }
 
 export async function markImageUnavailable(
@@ -2418,8 +2378,7 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
     const row = await first<QueueSettingsRow>(
         getDb()
             .prepare(
-                `SELECT enabled, delay_days, prompt_missing_images, show_star_ratings,
-                star_rating_curve
+                `SELECT enabled, delay_days, prompt_missing_images
          FROM queue_settings
          WHERE user_id = ?`
             )
@@ -2429,34 +2388,8 @@ async function getQueueSettings(userId: string): Promise<QueueSettings> {
     return {
         enabled: row?.enabled === 1,
         delayDays: normalizeQueueDelayDays(row?.delay_days ?? DEFAULT_QUEUE_DELAY_DAYS),
-        promptForMissingImages: row?.prompt_missing_images !== 0,
-        showStarRatings: row?.show_star_ratings !== 0,
-        starRatingCurve: parseStoredStarRatingCurve(row?.star_rating_curve)
+        promptForMissingImages: row?.prompt_missing_images !== 0
     };
-}
-
-function parseStoredStarRatingCurve(value: string | null | undefined) {
-    if (!value) {
-        return normalizeStarRatingCurve(null);
-    }
-
-    try {
-        return normalizeStarRatingCurve(JSON.parse(value));
-    } catch {
-        return normalizeStarRatingCurve(null);
-    }
-}
-
-function parseStoredCategoryStarRatingCurve(value: string | null | undefined) {
-    if (!value) {
-        return null;
-    }
-
-    try {
-        return normalizeStarRatingCurve(JSON.parse(value));
-    } catch {
-        return null;
-    }
 }
 
 async function ensureUserProfile(userId: string): Promise<ProfileRow> {
@@ -2591,7 +2524,7 @@ async function loadPublicCategories(userId: string): Promise<CategoryWithEntries
     const categories = await all<CategoryRow>(
         getDb()
             .prepare(
-                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
+                `SELECT id, name, sort_order, created_at, is_public
          FROM categories
          WHERE user_id = ? AND is_public = 1
          ORDER BY sort_order ASC, name ASC`
@@ -2630,7 +2563,6 @@ async function loadPublicCategories(userId: string): Promise<CategoryWithEntries
         sortOrder: category.sort_order,
         createdAt: category.created_at,
         isPublic: Boolean(category.is_public),
-        starRatingCurve: parseStoredCategoryStarRatingCurve(category.star_rating_curve),
         entries: orderEntries(entriesByCategory.get(category.id) ?? [])
     }));
 }
@@ -3790,7 +3722,7 @@ async function getOwnedCategory(userId: string, categoryId: string) {
     return first<CategoryRow>(
         getDb()
             .prepare(
-                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
+                `SELECT id, name, sort_order, created_at, is_public
          FROM categories
          WHERE user_id = ? AND id = ?`
             )

@@ -15,13 +15,6 @@ export interface QueueSettings {
     enabled: boolean;
     delayDays: number;
     promptForMissingImages: boolean;
-    showStarRatings: boolean;
-    starRatingCurve: StarRatingCurvePoint[];
-}
-
-export interface StarRatingCurvePoint {
-    percentile: number;
-    stars: number;
 }
 
 export interface QueuedEntry {
@@ -41,7 +34,6 @@ export interface CategoryWithEntries {
     sortOrder: number;
     createdAt: number;
     isPublic: boolean;
-    starRatingCurve: StarRatingCurvePoint[] | null;
     entries: Entry[];
 }
 

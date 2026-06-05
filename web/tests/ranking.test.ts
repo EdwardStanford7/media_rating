@@ -3,18 +3,13 @@ import {
     chooseBinaryPivot,
     advanceBubbleRepairState,
     advanceRandomAuditBubbleState,
-    generateNormalStarRatingCurve,
-    parseStarRatingCurveText,
     recordBinaryChoice,
     recordLocalRepairChoice,
     selectRandomAuditIndexes,
     startBinaryState,
     startBubbleRepairState,
     startRandomAuditBubbleState,
-    startLocalRepairState,
-    starRatingForRank,
-    starRatingScaleMax,
-    starRatingsByEntryId
+    startLocalRepairState
 } from "../src/lib/ranking";
 import type { Entry } from "../src/lib/types";
 
@@ -234,45 +229,6 @@ describe("random audit ranking", () => {
             { winnerId: "d", loserId: "c" }
         ]);
         expect(secondStep.state.currentComparison).toEqual(firstStep.state.currentComparison);
-    });
-});
-
-describe("derived star ratings", () => {
-    it("maps ordered-list rank to the default skewed percentile star curve", () => {
-        expect(starRatingForRank(0, 287)).toBe(5);
-        expect(starRatingForRank(286, 287)).toBe(1);
-        expect(starRatingForRank(29, 287)).toBeCloseTo(4.7, 1);
-        expect(starRatingForRank(143, 287)).toBeCloseTo(3.7, 1);
-    });
-
-    it("supports a configurable star curve", () => {
-        const curve = parseStarRatingCurveText("0 10\n50 7\n100 1");
-        expect(starRatingScaleMax(curve)).toBe(10);
-        expect(starRatingForRank(5, 11, curve)).toBe(7);
-        expect(starRatingForRank(10, 11, curve)).toBe(1);
-    });
-
-    it("can generate a normal-distribution-style curve from simple settings", () => {
-        const curve = generateNormalStarRatingCurve({
-            minStars: 1,
-            maxStars: 5,
-            averageStars: 4,
-            withinOneStarPercent: 70
-        });
-
-        expect(starRatingScaleMax(curve)).toBe(5);
-        expect(starRatingForRank(0, 101, curve)).toBe(5);
-        expect(starRatingForRank(50, 101, curve)).toBe(4);
-        expect(starRatingForRank(100, 101, curve)).toBe(1);
-    });
-
-    it("uses ordered-list position", () => {
-        const entries = Array.from({ length: 20 }, (_, index) =>
-            entry(String(index), index)
-        );
-
-        const ratings = starRatingsByEntryId(entries);
-        expect(ratings.get("19")).toBe(starRatingForRank(19, 20));
     });
 });
 

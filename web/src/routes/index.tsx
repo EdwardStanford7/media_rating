@@ -27,21 +27,13 @@ import {
     startQueuedEntryRanking,
     submitBinaryWinner,
     switchEntryCategory,
-    updateCategoryStarRatingCurve,
     updateQueueSettings
 } from "@/lib/server/actions";
 import { signIn, signOut, signUp } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
 import {
-    DEFAULT_STAR_RATING_CURVE,
-    generateNormalStarRatingCurve,
     orderEntries,
-    parseStarRatingCurveText,
-    selectRandomAuditIndexes,
-    starRatingForPercentile,
-    starRatingScaleMax,
-    starRatingCurveToText,
-    starRatingsByEntryId
+    selectRandomAuditIndexes
 } from "@/lib/ranking";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type {
@@ -88,13 +80,6 @@ interface CategoryDragPreview {
     draggedCategoryId: string;
     targetCategoryId: string;
     placement: DropPlacement;
-}
-
-interface StarCurveBuilderState {
-    minStars: number;
-    maxStars: number;
-    averageStars: number;
-    withinOneStarPercent: number;
 }
 
 type IconName =
@@ -644,22 +629,6 @@ function Dashboard({
         () => previewEntryReorder(displayedEntries, entryDragPreview),
         [displayedEntries, entryDragPreview]
     );
-    const activeStarRatingCurve = selectedCategory?.starRatingCurve ?? dashboard.queueSettings.starRatingCurve;
-    const starRatings = useMemo(() => {
-        if (!selectedCategory || !dashboard.queueSettings.showStarRatings) {
-            return new Map<string, number>();
-        }
-
-        return starRatingsByEntryId(selectedCategory.entries, activeStarRatingCurve);
-    }, [
-        activeStarRatingCurve,
-        dashboard.queueSettings.showStarRatings,
-        selectedCategory
-    ]);
-    const starRatingScale = useMemo(
-        () => starRatingScaleMax(activeStarRatingCurve),
-        [activeStarRatingCurve]
-    );
     const canDragReorderEntries = Boolean(
         selectedCategory &&
         !activeSessionId &&
@@ -1178,28 +1147,6 @@ function Dashboard({
 
         try {
             await updateQueueSettings({ data: settings });
-            await refresh();
-        } catch (error) {
-            setMessage(errorMessage(error));
-        } finally {
-            if (!options.quiet) {
-                finishBusy();
-            }
-        }
-    }
-
-    async function handleCategoryStarRatingCurve(
-        categoryId: string,
-        starRatingCurve: QueueSettings["starRatingCurve"] | null,
-        options: { quiet?: boolean } = {}
-    ) {
-        if (!options.quiet) {
-            startBusy("Saving category settings...");
-        }
-        setMessage(null);
-
-        try {
-            await updateCategoryStarRatingCurve({ data: { categoryId, starRatingCurve } });
             await refresh();
         } catch (error) {
             setMessage(errorMessage(error));
@@ -1753,11 +1700,9 @@ function Dashboard({
                         busy={busy}
                         busyLabel={busyLabel}
                         listLocked={Boolean(activeSessionId)}
-                        selectedCategory={selectedCategory}
                         settings={dashboard.queueSettings}
                         onExport={handleExport}
                         onImport={handleImport}
-                        onSaveCategoryStarRatingCurve={handleCategoryStarRatingCurve}
                         onSaveSettings={handleQueueSettings}
                         onThemeChange={setThemeMode}
                         themeMode={themeMode}
@@ -1956,10 +1901,6 @@ function Dashboard({
                             isDragging={draggedEntryId === entry.id}
                             listLocked={Boolean(activeSessionId)}
                             selectedCategoryId={selectedCategory.id}
-                            starRating={dashboard.queueSettings.showStarRatings
-                                ? starRatings.get(entry.id) ?? starRatingScale
-                                : null}
-                            starRatingScale={starRatingScale}
                             onDelete={() => handleDelete(entry)}
                             onDragEnd={handleEntryDragEnd}
                             onDragPreview={handleEntryDragPreview}
@@ -2621,11 +2562,9 @@ function AccountMenu({
     busy,
     busyLabel,
     listLocked,
-    selectedCategory,
     settings,
     onExport,
     onImport,
-    onSaveCategoryStarRatingCurve,
     onSaveSettings,
     onThemeChange,
     themeMode,
@@ -2636,15 +2575,9 @@ function AccountMenu({
     busy: boolean;
     busyLabel: string | null;
     listLocked: boolean;
-    selectedCategory: CategoryWithEntries | null;
     settings: QueueSettings;
     onExport: () => Promise<void>;
     onImport: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
-    onSaveCategoryStarRatingCurve: (
-        categoryId: string,
-        starRatingCurve: QueueSettings["starRatingCurve"] | null,
-        options?: { quiet?: boolean }
-    ) => Promise<void>;
     onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
@@ -2655,18 +2588,6 @@ function AccountMenu({
     const [enabled, setEnabled] = useState(settings.enabled);
     const [delayDays, setDelayDays] = useState(settings.delayDays);
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
-    const [showStarRatings, setShowStarRatings] = useState(settings.showStarRatings);
-    const [starCurveText, setStarCurveText] = useState(starRatingCurveToText(settings.starRatingCurve));
-    const [useCategoryStarCurve, setUseCategoryStarCurve] = useState(Boolean(selectedCategory?.starRatingCurve));
-    const [categoryStarCurveText, setCategoryStarCurveText] = useState(
-        starRatingCurveToText(selectedCategory?.starRatingCurve ?? settings.starRatingCurve)
-    );
-    const [globalCurveBuilder, setGlobalCurveBuilder] = useState(() => curveBuilderDefaults(settings.starRatingCurve));
-    const [categoryCurveBuilder, setCategoryCurveBuilder] = useState(() =>
-        curveBuilderDefaults(selectedCategory?.starRatingCurve ?? settings.starRatingCurve)
-    );
-    const [starCurveError, setStarCurveError] = useState<string | null>(null);
-    const [categoryStarCurveError, setCategoryStarCurveError] = useState<string | null>(null);
     const [quickSaving, setQuickSaving] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [activePanel, setActivePanel] = useState<"settings" | "import" | null>(null);
@@ -2678,22 +2599,10 @@ function AccountMenu({
         setEnabled(settings.enabled);
         setDelayDays(settings.delayDays);
         setPromptForMissingImages(settings.promptForMissingImages);
-        setShowStarRatings(settings.showStarRatings);
-        setStarCurveText(starRatingCurveToText(settings.starRatingCurve));
-        setUseCategoryStarCurve(Boolean(selectedCategory?.starRatingCurve));
-        setCategoryStarCurveText(starRatingCurveToText(selectedCategory?.starRatingCurve ?? settings.starRatingCurve));
-        setGlobalCurveBuilder(curveBuilderDefaults(settings.starRatingCurve));
-        setCategoryCurveBuilder(curveBuilderDefaults(selectedCategory?.starRatingCurve ?? settings.starRatingCurve));
-        setStarCurveError(null);
-        setCategoryStarCurveError(null);
     }, [
-        selectedCategory?.id,
-        selectedCategory?.starRatingCurve,
         settings.delayDays,
         settings.enabled,
-        settings.promptForMissingImages,
-        settings.starRatingCurve,
-        settings.showStarRatings
+        settings.promptForMissingImages
     ]);
 
     async function handleExportClick() {
@@ -2717,97 +2626,31 @@ function AccountMenu({
         }
     }
 
-    async function updateToggle<K extends "enabled" | "promptForMissingImages" | "showStarRatings">(
+    async function updateToggle<K extends "enabled" | "promptForMissingImages">(
         key: K,
         value: QueueSettings[K]
     ) {
         if (key === "enabled") {
             setEnabled(Boolean(value));
-        } else if (key === "promptForMissingImages") {
-            setPromptForMissingImages(Boolean(value));
         } else {
-            setShowStarRatings(Boolean(value));
+            setPromptForMissingImages(Boolean(value));
         }
 
         await saveSettingsImmediately({
             ...settings,
             enabled: key === "enabled" ? Boolean(value) : enabled,
             delayDays,
-            promptForMissingImages: key === "promptForMissingImages" ? Boolean(value) : promptForMissingImages,
-            showStarRatings: key === "showStarRatings" ? Boolean(value) : showStarRatings,
-            starRatingCurve: settings.starRatingCurve
+            promptForMissingImages: key === "promptForMissingImages" ? Boolean(value) : promptForMissingImages
         });
-    }
-
-    async function updateCategoryCurveEnabled(isEnabled: boolean) {
-        setUseCategoryStarCurve(isEnabled);
-        if (!selectedCategory) {
-            return;
-        }
-
-        if (!isEnabled) {
-            await onSaveCategoryStarRatingCurve(selectedCategory.id, null, { quiet: true });
-            return;
-        }
-
-        try {
-            await onSaveCategoryStarRatingCurve(
-                selectedCategory.id,
-                parseStarRatingCurveText(categoryStarCurveText),
-                { quiet: true }
-            );
-            setCategoryStarCurveError(null);
-        } catch (error) {
-            setCategoryStarCurveError(errorMessage(error));
-        }
-    }
-
-    function applyCurveBuilder(target: "global" | "category") {
-        const builder = target === "global" ? globalCurveBuilder : categoryCurveBuilder;
-        const text = starRatingCurveToText(generateNormalStarRatingCurve(builder));
-        if (target === "global") {
-            setStarCurveText(text);
-            setStarCurveError(null);
-        } else {
-            setCategoryStarCurveText(text);
-            setCategoryStarCurveError(null);
-        }
     }
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        let starRatingCurve: QueueSettings["starRatingCurve"];
-        if (showStarRatings) {
-            try {
-                starRatingCurve = parseStarRatingCurveText(starCurveText);
-            } catch (error) {
-                setStarCurveError(errorMessage(error));
-                return;
-            }
-        } else {
-            starRatingCurve = settings.starRatingCurve;
-        }
-
-        let categoryStarRatingCurve: QueueSettings["starRatingCurve"] | null = null;
-        if (selectedCategory && showStarRatings && useCategoryStarCurve) {
-            try {
-                categoryStarRatingCurve = parseStarRatingCurveText(categoryStarCurveText);
-            } catch (error) {
-                setCategoryStarCurveError(errorMessage(error));
-                return;
-            }
-        }
-
         await onSaveSettings({
             enabled,
             delayDays,
-            promptForMissingImages,
-            showStarRatings,
-            starRatingCurve
+            promptForMissingImages
         });
-        if (selectedCategory) {
-            await onSaveCategoryStarRatingCurve(selectedCategory.id, categoryStarRatingCurve);
-        }
         setMenuOpen(false);
     }
 
@@ -2931,15 +2774,6 @@ function AccountMenu({
                                         />
                                         <span>Image prompts</span>
                                     </label>
-                                    <label className="checkbox-row">
-                                        <input
-                                            checked={showStarRatings}
-                                            disabled={busy || quickSaving}
-                                            type="checkbox"
-                                            onChange={(event) => void updateToggle("showStarRatings", event.target.checked)}
-                                        />
-                                        <span>Star ratings</span>
-                                    </label>
                                     <label className="stack compact-stack">
                                         <span className="muted">Delay days</span>
                                         <input
@@ -2952,66 +2786,6 @@ function AccountMenu({
                                         />
                                     </label>
                                 </div>
-
-                                {showStarRatings ? (
-                                    <StarCurvePanel
-                                        builder={globalCurveBuilder}
-                                        disabled={busy}
-                                        error={starCurveError}
-                                        resetLabel="Default"
-                                        text={starCurveText}
-                                        title="Global Curve"
-                                        onApply={() => applyCurveBuilder("global")}
-                                        onBuilderChange={setGlobalCurveBuilder}
-                                        onReset={() => {
-                                            setStarCurveText(starRatingCurveToText(DEFAULT_STAR_RATING_CURVE));
-                                            setStarCurveError(null);
-                                        }}
-                                        onTextChange={(text) => {
-                                            setStarCurveText(text);
-                                            setStarCurveError(null);
-                                        }}
-                                    />
-                                ) : null}
-
-                                {showStarRatings && selectedCategory ? (
-                                    <section className="star-curve-toggle-section">
-                                        <div className="star-curve-card-header">
-                                            <strong>{selectedCategory.name}</strong>
-                                            <label className="switch-row">
-                                                <input
-                                                    checked={useCategoryStarCurve}
-                                                    disabled={busy || quickSaving}
-                                                    type="checkbox"
-                                                    onChange={(event) => void updateCategoryCurveEnabled(event.target.checked)}
-                                                />
-                                                <span>Custom</span>
-                                            </label>
-                                        </div>
-                                        {useCategoryStarCurve ? (
-                                            <StarCurvePanel
-                                                builder={categoryCurveBuilder}
-                                                disabled={busy}
-                                                error={categoryStarCurveError}
-                                                resetLabel="Use Global"
-                                                text={categoryStarCurveText}
-                                                title="Category Curve"
-                                                onApply={() => applyCurveBuilder("category")}
-                                                onBuilderChange={setCategoryCurveBuilder}
-                                                onReset={() => {
-                                                    setCategoryStarCurveText(starRatingCurveToText(settings.starRatingCurve));
-                                                    setCategoryStarCurveError(null);
-                                                }}
-                                                onTextChange={(text) => {
-                                                    setCategoryStarCurveText(text);
-                                                    setCategoryStarCurveError(null);
-                                                }}
-                                            />
-                                        ) : (
-                                            <p className="muted panel-note">Using the global curve.</p>
-                                        )}
-                                    </section>
-                                ) : null}
 
                                 <button disabled={busy} type="submit">Save Settings</button>
                             </form>
@@ -3072,177 +2846,6 @@ function AccountAvatar({
                 />
             ) : null}
         </span>
-    );
-}
-
-function StarCurvePanel({
-    builder,
-    disabled,
-    error,
-    resetLabel,
-    text,
-    title,
-    onApply,
-    onBuilderChange,
-    onReset,
-    onTextChange
-}: {
-    builder: StarCurveBuilderState;
-    disabled: boolean;
-    error: string | null;
-    resetLabel: string;
-    text: string;
-    title: string;
-    onApply: () => void;
-    onBuilderChange: (value: StarCurveBuilderState) => void;
-    onReset: () => void;
-    onTextChange: (value: string) => void;
-}) {
-    return (
-        <section className="star-curve-card">
-            <div className="star-curve-card-header">
-                <strong>{title}</strong>
-                <button className="small-button" disabled={disabled} type="button" onClick={onReset}>
-                    {resetLabel}
-                </button>
-            </div>
-            <StarCurveBuilder
-                disabled={disabled}
-                value={builder}
-                onApply={onApply}
-                onChange={onBuilderChange}
-            />
-            <StarCurvePreview curveText={text} />
-            <textarea
-                aria-label={title}
-                disabled={disabled}
-                rows={7}
-                spellCheck={false}
-                value={text}
-                onChange={(event) => onTextChange(event.target.value)}
-            />
-            {error ? <div className="status">{error}</div> : null}
-        </section>
-    );
-}
-
-function StarCurvePreview({ curveText }: { curveText: string }) {
-    let curve: QueueSettings["starRatingCurve"];
-    try {
-        curve = parseStarRatingCurveText(curveText);
-    } catch {
-        return (
-            <div className="star-curve-preview unavailable">
-                <span className="muted">Preview updates after a valid curve.</span>
-            </div>
-        );
-    }
-
-    const scale = starRatingScaleMax(curve);
-    const checkpoints = [
-        { label: "Top", percentile: 0 },
-        { label: "10%", percentile: 0.1 },
-        { label: "25%", percentile: 0.25 },
-        { label: "Mid", percentile: 0.5 },
-        { label: "75%", percentile: 0.75 },
-        { label: "90%", percentile: 0.9 },
-        { label: "Bottom", percentile: 1 }
-    ];
-
-    return (
-        <div className="star-curve-preview" aria-label="Star curve preview">
-            {checkpoints.map((point) => {
-                const stars = starRatingForPercentile(point.percentile, curve);
-                const fill = scale > 0 ? Math.max(4, Math.min(100, (stars / scale) * 100)) : 4;
-                return (
-                    <div
-                        className="star-curve-preview-point"
-                        key={point.label}
-                        style={{ "--curve-fill": `${fill}%` } as CSSProperties}
-                        title={`${point.label}: ${formatRatingNumber(stars)} stars`}
-                    >
-                        <span>{point.label}</span>
-                        <strong>{formatRatingNumber(stars)}</strong>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-function StarCurveBuilder({
-    disabled,
-    onApply,
-    onChange,
-    value
-}: {
-    disabled: boolean;
-    onApply: () => void;
-    onChange: (value: StarCurveBuilderState) => void;
-    value: StarCurveBuilderState;
-}) {
-    function update<K extends keyof StarCurveBuilderState>(key: K, nextValue: number) {
-        onChange({ ...value, [key]: nextValue });
-    }
-
-    return (
-        <div className="star-curve-builder">
-            <label>
-                <span className="muted">Top score</span>
-                <input
-                    aria-label="Top score"
-                    disabled={disabled}
-                    min={1}
-                    max={100}
-                    step={0.5}
-                    type="number"
-                    value={value.maxStars}
-                    onChange={(event) => update("maxStars", Number(event.target.value))}
-                />
-            </label>
-            <label>
-                <span className="muted">Floor</span>
-                <input
-                    aria-label="Floor score"
-                    disabled={disabled}
-                    min={0}
-                    max={value.maxStars}
-                    step={0.5}
-                    type="number"
-                    value={value.minStars}
-                    onChange={(event) => update("minStars", Number(event.target.value))}
-                />
-            </label>
-            <label>
-                <span className="muted">Midpoint</span>
-                <input
-                    aria-label="Midpoint score"
-                    disabled={disabled}
-                    min={value.minStars}
-                    max={value.maxStars}
-                    step={0.1}
-                    type="number"
-                    value={value.averageStars}
-                    onChange={(event) => update("averageStars", Number(event.target.value))}
-                />
-            </label>
-            <label>
-                <span className="muted">Tightness %</span>
-                <input
-                    aria-label="Tightness percent"
-                    disabled={disabled}
-                    min={5}
-                    max={98}
-                    step={1}
-                    type="number"
-                    value={value.withinOneStarPercent}
-                    onChange={(event) => update("withinOneStarPercent", Number(event.target.value))}
-                />
-            </label>
-            <button className="small-button" disabled={disabled} type="button" onClick={onApply}>
-                Apply Shape
-            </button>
-        </div>
     );
 }
 
@@ -3845,8 +3448,6 @@ function EntryCard({
     isDragging,
     listLocked,
     selectedCategoryId,
-    starRating,
-    starRatingScale,
     onDelete,
     onDragEnd,
     onDragPreview,
@@ -3865,8 +3466,6 @@ function EntryCard({
     isDragging: boolean;
     listLocked: boolean;
     selectedCategoryId: string;
-    starRating: number | null;
-    starRatingScale: number;
     onDelete: () => void;
     onDragEnd: () => void;
     onDragPreview: (entryId: string, targetEntryId: string, placement: DropPlacement) => void;
@@ -3993,7 +3592,7 @@ function EntryCard({
                 setMenuOpen(true);
             }}
         >
-            <EntryPoster entry={entry} starRating={starRating} starRatingScale={starRatingScale} />
+            <EntryPoster entry={entry} />
             <div className="entry-card-body">
                 {isRenaming ? (
                     <form className="entry-rename-form" onSubmit={handleRenameSubmit}>
@@ -4141,13 +3740,9 @@ function EntryCard({
 }
 
 function EntryPoster({
-    entry,
-    starRating,
-    starRatingScale
+    entry
 }: {
     entry: Entry;
-    starRating: number | null;
-    starRatingScale: number;
 }) {
     const [imageFailed, setImageFailed] = useState(false);
 
@@ -4173,15 +3768,6 @@ function EntryPoster({
                     <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
                 </div>
             )}
-            {starRating !== null ? (
-                <span
-                    className="entry-star-badge"
-                    aria-label={`Star rating ${formatRatingNumber(starRating)} out of ${formatRatingNumber(starRatingScale)}`}
-                >
-                    <span aria-hidden="true" className="star-symbol">★</span>
-                    {formatRatingNumber(starRating)}/{formatRatingNumber(starRatingScale)}
-                </span>
-            ) : null}
         </div>
     );
 }
@@ -4450,19 +4036,6 @@ function formatDate(timestamp: number) {
         month: "short",
         day: "numeric"
     }).format(new Date(timestamp));
-}
-
-function formatRatingNumber(value: number) {
-    return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function curveBuilderDefaults(curve: QueueSettings["starRatingCurve"]): StarCurveBuilderState {
-    return {
-        minStars: starRatingForPercentile(1, curve),
-        maxStars: starRatingScaleMax(curve),
-        averageStars: starRatingForPercentile(0.5, curve),
-        withinOneStarPercent: 75
-    };
 }
 
 function formatDateTime(timestamp: number) {

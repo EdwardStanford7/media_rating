@@ -1,12 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
-import {
-    DEFAULT_STAR_RATING_CURVE,
-    orderEntries,
-    starRatingScaleMax,
-    starRatingsByEntryId
-} from "@/lib/ranking";
+import { orderEntries } from "@/lib/ranking";
 import { loadPublicProfile, setProfileFriend } from "@/lib/server/actions";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
 
@@ -184,9 +179,6 @@ function PublicCategory({
     usePrivateImages: boolean;
 }) {
     const entries = useMemo(() => orderEntries(category.entries), [category.entries]);
-    const starCurve = category.starRatingCurve ?? DEFAULT_STAR_RATING_CURVE;
-    const starScale = starRatingScaleMax(starCurve);
-    const starRatings = useMemo(() => starRatingsByEntryId(entries, starCurve), [entries, starCurve]);
 
     return (
         <section className="public-ranking-section">
@@ -199,7 +191,6 @@ function PublicCategory({
                     <PublicEntryRow
                         entry={entry}
                         key={entry.id}
-                        starRating={starRatings.get(entry.id) ?? starScale}
                         usePrivateImages={usePrivateImages}
                     />
                 ))}
@@ -210,11 +201,9 @@ function PublicCategory({
 
 function PublicEntryRow({
     entry,
-    starRating,
     usePrivateImages
 }: {
     entry: Entry;
-    starRating: number;
     usePrivateImages: boolean;
 }) {
     return (
@@ -223,7 +212,6 @@ function PublicEntryRow({
             <PublicEntryPoster entry={entry} usePrivateImages={usePrivateImages} />
             <div>
                 <strong>{entry.name}</strong>
-                <p className="muted">{formatRatingNumber(starRating)} stars</p>
             </div>
         </article>
     );
@@ -279,8 +267,4 @@ function PublicProfileAvatar({
             {src ? <img alt="" decoding="async" src={src} onError={() => setFailed(true)} /> : null}
         </span>
     );
-}
-
-function formatRatingNumber(value: number) {
-    return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }

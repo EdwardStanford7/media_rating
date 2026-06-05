@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { auth, getEmailSignUpOptions } from "./auth";
-import type { ParsedImport, StarRatingCurvePoint } from "@/lib/types";
+import type { ParsedImport } from "@/lib/types";
 
 export const getAuthOptions = createServerFn({ method: "GET" }).handler(getEmailSignUpOptions);
 
@@ -139,24 +139,11 @@ export const updateQueueSettings = createServerFn({ method: "POST" })
         enabled: boolean;
         delayDays: number;
         promptForMissingImages: boolean;
-        showStarRatings: boolean;
-        starRatingCurve: StarRatingCurvePoint[];
     }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
         return repo.updateQueueSettings(user.id, data);
-    });
-
-export const updateCategoryStarRatingCurve = createServerFn({ method: "POST" })
-    .inputValidator((data: {
-        categoryId: string;
-        starRatingCurve: StarRatingCurvePoint[] | null;
-    }) => data)
-    .handler(async ({ data }) => {
-        const user = await requireUser();
-        const repo = await import("./repository");
-        return repo.updateCategoryStarRatingCurve(user.id, data);
     });
 
 export const markImageUnavailable = createServerFn({ method: "POST" })
