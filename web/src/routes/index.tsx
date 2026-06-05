@@ -1065,23 +1065,30 @@ function Dashboard({
     async function handleCreateEntry(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         const formElement = event.currentTarget;
-        if (!selectedCategory) {
+        if (dashboard.categories.length === 0) {
             return;
         }
 
-        startBusy("Adding entry...");
         setMessage(null);
         const form = new FormData(formElement);
         const name = String(form.get("name") ?? "");
         const cleanName = name.trim();
-        const firstConsumedAt = dateInputToTimestamp(String(form.get("firstConsumedAt") ?? ""));
+        const targetCategoryId = String(form.get("categoryId") ?? selectedCategory?.id ?? "");
+        const targetCategory = dashboard.categories.find((category) => category.id === targetCategoryId);
+        if (!cleanName || !targetCategory) {
+            setMessage("Choose a category and enter a name.");
+            return;
+        }
+
+        startBusy("Adding entry...");
+        const firstConsumedAt = currentDateTimestamp();
 
         try {
             if (dashboard.queueSettings.enabled) {
                 const result = await createQueuedEntry({
                     data: {
-                        categoryId: selectedCategory.id,
-                        name,
+                        categoryId: targetCategory.id,
+                        name: cleanName,
                         firstConsumedAt
                     }
                 });
@@ -1095,7 +1102,7 @@ function Dashboard({
                             name: cleanName,
                             imageKey: null
                         },
-                        category: selectedCategory
+                        category: targetCategory
                     });
                 }
                 await refresh();
@@ -1104,13 +1111,14 @@ function Dashboard({
 
             const result = await createEntryWithBinaryRanking({
                 data: {
-                    categoryId: selectedCategory.id,
-                    name,
+                    categoryId: targetCategory.id,
+                    name: cleanName,
                     firstConsumedAt
                 }
             });
             formElement.reset();
 
+            setSelectedCategoryId(targetCategory.id);
             if (result.kind === "session") {
                 setActiveBinarySessionId(result.sessionId);
             }
@@ -1760,12 +1768,20 @@ function Dashboard({
                         <form className="entry-create-form" onSubmit={handleCreateEntry}>
                             <input disabled={busy} name="name" placeholder="New entry" required />
                             <div className="entry-create-row">
-                                <input
-                                    className="date-input"
+                                <select
+                                    aria-label="Category"
+                                    className="category-select"
+                                    defaultValue={selectedCategory.id}
                                     disabled={busy}
-                                    name="firstConsumedAt"
-                                    type="date"
-                                />
+                                    key={selectedCategory.id}
+                                    name="categoryId"
+                                >
+                                    {dashboard.categories.map((category) => (
+                                        <option key={category.id} value={category.id}>
+                                            {category.name}
+                                        </option>
+                                    ))}
+                                </select>
                                 <button className="primary" disabled={busy} type="submit">
                                     {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
                                 </button>
@@ -3999,6 +4015,11 @@ function MatchPoster({ entry }: { entry: Entry }) {
 
 function dateInputToTimestamp(value: string) {
     return value ? new Date(`${value}T00:00:00`).getTime() : null;
+}
+
+function currentDateTimestamp() {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
 }
 
 function formatDate(timestamp: number) {

@@ -1228,7 +1228,7 @@ a.small-button:hover,
     min-width: 0;
 }
 
-.entry-create-row .date-input {
+.entry-create-row .category-select {
     width: 100%;
     min-width: 0;
     flex: none;
