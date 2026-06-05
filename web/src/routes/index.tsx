@@ -22,7 +22,6 @@ import {
     renameQueuedEntry,
     restoreEntry,
     restoreQueuedEntry,
-    startRandomAuditRanking,
     startRerankEntry,
     startQueuedEntryRanking,
     submitBinaryWinner,
@@ -31,10 +30,7 @@ import {
 } from "@/lib/server/actions";
 import { signIn, signOut, signUp } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
-import {
-    orderEntries,
-    selectRandomAuditIndexes
-} from "@/lib/ranking";
+import { orderEntries } from "@/lib/ranking";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type {
     BinarySessionView,
@@ -59,15 +55,6 @@ interface ImageSearchCandidate {
     height: number;
 }
 
-interface RandomAuditPair {
-    categoryId: string;
-    categoryName: string;
-    higherRanked: Entry;
-    lowerRanked: Entry;
-    leftEntry: Entry;
-    rightEntry: Entry;
-}
-
 type DropPlacement = "before" | "after";
 
 interface EntryDragPreview {
@@ -83,7 +70,6 @@ interface CategoryDragPreview {
 }
 
 type IconName =
-    | "audit"
     | "cancel"
     | "category"
     | "close"
@@ -127,7 +113,6 @@ const THEME_STORAGE_KEY = "rankly-theme";
 const TOAST_TIMEOUT_MS = 7000;
 const UNDO_STACK_LIMIT = 20;
 const ICONS: Record<IconName, string> = {
-    audit: "◎",
     cancel: "×",
     category: "⇄",
     close: "×",
@@ -581,7 +566,6 @@ function Dashboard({
     const busyRef = useRef(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
-    const [auditPair, setAuditPair] = useState<RandomAuditPair | null>(null);
     const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
     const [importToastOpen, setImportToastOpen] = useState(false);
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
@@ -687,7 +671,6 @@ function Dashboard({
     }, [userImage]);
 
     useEffect(() => {
-        setAuditPair(null);
         setDraggedEntryId(null);
     }, [selectedCategoryId]);
 
@@ -1283,74 +1266,12 @@ function Dashboard({
     async function handleRerank(entryId: string) {
         startBusy("Preparing rerank...");
         setMessage(null);
-        setAuditPair(null);
 
         try {
             const result = await startRerankEntry({ data: { entryId } });
             if (result.kind === "session") {
                 setActiveBinarySessionId(result.sessionId);
                 scrollMainToTop();
-            }
-            await refresh();
-        } catch (error) {
-            setMessage(errorMessage(error));
-        } finally {
-            finishBusy();
-        }
-    }
-
-    function handleStartRandomAudit() {
-        if (!selectedCategory || selectedCategory.entries.length < 2 || activeSessionId) {
-            return;
-        }
-
-        const orderedEntries = orderEntries(selectedCategory.entries);
-        const auditIndexes = selectRandomAuditIndexes(orderedEntries.length);
-        if (!auditIndexes) {
-            return;
-        }
-
-        const { higherIndex, lowerIndex } = auditIndexes;
-        const displayEntries = Math.random() < 0.5
-            ? [orderedEntries[higherIndex], orderedEntries[lowerIndex]]
-            : [orderedEntries[lowerIndex], orderedEntries[higherIndex]];
-        setMessage(null);
-        setAuditPair({
-            categoryId: selectedCategory.id,
-            categoryName: selectedCategory.name,
-            higherRanked: orderedEntries[higherIndex],
-            lowerRanked: orderedEntries[lowerIndex],
-            leftEntry: displayEntries[0],
-            rightEntry: displayEntries[1]
-        });
-        scrollMainToTop();
-    }
-
-    async function handleAuditWinner(winnerId: string) {
-        if (!auditPair) {
-            return;
-        }
-
-        startBusy("Starting audit repair...");
-        setAuditPair(null);
-        setMessage(null);
-
-        try {
-            const result = await startRandomAuditRanking({
-                data: {
-                    categoryId: auditPair.categoryId,
-                    entryAId: auditPair.higherRanked.id,
-                    entryBId: auditPair.lowerRanked.id,
-                    winnerId
-                }
-            });
-            if (result.kind === "session") {
-                setActiveBinarySessionId(result.sessionId);
-                scrollMainToTop();
-            } else {
-                setMessage(result.changed
-                    ? "Random audit repaired the list."
-                    : "Random audit confirmed the current order.");
             }
             await refresh();
         } catch (error) {
@@ -1538,11 +1459,9 @@ function Dashboard({
 
     async function handleCancelBinarySession(session: BinarySessionView) {
         startBusy(
-            session.operationKind === "random_audit"
-                ? "Cancelling audit..."
-                : session.source === "rerank_entry"
-                    ? "Cancelling rerank..."
-                    : "Cancelling add..."
+            session.source === "rerank_entry"
+                ? "Cancelling rerank..."
+                : "Cancelling add..."
         );
         setMessage(null);
         setQueueRankingActive(false);
@@ -1552,11 +1471,9 @@ function Dashboard({
             markBinarySessionClosed(session.id);
             setActiveBinarySessionId(null);
             setMessage(
-                session.operationKind === "random_audit"
-                    ? "Cancelled random audit."
-                    : session.source === "rerank_entry"
-                        ? `Cancelled reranking ${session.subject.name}.`
-                        : `Cancelled adding ${session.subject.name}.`
+                session.source === "rerank_entry"
+                    ? `Cancelled reranking ${session.subject.name}.`
+                    : `Cancelled adding ${session.subject.name}.`
             );
             await refresh();
         } catch (error) {
@@ -1825,14 +1742,6 @@ function Dashboard({
                     <div>
                         <h1>{selectedCategory?.name ?? "Categories"}</h1>
                     </div>
-                    <button
-                        disabled={busy || Boolean(activeSessionId) || !selectedCategory || selectedCategory.entries.length < 2}
-                        type="button"
-                        onClick={handleStartRandomAudit}
-                    >
-                        <Icon name="audit" />
-                        <span>Random Audit</span>
-                    </button>
                 </div>
 
                 {message ? <div className="status">{message}</div> : null}
@@ -1891,15 +1800,6 @@ function Dashboard({
                         }}
                         onUnavailable={handleMissingBinarySession}
                         onNeedImage={requestImageForMatch}
-                    />
-                ) : null}
-
-                {auditPair && !activeSessionId ? (
-                    <RandomAuditPanel
-                        pair={auditPair}
-                        onCancel={() => setAuditPair(null)}
-                        onNeedImage={requestImageForMatch}
-                        onChoose={(winnerId) => void handleAuditWinner(winnerId)}
                     />
                 ) : null}
 
@@ -3906,65 +3806,6 @@ function EntryPoster({
     );
 }
 
-function RandomAuditPanel({
-    pair,
-    onCancel,
-    onChoose,
-    onNeedImage
-}: {
-    pair: RandomAuditPair;
-    onCancel: () => void;
-    onChoose: (winnerId: string) => void;
-    onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
-}) {
-    useEffect(() => {
-        const missingImageEntry = shouldPromptForImage(pair.leftEntry.imageKey)
-            ? pair.leftEntry
-            : shouldPromptForImage(pair.rightEntry.imageKey)
-                ? pair.rightEntry
-                : null;
-
-        if (missingImageEntry) {
-            onNeedImage(missingImageEntry, {
-                id: pair.categoryId,
-                name: pair.categoryName
-            });
-        }
-    }, [onNeedImage, pair]);
-
-    return (
-        <section className="rank-panel stack">
-            <div className="toolbar">
-                <div>
-                    <strong>Random Audit · {pair.categoryName}</strong>
-                    <p className="muted rank-meta">Pick the entry you prefer. If this catches an ordering issue, the repair will stay cancellable until it is finished.</p>
-                </div>
-                <button className="small-button" type="button" onClick={onCancel}>
-                    Cancel Audit
-                </button>
-            </div>
-            <div className="match-grid">
-                <button
-                    className="match-choice"
-                    type="button"
-                    onClick={() => onChoose(pair.leftEntry.id)}
-                >
-                    <MatchPoster entry={pair.leftEntry} />
-                    <strong>{pair.leftEntry.name}</strong>
-                </button>
-                <button
-                    className="match-choice"
-                    type="button"
-                    onClick={() => onChoose(pair.rightEntry.id)}
-                >
-                    <MatchPoster entry={pair.rightEntry} />
-                    <strong>{pair.rightEntry.name}</strong>
-                </button>
-            </div>
-        </section>
-    );
-}
-
 function BinaryRankPanel({
     sessionId,
     imageRefreshVersion,
@@ -4084,11 +3925,9 @@ function BinaryRankPanel({
             <div className="toolbar">
                 <div>
                     <strong>
-                        {session.operationKind === "random_audit"
-                            ? "Audit Repair"
-                            : session.phase === "local_repair"
-                                ? "Local Repair"
-                                : "Binary Rank"} · {session.categoryName}
+                        {session.phase === "local_repair"
+                            ? "Local Repair"
+                            : "Binary Rank"} · {session.categoryName}
                     </strong>
                     <p className="muted rank-meta">
                         Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} comparisons
@@ -4101,11 +3940,9 @@ function BinaryRankPanel({
                         type="button"
                         onClick={() => void cancelRanking()}
                     >
-                        {session.operationKind === "random_audit"
-                            ? "Cancel Audit"
-                            : session.source === "rerank_entry"
-                                ? "Cancel Rerank"
-                                : "Cancel Add"}
+                        {session.source === "rerank_entry"
+                            ? "Cancel Rerank"
+                            : "Cancel Add"}
                     </button>
                 ) : null}
             </div>

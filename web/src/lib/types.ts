@@ -1,5 +1,5 @@
 export type RankingSource = "new_entry" | "rerank_entry" | "switch_category";
-export type RankingOperationKind = "single" | "random_audit";
+export type RankingOperationKind = "single";
 
 export interface Entry {
     id: string;

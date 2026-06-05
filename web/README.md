@@ -7,7 +7,7 @@ TanStack Start + Cloudflare Workers port of the Rust media ranking app.
 - Better Auth email/password authentication.
 - Cloudflare D1 schema for categories, entries, ranking sessions, queue state, and user settings.
 - Cloudflare R2 image binding with stable entry-id image keys.
-- Binary-search entry placement with local repair checks and random audit operations.
+- Binary-search entry placement with local repair checks.
 - Entry rename, delete, rerank, and switch-category flows.
 - Legacy xlsx import with an optional default first-consumed date.
 - Imported entries start without images. Images can be picked later from an 18-result search popup or uploaded manually.

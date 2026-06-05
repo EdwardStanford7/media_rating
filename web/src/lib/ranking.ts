@@ -68,27 +68,6 @@ export interface BubbleRepairAdvanceResult {
     complete: boolean;
 }
 
-export type RandomAuditBubbleStage = "bubble_lower_up" | "bubble_higher_down";
-
-export interface RandomAuditIndexes {
-    higherIndex: number;
-    lowerIndex: number;
-}
-
-export interface RandomAuditBubbleState {
-    kind: "random_audit_bubble";
-    stage: RandomAuditBubbleStage;
-    workingOrderIds: string[];
-    higherEntryId: string;
-    lowerEntryId: string;
-    currentComparison: BubbleRepairComparison | null;
-}
-
-export interface RandomAuditBubbleAdvanceResult {
-    state: RandomAuditBubbleState;
-    complete: boolean;
-}
-
 export function chooseBinaryPivot(
     lowerBound: number,
     upperBound: number,
@@ -246,40 +225,6 @@ export function recordLocalRepairChoice(
     return { state: null, complete: true, finalIndex: state.finalIndex };
 }
 
-export function selectRandomAuditIndexes(
-    entryCount: number,
-    random: () => number = Math.random
-): RandomAuditIndexes | null {
-    if (entryCount < 2) {
-        return null;
-    }
-
-    let totalWeight = 0;
-    for (let distance = 1; distance < entryCount; distance += 1) {
-        totalWeight += (entryCount - distance) * auditDistanceWeight(distance);
-    }
-
-    let target = random() * totalWeight;
-    let selectedDistance = 1;
-    for (let distance = 1; distance < entryCount; distance += 1) {
-        target -= (entryCount - distance) * auditDistanceWeight(distance);
-        if (target <= 0) {
-            selectedDistance = distance;
-            break;
-        }
-    }
-
-    const higherIndex = Math.floor(random() * (entryCount - selectedDistance));
-    return {
-        higherIndex,
-        lowerIndex: higherIndex + selectedDistance
-    };
-}
-
-function auditDistanceWeight(distance: number) {
-    return 1 / Math.sqrt(distance);
-}
-
 export function startBubbleRepairState(
     workingOrderIds: string[],
     insertedEntryId: string
@@ -411,62 +356,6 @@ export function advanceBubbleRepairState(
     throw new Error("Bubble repair did not converge");
 }
 
-export function startRandomAuditBubbleState(
-    workingOrderIds: string[],
-    higherEntryId: string,
-    lowerEntryId: string
-): RandomAuditBubbleState {
-    if (!workingOrderIds.includes(higherEntryId)) {
-        throw new Error("Higher audit entry is missing from the working order");
-    }
-
-    if (!workingOrderIds.includes(lowerEntryId)) {
-        throw new Error("Lower audit entry is missing from the working order");
-    }
-
-    return {
-        kind: "random_audit_bubble",
-        stage: "bubble_lower_up",
-        workingOrderIds: [...workingOrderIds],
-        higherEntryId,
-        lowerEntryId,
-        currentComparison: null
-    };
-}
-
-export function advanceRandomAuditBubbleState(
-    state: RandomAuditBubbleState,
-    comparisons: RankingComparison[]
-): RandomAuditBubbleAdvanceResult {
-    const next: RandomAuditBubbleState = {
-        ...state,
-        workingOrderIds: [...state.workingOrderIds],
-        currentComparison: null
-    };
-    const maxSteps = Math.max(next.workingOrderIds.length * 4 + 8, 16);
-
-    for (let step = 0; step < maxSteps; step += 1) {
-        if (next.stage === "bubble_lower_up") {
-            const result = auditBubbleLeftUntilStopped(next, next.lowerEntryId, comparisons);
-            if (result.needsComparison) {
-                return { state: next, complete: false };
-            }
-
-            next.stage = "bubble_higher_down";
-            continue;
-        }
-
-        const result = auditBubbleRightUntilStopped(next, next.higherEntryId, comparisons);
-        if (result.needsComparison) {
-            return { state: next, complete: false };
-        }
-
-        return { state: next, complete: true };
-    }
-
-    throw new Error("Random audit repair did not converge");
-}
-
 export function getCachedWinner(
     comparisons: RankingComparison[],
     entryAId: string,
@@ -540,66 +429,6 @@ function bubbleRightUntilStopped(
         }
 
         if (winnerId !== nextEntryId) {
-            return { needsComparison: false };
-        }
-
-        state.workingOrderIds[index] = nextEntryId;
-        state.workingOrderIds[index + 1] = entryId;
-    }
-}
-
-function auditBubbleLeftUntilStopped(
-    state: RandomAuditBubbleState,
-    entryId: string,
-    comparisons: RankingComparison[]
-) {
-    while (true) {
-        const index = state.workingOrderIds.indexOf(entryId);
-        if (index <= 0) {
-            return { needsComparison: false };
-        }
-
-        const previousEntryId = state.workingOrderIds[index - 1];
-        const winnerId = getCachedWinner(comparisons, entryId, previousEntryId);
-        if (!winnerId) {
-            state.currentComparison = {
-                entryAId: entryId,
-                entryBId: previousEntryId
-            };
-            return { needsComparison: true };
-        }
-
-        if (winnerId !== entryId) {
-            return { needsComparison: false };
-        }
-
-        state.workingOrderIds[index - 1] = entryId;
-        state.workingOrderIds[index] = previousEntryId;
-    }
-}
-
-function auditBubbleRightUntilStopped(
-    state: RandomAuditBubbleState,
-    entryId: string,
-    comparisons: RankingComparison[]
-) {
-    while (true) {
-        const index = state.workingOrderIds.indexOf(entryId);
-        if (index < 0 || index >= state.workingOrderIds.length - 1) {
-            return { needsComparison: false };
-        }
-
-        const nextEntryId = state.workingOrderIds[index + 1];
-        const winnerId = getCachedWinner(comparisons, entryId, nextEntryId);
-        if (!winnerId) {
-            state.currentComparison = {
-                entryAId: entryId,
-                entryBId: nextEntryId
-            };
-            return { needsComparison: true };
-        }
-
-        if (winnerId === entryId) {
             return { needsComparison: false };
         }
 
