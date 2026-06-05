@@ -291,7 +291,7 @@ function AuthPage({
 
                 <section className="auth-panel" aria-labelledby="auth-heading">
                     <div className="auth-copy">
-                        <p className="auth-kicker">Welcome to Rankly</p>
+                        <p className="auth-kicker"> {authMode === "signin" ? "Welcome Back" : "Welcome to Rankly"}</p>
                         <h2 id="auth-heading">
                             {resetToken ? "Reset password" : authMode === "signin" ? "Sign in" : "Create account"}
                         </h2>
