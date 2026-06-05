@@ -573,6 +573,29 @@ textarea {
     position: relative;
 }
 
+.category-row.draggable,
+.category-row.draggable .category-button {
+    cursor: grab;
+}
+
+.category-row.dragging .category-button {
+    border-color: var(--accent);
+    border-style: dashed;
+    background: var(--selected-panel);
+    box-shadow: none;
+    cursor: grabbing;
+}
+
+.category-row.dragging .category-button>* {
+    opacity: 0;
+}
+
+.category-drag-image {
+    opacity: 0.96;
+    transform: rotate(0.5deg);
+    box-shadow: var(--floating-shadow);
+}
+
 .category-button {
     min-width: 0;
     text-align: left;

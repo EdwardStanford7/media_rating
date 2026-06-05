@@ -511,6 +511,57 @@ export async function renameCategory(userId: string, categoryId: string, name: s
         .run();
 }
 
+export async function moveCategoryRelativeToCategory(
+    userId: string,
+    input: { categoryId: string; targetCategoryId: string; placement: "before" | "after" }
+) {
+    if (input.categoryId === input.targetCategoryId) {
+        return { moved: false };
+    }
+
+    const category = await getOwnedCategory(userId, input.categoryId);
+    assertOwned(category, "Category");
+    const targetCategory = await getOwnedCategory(userId, input.targetCategoryId);
+    assertOwned(targetCategory, "Target category");
+
+    const db = getDb();
+    const categories = await all<CategoryRow>(
+        db
+            .prepare(
+                `SELECT id, name, sort_order, created_at, is_public, star_rating_curve
+         FROM categories
+         WHERE user_id = ?
+         ORDER BY sort_order ASC, name ASC`
+            )
+            .bind(userId)
+    );
+    const currentCategoryIds = categories.map((candidate) => candidate.id);
+    const originalCategoryIndex = currentCategoryIds.indexOf(category.id);
+    const targetCategoryIndex = currentCategoryIds.indexOf(targetCategory.id);
+    if (
+        originalCategoryIndex >= 0 &&
+        targetCategoryIndex >= 0 &&
+        (
+            (input.placement === "before" && targetCategoryIndex === originalCategoryIndex + 1) ||
+            (input.placement === "after" && targetCategoryIndex === originalCategoryIndex - 1)
+        )
+    ) {
+        return { moved: false };
+    }
+
+    const orderedCategoryIds = currentCategoryIds.filter((categoryId) => categoryId !== category.id);
+    const targetIndex = orderedCategoryIds.indexOf(targetCategory.id);
+    if (targetIndex === -1) {
+        throw new Error("Target category not found");
+    }
+
+    const insertionIndex = input.placement === "after" ? targetIndex + 1 : targetIndex;
+    orderedCategoryIds.splice(insertionIndex, 0, category.id);
+    await db.batch(rewriteUserCategoryOrderStatements(db, userId, orderedCategoryIds, now()));
+
+    return { moved: true };
+}
+
 export async function deleteCategory(userId: string, categoryId: string) {
     const category = await getOwnedCategory(userId, categoryId);
     assertOwned(category, "Category");
@@ -3653,6 +3704,23 @@ function rewriteCategoryOrderStatements(
        WHERE user_id = ? AND category_id = ? AND id = ?`
             )
             .bind(rankPosition, updatedAt, userId, categoryId, entryId)
+    );
+}
+
+function rewriteUserCategoryOrderStatements(
+    db: D1Database,
+    userId: string,
+    orderedCategoryIds: string[],
+    updatedAt: number
+) {
+    return orderedCategoryIds.map((categoryId, sortOrder) =>
+        db
+            .prepare(
+                `UPDATE categories
+       SET sort_order = ?, updated_at = ?
+       WHERE user_id = ? AND id = ?`
+            )
+            .bind(sortOrder, updatedAt, userId, categoryId)
     );
 }
 

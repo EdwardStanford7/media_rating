@@ -15,6 +15,7 @@ import {
     importLegacyEntries,
     loadDashboard,
     markImageUnavailable,
+    moveCategoryRelativeToCategory,
     moveEntryRelativeToEntry,
     renameCategory,
     renameEntry,
@@ -75,12 +76,18 @@ interface RandomAuditPair {
     rightEntry: Entry;
 }
 
-type EntryDropPlacement = "before" | "after";
+type DropPlacement = "before" | "after";
 
 interface EntryDragPreview {
     draggedEntryId: string;
     targetEntryId: string;
-    placement: EntryDropPlacement;
+    placement: DropPlacement;
+}
+
+interface CategoryDragPreview {
+    draggedCategoryId: string;
+    targetCategoryId: string;
+    placement: DropPlacement;
 }
 
 interface StarCurveBuilderState {
@@ -601,6 +608,8 @@ function Dashboard({
     const [toasts, setToasts] = useState<AppToast[]>([]);
     const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
     const [entryDragPreview, setEntryDragPreview] = useState<EntryDragPreview | null>(null);
+    const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+    const [categoryDragPreview, setCategoryDragPreview] = useState<CategoryDragPreview | null>(null);
     const mainRef = useRef<HTMLElement | null>(null);
     const reversibleActionIdRef = useRef(0);
     const undoStackRef = useRef<ReversibleAction[]>([]);
@@ -614,6 +623,10 @@ function Dashboard({
             dashboard.categories[0] ??
             null,
         [dashboard.categories, selectedCategoryId]
+    );
+    const previewedCategories = useMemo(
+        () => previewCategoryReorder(dashboard.categories, categoryDragPreview),
+        [categoryDragPreview, dashboard.categories]
     );
     const displayedEntries = useMemo(() => {
         if (!selectedCategory) {
@@ -653,11 +666,19 @@ function Dashboard({
         !entrySearch.trim() &&
         selectedCategory.entries.length > 1
     );
+    const canDragReorderCategories = !busy && dashboard.categories.length > 1;
 
     useEffect(() => {
         setDraggedEntryId(null);
         setEntryDragPreview(null);
     }, [activeSessionId, entrySearch, selectedCategoryId]);
+
+    useEffect(() => {
+        if (!canDragReorderCategories) {
+            setDraggedCategoryId(null);
+            setCategoryDragPreview(null);
+        }
+    }, [canDragReorderCategories]);
 
     function setActiveBinarySessionId(sessionId: string | null) {
         activeSessionIdRef.current = sessionId;
@@ -951,6 +972,120 @@ function Dashboard({
         } finally {
             finishBusy();
         }
+    }
+
+    function handleCategoryDragStart(categoryId: string) {
+        setDraggedCategoryId(categoryId);
+        setCategoryDragPreview(null);
+    }
+
+    function handleCategoryDragPreview(
+        categoryId: string,
+        targetCategoryId: string,
+        placement: DropPlacement
+    ) {
+        if (!canDragReorderCategories || categoryId === targetCategoryId) {
+            return;
+        }
+
+        setCategoryDragPreview((currentPreview) => {
+            if (
+                currentPreview?.draggedCategoryId === categoryId &&
+                currentPreview.targetCategoryId === targetCategoryId &&
+                currentPreview.placement === placement
+            ) {
+                return currentPreview;
+            }
+
+            return { draggedCategoryId: categoryId, targetCategoryId, placement };
+        });
+    }
+
+    function handleCategoryDragEnd() {
+        setDraggedCategoryId(null);
+        setCategoryDragPreview(null);
+    }
+
+    function handleCommitCategoryDragPreview() {
+        if (!categoryDragPreview) {
+            handleCategoryDragEnd();
+            return;
+        }
+
+        void handleMoveCategoryRelativeToCategory(
+            categoryDragPreview.draggedCategoryId,
+            categoryDragPreview.targetCategoryId,
+            categoryDragPreview.placement
+        );
+    }
+
+    async function handleMoveCategoryRelativeToCategory(
+        categoryId: string,
+        targetCategoryId: string,
+        placement: DropPlacement
+    ) {
+        if (categoryId === targetCategoryId) {
+            handleCategoryDragEnd();
+            return;
+        }
+
+        const orderedCategoryIds = dashboard.categories.map((category) => category.id);
+        const originalCategoryIndex = orderedCategoryIds.indexOf(categoryId);
+        if (isReorderNoop(orderedCategoryIds, categoryId, targetCategoryId, placement)) {
+            handleCategoryDragEnd();
+            return;
+        }
+
+        const previousCategoryId = originalCategoryIndex > 0 ? orderedCategoryIds[originalCategoryIndex - 1] : null;
+        const nextCategoryId = originalCategoryIndex >= 0 ? orderedCategoryIds[originalCategoryIndex + 1] ?? null : null;
+        startBusy("Reordering categories...");
+        setMessage(null);
+
+        try {
+            const result = await moveCategoryRelativeToCategoryForHistory(categoryId, targetCategoryId, placement);
+            if (result.moved && originalCategoryIndex >= 0) {
+                registerReversibleAction({
+                    redo: () => moveCategoryRelativeToCategoryForHistory(categoryId, targetCategoryId, placement).then(() => undefined),
+                    redoToastMessage: "Reordered categories.",
+                    undo: () => restoreCategoryOrderForHistory(categoryId, previousCategoryId, nextCategoryId),
+                    undoToastMessage: "Restored the previous category order.",
+                    variant: "success"
+                });
+            }
+        } catch (error) {
+            setMessage(errorMessage(error));
+        } finally {
+            finishBusy();
+            handleCategoryDragEnd();
+        }
+    }
+
+    async function moveCategoryRelativeToCategoryForHistory(
+        categoryId: string,
+        targetCategoryId: string,
+        placement: DropPlacement
+    ) {
+        const result = await moveCategoryRelativeToCategory({ data: { categoryId, targetCategoryId, placement } });
+        await refresh();
+        return result;
+    }
+
+    async function restoreCategoryOrderForHistory(
+        categoryId: string,
+        previousCategoryId: string | null,
+        nextCategoryId: string | null
+    ) {
+        if (nextCategoryId) {
+            await moveCategoryRelativeToCategoryForHistory(categoryId, nextCategoryId, "before");
+            return;
+        }
+
+        if (previousCategoryId) {
+            await moveCategoryRelativeToCategoryForHistory(categoryId, previousCategoryId, "after");
+            return;
+        }
+
+        await refresh();
     }
 
     async function handleDeleteCategory(category: CategoryWithEntries) {
@@ -1285,7 +1420,7 @@ function Dashboard({
     function handleEntryDragPreview(
         entryId: string,
         targetEntryId: string,
-        placement: EntryDropPlacement
+        placement: DropPlacement
     ) {
         if (!canDragReorderEntries || entryId === targetEntryId) {
             return;
@@ -1325,7 +1460,7 @@ function Dashboard({
     async function handleMoveEntryRelativeToEntry(
         entryId: string,
         targetEntryId: string,
-        placement: EntryDropPlacement
+        placement: DropPlacement
     ) {
         if (entryId === targetEntryId) {
             handleEntryDragEnd();
@@ -1334,7 +1469,7 @@ function Dashboard({
 
         const orderedEntryIds = selectedCategory ? orderEntries(selectedCategory.entries).map((entry) => entry.id) : [];
         const originalEntryIndex = orderedEntryIds.indexOf(entryId);
-        if (isEntryReorderNoop(orderedEntryIds, entryId, targetEntryId, placement)) {
+        if (isReorderNoop(orderedEntryIds, entryId, targetEntryId, placement)) {
             handleEntryDragEnd();
             return;
         }
@@ -1366,7 +1501,7 @@ function Dashboard({
     async function moveEntryRelativeToEntryForHistory(
         entryId: string,
         targetEntryId: string,
-        placement: EntryDropPlacement
+        placement: DropPlacement
     ) {
         const result = await moveEntryRelativeToEntry({ data: { entryId, targetEntryId, placement } });
         await refresh();
@@ -1637,14 +1772,40 @@ function Dashboard({
                     <button disabled={busy} type="submit">Add</button>
                 </form>
 
-                <div className="category-list">
-                    {dashboard.categories.map((category) => (
+                <div
+                    className="category-list"
+                    onDragOver={(event) => {
+                        if (!draggedCategoryId || !categoryDragPreview) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(event) => {
+                        if (!draggedCategoryId || !categoryDragPreview) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        handleCommitCategoryDragPreview();
+                    }}
+                >
+                    {previewedCategories.map((category) => (
                         <CategoryListItem
                             category={category}
                             isActive={category.id === selectedCategory?.id}
                             key={category.id}
                             busy={busy}
+                            canDragReorder={canDragReorderCategories}
+                            draggedCategoryId={draggedCategoryId}
+                            isDragging={draggedCategoryId === category.id}
                             listLocked={Boolean(activeSessionId)}
+                            onDragEnd={handleCategoryDragEnd}
+                            onDragPreview={handleCategoryDragPreview}
+                            onDragStart={() => handleCategoryDragStart(category.id)}
+                            onDropCategory={handleMoveCategoryRelativeToCategory}
+                            onDropPreview={handleCommitCategoryDragPreview}
                             onDelete={() => setCategoryDeleteTarget(category)}
                             onRename={(name) => handleRenameCategory(category.id, name)}
                             onSelect={() => setSelectedCategoryId(category.id)}
@@ -1833,23 +1994,23 @@ function Dashboard({
     );
 }
 
-function isEntryReorderNoop(
-    orderedEntryIds: string[],
-    entryId: string,
-    targetEntryId: string,
-    placement: EntryDropPlacement
+function isReorderNoop(
+    orderedItemIds: string[],
+    itemId: string,
+    targetItemId: string,
+    placement: DropPlacement
 ) {
-    if (entryId === targetEntryId) {
+    if (itemId === targetItemId) {
         return true;
     }
 
-    const originalEntryIndex = orderedEntryIds.indexOf(entryId);
-    const targetEntryIndex = orderedEntryIds.indexOf(targetEntryId);
-    return originalEntryIndex >= 0 &&
-        targetEntryIndex >= 0 &&
+    const originalItemIndex = orderedItemIds.indexOf(itemId);
+    const targetItemIndex = orderedItemIds.indexOf(targetItemId);
+    return originalItemIndex >= 0 &&
+        targetItemIndex >= 0 &&
         (
-            (placement === "before" && targetEntryIndex === originalEntryIndex + 1) ||
-            (placement === "after" && targetEntryIndex === originalEntryIndex - 1)
+            (placement === "before" && targetItemIndex === originalItemIndex + 1) ||
+            (placement === "after" && targetItemIndex === originalItemIndex - 1)
         );
 }
 
@@ -1876,6 +2037,31 @@ function previewEntryReorder(entries: Entry[], preview: EntryDragPreview | null)
         : targetIndexAfterRemoval + 1;
     nextEntries.splice(insertionIndex, 0, draggedEntry);
     return nextEntries;
+}
+
+function previewCategoryReorder(categories: CategoryWithEntries[], preview: CategoryDragPreview | null) {
+    if (!preview || preview.draggedCategoryId === preview.targetCategoryId) {
+        return categories;
+    }
+
+    const draggedIndex = categories.findIndex((category) => category.id === preview.draggedCategoryId);
+    const targetIndex = categories.findIndex((category) => category.id === preview.targetCategoryId);
+    if (draggedIndex < 0 || targetIndex < 0) {
+        return categories;
+    }
+
+    const nextCategories = categories.slice();
+    const [draggedCategory] = nextCategories.splice(draggedIndex, 1);
+    const targetIndexAfterRemoval = nextCategories.findIndex((category) => category.id === preview.targetCategoryId);
+    if (!draggedCategory || targetIndexAfterRemoval < 0) {
+        return categories;
+    }
+
+    const insertionIndex = preview.placement === "before"
+        ? targetIndexAfterRemoval
+        : targetIndexAfterRemoval + 1;
+    nextCategories.splice(insertionIndex, 0, draggedCategory);
+    return nextCategories;
 }
 
 function useEscapeKey(isActive: boolean, onEscape: () => void) {
@@ -2204,7 +2390,15 @@ function CategoryListItem({
     category,
     isActive,
     busy,
+    canDragReorder,
+    draggedCategoryId,
+    isDragging,
     listLocked,
+    onDragEnd,
+    onDragPreview,
+    onDragStart,
+    onDropCategory,
+    onDropPreview,
     onDelete,
     onRename,
     onSelect
@@ -2212,7 +2406,15 @@ function CategoryListItem({
     category: CategoryWithEntries;
     isActive: boolean;
     busy: boolean;
+    canDragReorder: boolean;
+    draggedCategoryId: string | null;
+    isDragging: boolean;
     listLocked: boolean;
+    onDragEnd: () => void;
+    onDragPreview: (categoryId: string, targetCategoryId: string, placement: DropPlacement) => void;
+    onDragStart: () => void;
+    onDropCategory: (categoryId: string, targetCategoryId: string, placement: DropPlacement) => Promise<void>;
+    onDropPreview: () => void;
     onDelete: () => void;
     onRename: (name: string) => Promise<void>;
     onSelect: () => void;
@@ -2237,6 +2439,34 @@ function CategoryListItem({
         await onRename(name);
         setIsRenaming(false);
     }
+
+    function dragPlacementForEvent(event: DragEvent<HTMLElement>): DropPlacement {
+        const rect = event.currentTarget.getBoundingClientRect();
+        return event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+    }
+
+    function setCategoryDragImage(event: DragEvent<HTMLElement>) {
+        const row = event.currentTarget;
+        const rect = row.getBoundingClientRect();
+        const dragImage = row.cloneNode(true) as HTMLElement;
+        dragImage.classList.remove("dragging");
+        dragImage.classList.add("category-drag-image");
+        dragImage.style.width = `${rect.width}px`;
+        dragImage.style.height = `${rect.height}px`;
+        dragImage.style.position = "fixed";
+        dragImage.style.left = "-10000px";
+        dragImage.style.top = "-10000px";
+        dragImage.style.pointerEvents = "none";
+        dragImage.querySelector(".context-menu-host")?.remove();
+        document.body.appendChild(dragImage);
+
+        const offsetX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+        const offsetY = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
+        event.dataTransfer.setDragImage(dragImage, offsetX, offsetY);
+        window.setTimeout(() => dragImage.remove(), 0);
+    }
+
+    const isCategoryDraggable = canDragReorder && !isRenaming && !menuOpen;
 
     if (isRenaming) {
         return (
@@ -2266,7 +2496,52 @@ function CategoryListItem({
 
     return (
         <div
-            className="category-row"
+            className={`category-row ${isCategoryDraggable ? "draggable" : ""} ${isDragging ? "dragging" : ""}`}
+            data-category-id={category.id}
+            draggable={isCategoryDraggable}
+            onDragEnd={onDragEnd}
+            onDragOver={(event) => {
+                if (!isCategoryDraggable || !draggedCategoryId || isDragging) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                onDragPreview(draggedCategoryId, category.id, dragPlacementForEvent(event));
+            }}
+            onDragStart={(event) => {
+                if (!isCategoryDraggable) {
+                    event.preventDefault();
+                    return;
+                }
+
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("application/x-rankly-category-id", category.id);
+                event.dataTransfer.setData("text/plain", `category:${category.id}`);
+                setCategoryDragImage(event);
+                setMenuOpen(false);
+                onDragStart();
+            }}
+            onDrop={(event) => {
+                if (!isCategoryDraggable) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+                const plainData = event.dataTransfer.getData("text/plain");
+                const droppedCategoryId =
+                    event.dataTransfer.getData("application/x-rankly-category-id") ||
+                    (plainData.startsWith("category:") ? plainData.slice("category:".length) : "") ||
+                    draggedCategoryId;
+                if (droppedCategoryId && droppedCategoryId !== category.id) {
+                    void onDropCategory(droppedCategoryId, category.id, dragPlacementForEvent(event));
+                } else if (droppedCategoryId) {
+                    onDropPreview();
+                } else {
+                    onDragEnd();
+                }
+            }}
             onContextMenu={(event) => {
                 event.preventDefault();
                 if (busy) {
@@ -3594,9 +3869,9 @@ function EntryCard({
     starRatingScale: number;
     onDelete: () => void;
     onDragEnd: () => void;
-    onDragPreview: (entryId: string, targetEntryId: string, placement: EntryDropPlacement) => void;
+    onDragPreview: (entryId: string, targetEntryId: string, placement: DropPlacement) => void;
     onDragStart: () => void;
-    onDropEntry: (entryId: string, targetEntryId: string, placement: EntryDropPlacement) => Promise<void>;
+    onDropEntry: (entryId: string, targetEntryId: string, placement: DropPlacement) => Promise<void>;
     onDropPreview: () => void;
     onPickImage: () => void;
     onRename: (name: string) => Promise<void>;
@@ -3628,7 +3903,7 @@ function EntryCard({
         setIsRenaming(false);
     }
 
-    function dragPlacementForEvent(event: DragEvent<HTMLElement>): EntryDropPlacement {
+    function dragPlacementForEvent(event: DragEvent<HTMLElement>): DropPlacement {
         const rect = event.currentTarget.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;

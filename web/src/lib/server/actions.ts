@@ -88,6 +88,16 @@ export const renameCategory = createServerFn({ method: "POST" })
         return repo.renameCategory(user.id, data.categoryId, data.name);
     });
 
+export const moveCategoryRelativeToCategory = createServerFn({ method: "POST" })
+    .inputValidator(
+        (data: { categoryId: string; targetCategoryId: string; placement: "before" | "after" }) => data
+    )
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.moveCategoryRelativeToCategory(user.id, data);
+    });
+
 export const deleteCategory = createServerFn({ method: "POST" })
     .inputValidator((data: { categoryId: string }) => data)
     .handler(async ({ data }) => {
