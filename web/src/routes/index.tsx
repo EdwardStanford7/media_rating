@@ -146,7 +146,7 @@ const ICONS: Record<IconName, string> = {
     undo: "↶",
     up: "↑"
 };
-type ThemeMode = "light" | "dark";
+type ThemeMode = "light" | "dark" | "system";
 type AuthMode = "signin" | "signup";
 
 export const Route = createFileRoute("/")({
@@ -170,7 +170,7 @@ function Home() {
     const { session, dashboard, authOptions } = Route.useLoaderData();
 
     useEffect(() => {
-        document.documentElement.dataset.theme = readInitialThemeMode();
+        return applyThemeMode(readInitialThemeMode());
     }, []);
 
     if (!session?.user || !dashboard) {
@@ -583,6 +583,7 @@ function Dashboard({
     const [message, setMessage] = useState<string | null>(null);
     const [auditPair, setAuditPair] = useState<RandomAuditPair | null>(null);
     const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
+    const [importToastOpen, setImportToastOpen] = useState(false);
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
@@ -661,8 +662,8 @@ function Dashboard({
     }
 
     useEffect(() => {
-        document.documentElement.dataset.theme = themeMode;
         window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+        return applyThemeMode(themeMode);
     }, [themeMode]);
 
     useEffect(() => {
@@ -1598,7 +1599,10 @@ function Dashboard({
         const file = form.get("workbook");
 
         if (!(file instanceof File) || file.size === 0) {
-            setMessage("Choose an .xlsx file to import.");
+            pushToast({
+                message: "Choose an .xlsx file to import.",
+                variant: "danger"
+            });
             finishBusy();
             return false;
         }
@@ -1617,16 +1621,20 @@ function Dashboard({
             await nextPaint();
             const result = await importLegacyEntries({ data: parsed });
             setBusyLabel("Refreshing dashboard...");
-            setMessage(
-                result.skippedCount > 0
+            pushToast({
+                message: result.skippedCount > 0
                     ? `Imported ${result.importedCount} entries. Skipped ${result.skippedCount} duplicates.`
-                    : `Imported ${result.importedCount} entries.`
-            );
+                    : `Imported ${result.importedCount} entries.`,
+                variant: "success"
+            });
             formElement.reset();
             await refresh();
             return true;
         } catch (error) {
-            setMessage(errorMessage(error));
+            pushToast({
+                message: errorMessage(error),
+                variant: "danger"
+            });
             return false;
         } finally {
             finishBusy();
@@ -1643,7 +1651,9 @@ function Dashboard({
                 0
             );
             if (entryCount === 0) {
-                setMessage("Nothing to export yet. Add or import entries first.");
+                pushToast({
+                    message: "Nothing to export yet. Add or import entries first."
+                });
                 return;
             }
             const buffer = await writeExportWorkbook(dashboard.categories);
@@ -1656,8 +1666,15 @@ function Dashboard({
             anchor.download = "Rankings.xlsx";
             anchor.click();
             URL.revokeObjectURL(url);
+            pushToast({
+                message: "Export downloaded.",
+                variant: "success"
+            });
         } catch (error) {
-            setMessage(errorMessage(error));
+            pushToast({
+                message: errorMessage(error),
+                variant: "danger"
+            });
         } finally {
             finishBusy();
         }
@@ -1666,7 +1683,22 @@ function Dashboard({
     return (
         <main className="app-shell" aria-busy={busy}>
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
-            <ToastStack toasts={toasts} onDismiss={dismissToast} />
+            <ToastStack toasts={toasts} onDismiss={dismissToast}>
+                {importToastOpen ? (
+                    <ImportSpreadsheetToast
+                        busy={busy}
+                        busyLabel={busyLabel}
+                        disabled={busy || Boolean(activeSessionId)}
+                        onClose={() => setImportToastOpen(false)}
+                        onImport={async (event) => {
+                            const imported = await handleImport(event);
+                            if (imported) {
+                                setImportToastOpen(false);
+                            }
+                        }}
+                    />
+                ) : null}
+            </ToastStack>
             {imagePickerTarget ? (
                 <ImagePickerModal
                     target={imagePickerTarget}
@@ -1698,11 +1730,10 @@ function Dashboard({
                     </Link>
                     <AccountMenu
                         busy={busy}
-                        busyLabel={busyLabel}
                         listLocked={Boolean(activeSessionId)}
                         settings={dashboard.queueSettings}
                         onExport={handleExport}
-                        onImport={handleImport}
+                        onOpenImport={() => setImportToastOpen(true)}
                         onSaveSettings={handleQueueSettings}
                         onThemeChange={setThemeMode}
                         themeMode={themeMode}
@@ -2024,15 +2055,36 @@ function useEscapeKey(isActive: boolean, onEscape: () => void) {
 
 function readInitialThemeMode(): ThemeMode {
     if (typeof window === "undefined") {
-        return "light";
+        return "system";
     }
 
     const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (savedTheme === "light" || savedTheme === "dark") {
+    if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") {
         return savedTheme;
     }
 
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return "system";
+}
+
+function applyThemeMode(themeMode: ThemeMode) {
+    if (typeof window === "undefined") {
+        return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+        document.documentElement.dataset.theme = themeMode === "system"
+            ? mediaQuery.matches ? "dark" : "light"
+            : themeMode;
+    };
+
+    apply();
+    if (themeMode !== "system") {
+        return undefined;
+    }
+
+    mediaQuery.addEventListener("change", apply);
+    return () => mediaQuery.removeEventListener("change", apply);
 }
 
 function isEditableShortcutTarget(target: EventTarget | null) {
@@ -2279,20 +2331,23 @@ function EmptyState({
 }
 
 function ToastStack({
+    children,
     onDismiss,
     toasts
 }: {
+    children?: ReactNode;
     onDismiss: (toastId: number) => void;
     toasts: AppToast[];
 }) {
     const [activeActionId, setActiveActionId] = useState<number | null>(null);
 
-    if (toasts.length === 0) {
+    if (toasts.length === 0 && !children) {
         return null;
     }
 
     return (
         <div aria-live="polite" className="toast-stack">
+            {children}
             {toasts.map((toast) => (
                 <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
                     <span>{toast.message}</span>
@@ -2324,6 +2379,47 @@ function ToastStack({
                 </div>
             ))}
         </div>
+    );
+}
+
+function ImportSpreadsheetToast({
+    busy,
+    busyLabel,
+    disabled,
+    onClose,
+    onImport
+}: {
+    busy: boolean;
+    busyLabel: string | null;
+    disabled: boolean;
+    onClose: () => void;
+    onImport: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+}) {
+    return (
+        <form className="toast import-toast" onSubmit={(event) => void onImport(event)}>
+            <div className="toast-header-row">
+                <strong>Import Spreadsheet</strong>
+                <IconButton
+                    className="toast-close-button"
+                    disabled={busy}
+                    icon="close"
+                    label="Close import"
+                    type="button"
+                    onClick={onClose}
+                />
+            </div>
+            <label className="stack compact-stack">
+                <span className="muted">First consumed date</span>
+                <input disabled={disabled} name="firstConsumedAt" type="date" />
+            </label>
+            <label className="stack compact-stack">
+                <span className="muted">Workbook</span>
+                <input disabled={disabled} name="workbook" type="file" accept=".xlsx" />
+            </label>
+            <button disabled={disabled} type="submit">
+                {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
+            </button>
+        </form>
     );
 }
 
@@ -2560,11 +2656,10 @@ function BusyOverlay({ label }: { label: string }) {
 
 function AccountMenu({
     busy,
-    busyLabel,
     listLocked,
     settings,
     onExport,
-    onImport,
+    onOpenImport,
     onSaveSettings,
     onThemeChange,
     themeMode,
@@ -2573,11 +2668,10 @@ function AccountMenu({
     userName
 }: {
     busy: boolean;
-    busyLabel: string | null;
     listLocked: boolean;
     settings: QueueSettings;
     onExport: () => Promise<void>;
-    onImport: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+    onOpenImport: () => void;
     onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
@@ -2590,7 +2684,8 @@ function AccountMenu({
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
     const [quickSaving, setQuickSaving] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [activePanel, setActivePanel] = useState<"settings" | "import" | null>(null);
+    const [activePanel, setActivePanel] = useState<"settings" | "appearance" | null>(null);
+    const [submenuAnchorTop, setSubmenuAnchorTop] = useState<number | null>(null);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     const floatingMenu = useFloatingMenu(menuOpen);
     const importDisabled = busy || listLocked;
@@ -2606,15 +2701,9 @@ function AccountMenu({
     ]);
 
     async function handleExportClick() {
-        await onExport();
         setMenuOpen(false);
-    }
-
-    async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
-        const imported = await onImport(event);
-        if (imported) {
-            setMenuOpen(false);
-        }
+        clearPanel();
+        await onExport();
     }
 
     async function saveSettingsImmediately(nextSettings: QueueSettings) {
@@ -2644,14 +2733,51 @@ function AccountMenu({
         });
     }
 
-    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        await onSaveSettings({
+    async function updateDelayDays(nextDelayDays: number) {
+        setDelayDays(nextDelayDays);
+        await saveSettingsImmediately({
+            ...settings,
             enabled,
-            delayDays,
+            delayDays: nextDelayDays,
             promptForMissingImages
         });
-        setMenuOpen(false);
+    }
+
+    function showPanel(panel: "settings" | "appearance", event: { currentTarget: HTMLElement }) {
+        setActivePanel(panel);
+        setSubmenuAnchorTop(event.currentTarget.getBoundingClientRect().top);
+    }
+
+    function clearPanel() {
+        setActivePanel(null);
+        setSubmenuAnchorTop(null);
+    }
+
+    function submenuStyle(width: number): CSSProperties {
+        const mainLeft = Number(floatingMenu.style.left ?? 0);
+        const mainTop = Number(floatingMenu.style.top ?? 0);
+        const mainWidth = floatingMenu.panelRef.current?.offsetWidth ?? 224;
+        const margin = 8;
+        const gap = 6;
+        const preferredLeft = mainLeft - width - gap;
+        const fallbackLeft = mainLeft + mainWidth + gap;
+        const maxLeft = typeof window === "undefined"
+            ? preferredLeft
+            : Math.max(margin, window.innerWidth - width - margin);
+        const left = preferredLeft >= margin
+            ? preferredLeft
+            : Math.min(fallbackLeft, maxLeft);
+
+        return {
+            left,
+            maxWidth: "calc(100vw - 1rem)",
+            position: "fixed",
+            top: submenuAnchorTop ?? mainTop,
+            visibility: floatingMenu.style.visibility,
+            minWidth: width,
+            width: "auto",
+            zIndex: 81
+        };
     }
 
     return (
@@ -2663,8 +2789,8 @@ function AccountMenu({
                 ref={floatingMenu.triggerRef}
                 type="button"
                 onClick={() => {
-                    if (!menuOpen) {
-                        setActivePanel("settings");
+                    if (menuOpen) {
+                        clearPanel();
                     }
                     setMenuOpen((isOpen) => !isOpen);
                 }}
@@ -2681,135 +2807,143 @@ function AccountMenu({
                     ref={floatingMenu.panelRef}
                     style={floatingMenu.style}
                 >
-                    <div className="account-menu-layout">
-                        <div className="account-menu-primary">
-                            <div className="account-menu-header">
-                                <AccountAvatar
-                                    imageKey={userImage}
-                                    imageVersion={userImageVersion}
-                                    large
-                                />
-                                <div>
-                                    <strong className="account-display-name">{userName}</strong>
-                                    <span className="muted">Account</span>
-                                </div>
-                            </div>
-                            <Link
-                                className="account-menu-item"
-                                to="/profile"
-                                onClick={() => setMenuOpen(false)}
-                            >
-                                <MenuIconLabel icon="edit">Profile</MenuIconLabel>
-                            </Link>
-                            <button
-                                aria-expanded={activePanel === "settings"}
-                                className={`account-menu-item has-flyout ${activePanel === "settings" ? "active" : ""}`}
-                                type="button"
-                                onClick={() => setActivePanel("settings")}
-                                onFocus={() => setActivePanel("settings")}
-                                onMouseEnter={() => setActivePanel("settings")}
-                            >
-                                <MenuIconLabel icon="settings">Settings</MenuIconLabel>
-                                <span aria-hidden="true">›</span>
-                            </button>
-                            <button
-                                className="account-menu-item"
-                                type="button"
-                                onClick={() => onThemeChange(themeMode === "dark" ? "light" : "dark")}
-                            >
-                                <MenuIconLabel icon="reset">
-                                    Switch to {themeMode === "dark" ? "Light" : "Dark"} Mode
-                                </MenuIconLabel>
-                            </button>
-                            <button
-                                aria-expanded={activePanel === "import"}
-                                className={`account-menu-item has-flyout ${activePanel === "import" ? "active" : ""}`}
-                                disabled={importDisabled}
-                                type="button"
-                                onClick={() => setActivePanel("import")}
-                                onFocus={() => setActivePanel("import")}
-                                onMouseEnter={() => setActivePanel("import")}
-                            >
-                                <MenuIconLabel icon="import">Import xlsx</MenuIconLabel>
-                                <span aria-hidden="true">›</span>
-                            </button>
-                            <button
-                                className="account-menu-item"
-                                disabled={busy}
-                                type="button"
-                                onClick={() => void handleExportClick()}
-                            >
-                                <MenuIconLabel icon="export">Export xlsx</MenuIconLabel>
-                            </button>
-                            <button
-                                className="account-menu-item danger menu-danger"
-                                type="button"
-                                onClick={() => signOut().then(() => window.location.assign("/"))}
-                            >
-                                <MenuIconLabel icon="cancel">Sign Out</MenuIconLabel>
-                            </button>
+                    <div className="account-menu-header">
+                        <AccountAvatar
+                            imageKey={userImage}
+                            imageVersion={userImageVersion}
+                            large
+                        />
+                        <div>
+                            <strong className="account-display-name">{userName}</strong>
+                            <span className="muted">Account</span>
                         </div>
-
-                        {activePanel === "settings" ? (
-                            <form className="account-flyout stack" onSubmit={handleSubmit}>
-                                <div>
-                                    <strong>Settings</strong>
-                                </div>
-                                <div className="settings-toggle-grid">
-                                    <label className="checkbox-row">
-                                        <input
-                                            checked={enabled}
-                                            disabled={busy || quickSaving}
-                                            type="checkbox"
-                                            onChange={(event) => void updateToggle("enabled", event.target.checked)}
-                                        />
-                                        <span>Queue entries</span>
-                                    </label>
-                                    <label className="checkbox-row">
-                                        <input
-                                            checked={promptForMissingImages}
-                                            disabled={busy || quickSaving}
-                                            type="checkbox"
-                                            onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
-                                        />
-                                        <span>Image prompts</span>
-                                    </label>
-                                    <label className="stack compact-stack">
-                                        <span className="muted">Delay days</span>
-                                        <input
-                                            disabled={busy}
-                                            min={0}
-                                            max={365}
-                                            type="number"
-                                            value={delayDays}
-                                            onChange={(event) => setDelayDays(Number(event.target.value))}
-                                        />
-                                    </label>
-                                </div>
-
-                                <button disabled={busy} type="submit">Save Settings</button>
-                            </form>
-                        ) : null}
-
-                        {activePanel === "import" ? (
-                            <form className="account-flyout stack" onSubmit={handleImportSubmit}>
-                                <div>
-                                    <strong>Import Spreadsheet</strong>
-                                </div>
-                                <label className="stack compact-stack">
-                                    <span className="muted">First consumed date</span>
-                                    <input disabled={importDisabled} name="firstConsumedAt" type="date" />
-                                </label>
-                                <label className="stack compact-stack">
-                                    <span className="muted">Workbook</span>
-                                    <input disabled={importDisabled} name="workbook" type="file" accept=".xlsx" />
-                                </label>
-                                <button disabled={importDisabled} type="submit">
-                                    {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
-                                </button>
-                            </form>
-                        ) : null}
                     </div>
+                    <Link
+                        className="account-menu-item"
+                        to="/profile"
+                        onClick={() => setMenuOpen(false)}
+                        onMouseEnter={clearPanel}
+                    >
+                        <MenuIconLabel icon="edit">Profile</MenuIconLabel>
+                    </Link>
+                    <button
+                        aria-expanded={activePanel === "settings"}
+                        className={`account-menu-item has-flyout ${activePanel === "settings" ? "active" : ""}`}
+                        type="button"
+                        onClick={(event) => showPanel("settings", event)}
+                        onFocus={(event) => showPanel("settings", event)}
+                        onMouseEnter={(event) => showPanel("settings", event)}
+                    >
+                        <MenuIconLabel icon="settings">Settings</MenuIconLabel>
+                        <span aria-hidden="true">›</span>
+                    </button>
+                    <button
+                        aria-expanded={activePanel === "appearance"}
+                        className={`account-menu-item has-flyout ${activePanel === "appearance" ? "active" : ""}`}
+                        type="button"
+                        onClick={(event) => showPanel("appearance", event)}
+                        onFocus={(event) => showPanel("appearance", event)}
+                        onMouseEnter={(event) => showPanel("appearance", event)}
+                    >
+                        <MenuIconLabel icon="reset">Appearance</MenuIconLabel>
+                        <span aria-hidden="true">›</span>
+                    </button>
+                    <button
+                        className="account-menu-item"
+                        disabled={importDisabled}
+                        type="button"
+                        onClick={() => {
+                            setMenuOpen(false);
+                            clearPanel();
+                            onOpenImport();
+                        }}
+                        onMouseEnter={clearPanel}
+                    >
+                        <MenuIconLabel icon="import">Import xlsx</MenuIconLabel>
+                    </button>
+                    <button
+                        className="account-menu-item"
+                        disabled={busy}
+                        type="button"
+                        onClick={() => void handleExportClick()}
+                        onMouseEnter={clearPanel}
+                    >
+                        <MenuIconLabel icon="export">Export xlsx</MenuIconLabel>
+                    </button>
+                    <button
+                        className="account-menu-item danger menu-danger"
+                        type="button"
+                        onClick={() => signOut().then(() => window.location.assign("/"))}
+                        onMouseEnter={clearPanel}
+                    >
+                        <MenuIconLabel icon="cancel">Sign Out</MenuIconLabel>
+                    </button>
+                </div>
+            ) : null}
+            {menuOpen && activePanel === "settings" ? (
+                <div
+                    className="account-submenu account-settings-menu floating-menu-panel"
+                    style={submenuStyle(150)}
+                    onMouseEnter={() => setActivePanel("settings")}
+                >
+                    <strong>Settings</strong>
+                    <div
+                        className="settings-toggle-grid"
+                        style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}
+                    >
+                        <label className="checkbox-row">
+                            <input
+                                checked={promptForMissingImages}
+                                disabled={busy || quickSaving}
+                                type="checkbox"
+                                onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
+                            />
+                            <span>Image prompts</span>
+                        </label>
+                        <label className="checkbox-row">
+                            <input
+                                checked={enabled}
+                                disabled={busy || quickSaving}
+                                type="checkbox"
+                                onChange={(event) => void updateToggle("enabled", event.target.checked)}
+                            />
+                            <span>Queue entries</span>
+                        </label>
+                        <label className="stack compact-stack">
+                            <span className="muted">Delay days</span>
+                            <input
+                                disabled={busy || quickSaving}
+                                min={0}
+                                max={365}
+                                type="number"
+                                value={delayDays}
+                                onChange={(event) => void updateDelayDays(Number(event.target.value))}
+                            />
+                        </label>
+                    </div>
+                </div>
+            ) : null}
+            {menuOpen && activePanel === "appearance" ? (
+                <div
+                    className="account-submenu account-appearance-menu floating-menu-panel"
+                    style={submenuStyle(150)}
+                    onMouseEnter={() => setActivePanel("appearance")}
+                >
+                    {([
+                        ["light", "Light mode"],
+                        ["dark", "Dark mode"],
+                        ["system", "System"]
+                    ] as Array<[ThemeMode, string]>).map(([mode, label]) => (
+                        <button
+                            className="appearance-option"
+                            key={mode}
+                            type="button"
+                            onClick={() => onThemeChange(mode)}
+                        >
+                            <span>{label}</span>
+                            {themeMode === mode ? <span aria-hidden="true">✓</span> : null}
+                        </button>
+                    ))}
                 </div>
             ) : null}
         </div>
