@@ -39,18 +39,18 @@ async function sendResetPasswordEmail({
         body: JSON.stringify({
             from: fromEmail,
             to: user.email,
-            subject: "Reset your Rankly password",
+            subject: "Reset your goldshelf password",
             text: [
                 `Hi ${user.name || "there"},`,
                 "",
-                "Use this link to reset your Rankly password:",
+                "Use this link to reset your goldshelf password:",
                 url,
                 "",
                 "This link expires in 1 hour. If you did not request this, you can ignore this email."
             ].join("\n"),
             html: [
                 `<p>Hi ${escapeHtml(user.name || "there")},</p>`,
-                "<p>Use this link to reset your Rankly password:</p>",
+                "<p>Use this link to reset your goldshelf password:</p>",
                 `<p><a href="${escapeHtml(url)}">Reset password</a></p>`,
                 "<p>This link expires in 1 hour. If you did not request this, you can ignore this email.</p>"
             ].join("")
@@ -74,7 +74,7 @@ function escapeHtml(value: string) {
 }
 
 export const auth = betterAuth({
-    appName: "Rankly",
+    appName: "goldshelf",
     database: env.DB,
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,

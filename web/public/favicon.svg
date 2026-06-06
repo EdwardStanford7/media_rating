@@ -1,23 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Rankly">
-  <rect width="512" height="512" rx="96" fill="#5748bf"/>
-  <rect x="58" y="77" width="396" height="100" rx="22" fill="#ece8ff"/>
-  <rect x="58" y="195" width="396" height="78" rx="17" fill="#8379d6"/>
-  <rect x="58" y="291" width="396" height="68" rx="16" fill="#7469cb"/>
-  <rect x="58" y="376" width="340" height="58" rx="15" fill="#675ac1"/>
-  <g font-family="Inter, Arial, sans-serif" font-weight="800" text-anchor="middle">
-    <text x="124" y="148" font-size="56" fill="#5748bf">1</text>
-    <text x="124" y="248" font-size="42" fill="#ddd8ff">2</text>
-    <text x="118" y="337" font-size="32" fill="#c9c2ff">3</text>
-    <text x="116" y="417" font-size="27" fill="#aaa1ef">4</text>
-  </g>
-  <g fill="#c6c0ee">
-    <rect x="150" y="97" width="220" height="27" rx="9"/>
-    <rect x="150" y="134" width="160" height="21" rx="8"/>
-    <rect x="150" y="206" width="200" height="23" rx="8"/>
-    <rect x="150" y="239" width="140" height="17" rx="7"/>
-    <rect x="150" y="302" width="170" height="19" rx="7"/>
-    <rect x="150" y="333" width="120" height="15" rx="6"/>
-    <rect x="150" y="386" width="140" height="17" rx="7"/>
-    <rect x="150" y="411" width="100" height="13" rx="6"/>
-  </g>
+<svg width="64" height="64" viewBox="0 0 64 64" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>goldshelf favicon</title>
+  <rect width="64" height="64" rx="13" fill="#1a1330"/>
+  <rect x="12" y="24" width="13" height="22" rx="2.5" fill="#C9A227"/>
+  <rect x="28" y="30" width="12" height="16" rx="2.5" fill="#9B7BC0"/>
+  <rect x="42" y="35" width="11" height="11" rx="2.5" fill="#7A5EA8" opacity="0.75"/>
+  <rect x="7" y="46" width="50" height="4" rx="1.5" fill="#C9A227"/>
+  <polygon points="11.5,18.5 9.5,12 15,15.5 18.5,9 22,15.5 27.5,12 25.5,18.5" fill="#C9A227"/>
+  <rect x="11.5" y="18.5" width="14" height="3" rx="1" fill="#C9A227"/>
 </svg>

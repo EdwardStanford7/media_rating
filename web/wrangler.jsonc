@@ -1,14 +1,22 @@
 {
     "$schema": "node_modules/wrangler/config-schema.json",
-    "name": "rankly",
+    "name": "goldshelf",
     "compatibility_date": "2026-05-22",
     "compatibility_flags": [
         "nodejs_compat"
     ],
     "main": "@tanstack/react-start/server-entry",
+    "workers_dev": false,
+    "preview_urls": false,
     "observability": {
         "enabled": true
     },
+    "routes": [
+        {
+            "pattern": "goldshelf.net",
+            "custom_domain": true
+        }
+    ],
     "d1_databases": [
         {
             "binding": "DB",
@@ -24,6 +32,6 @@
         }
     ],
     "vars": {
-        "BETTER_AUTH_URL": "https://rankly.m67fbmdjyt.workers.dev"
+        "BETTER_AUTH_URL": "https://goldshelf.net"
     }
 }

@@ -1,4 +1,4 @@
-# Rankly Web
+# goldshelf Web
 
 TanStack Start + Cloudflare Workers port of the Rust media ranking app.
 
@@ -27,19 +27,36 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Create Cloudflare D1/R2 resources before remote deploy, then replace the placeholder `database_id` in `wrangler.jsonc`.
+Create Cloudflare D1/R2 resources before remote deploy, then replace the placeholder `database_id` in `wrangler.jsonc`. The app now deploys to `https://goldshelf.net`, but the existing D1 database and R2 bucket intentionally keep their `media-rating` names to avoid data migration risk.
 
 ## Auth
 
 The app uses email/password auth only. Account creation is open on the sign-in page and protected by Better Auth password hashing and rate limits.
 
-Password reset uses Better Auth reset tokens and sends email through Resend. Create a Resend API key and verified sender or domain, then run:
+Password reset uses Better Auth reset tokens and sends email through Resend.
+
+External setup:
+
+1. In Cloudflare, confirm `goldshelf.net` is an active zone.
+2. In Resend, add `send.goldshelf.net` as a sending domain.
+3. Use Resend's Cloudflare automatic setup, or manually add the MX/SPF/DKIM DNS records Resend gives you.
+4. Keep DNS records DNS-only where Resend specifies.
+5. Create a Resend API key after the domain verifies.
+
+After the Worker rename to `goldshelf`, re-upload Worker-scoped secrets:
 
 ```sh
+make cf-secret-auth
 make cf-secret-password-reset
 ```
 
-Set `RESEND_API_KEY` to the API key and `PASSWORD_RESET_FROM_EMAIL` to the sender address, such as `<reset@your-domain.com>`. If those values are missing, reset links are written to Worker logs for local/dev testing but no email is sent.
+Set `RESEND_API_KEY` to the API key and `PASSWORD_RESET_FROM_EMAIL` to:
+
+```text
+goldshelf <reset@send.goldshelf.net>
+```
+
+If those values are missing, reset links are written to Worker logs for local/dev testing but no email is sent.
 
 For one-off admin recovery before email sending is configured, generate a reset link directly from D1:
 
@@ -57,6 +74,18 @@ make auth-clear-rate-limits
 
 This does not delete users, passwords, sessions, or app data.
 
+## Cloudflare Domain
+
+`wrangler.jsonc` is configured for:
+
+- Worker name: `goldshelf`
+- Primary URL: `https://goldshelf.net`
+- Custom domain route: `goldshelf.net`
+- `workers_dev: false`
+- `preview_urls: false`
+
+Before deploying, make sure there is no conflicting DNS record for the apex `goldshelf.net`. Add a Cloudflare redirect rule from `www.goldshelf.net/*` to `https://goldshelf.net/$1`, unless you decide to serve the app from `www` too.
+
 ## Verification
 
 ```sh
@@ -64,8 +93,6 @@ npm run typecheck
 npm run test
 npm run build
 ```
-
-The repo machine used for scaffolding did not have `node`, `npm`, or `pnpm` installed, so these commands need to be run after installing Node tooling.
 
 ## Make Targets
 
@@ -80,4 +107,4 @@ make cf-secret-password-reset
 make password-reset-link EMAIL=user@example.com
 ```
 
-`make deploy-first` handles Wrangler login, D1/R2 creation, and auth secret setup. Before `make deploy`, set `BETTER_AUTH_URL` in `wrangler.jsonc` to the production HTTPS URL.
+`make deploy-first` handles Wrangler login, D1/R2 creation, and auth secret setup. `wrangler.jsonc` is already pointed at `https://goldshelf.net`; after the Worker rename, re-run `make cf-secret-auth` because Worker secrets are scoped to the Worker name.

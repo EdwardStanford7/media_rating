@@ -411,7 +411,7 @@ function ProfileRoute() {
                 <section className="standalone-panel">
                     <Link className="brand-link" to="/">
                         <img alt="" src="/favicon.svg" />
-                        <span>Rankly</span>
+                        <span>goldshelf</span>
                     </Link>
                     <h1>Profile</h1>
                     <p className="muted">Sign in to edit your profile.</p>
@@ -427,7 +427,7 @@ function ProfileRoute() {
             <header className="profile-page-header">
                 <Link className="brand-link" to="/">
                     <img alt="" src="/favicon.svg" />
-                    <span>Rankly</span>
+                    <span>goldshelf</span>
                 </Link>
                 <nav className="profile-page-nav" aria-label="Profile navigation">
                     <Link to="/">Rankings</Link>

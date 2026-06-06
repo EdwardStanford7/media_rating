@@ -14,7 +14,7 @@
     --poster-start: #f2ebff;
     --poster-end: #ded4ff;
     --menu-bg: #fffaff;
-    --menu-line: #7a5ce4;
+    --menu-line: #b78325;
     --accent: #6a50d8;
     --accent-strong: #4d35b2;
     --on-accent: #ffffff;
@@ -22,7 +22,9 @@
     --danger-line: #efbfd5;
     --success: #377f62;
     --gold: #bd7c19;
-    --status-bg: #fff3d8;
+    --gold-strong: #825000;
+    --gold-soft: #fff3d8;
+    --status-bg: var(--gold-soft);
     --avatar-ink: #6c5d88;
     --avatar-bg: #e5def8;
     --avatar-line: #cabdec;
@@ -52,7 +54,7 @@
     --poster-start: #2d214c;
     --poster-end: #4a3480;
     --menu-bg: #211733;
-    --menu-line: #9e86ff;
+    --menu-line: #f0bd63;
     --accent: #9b86ff;
     --accent-strong: #c4b6ff;
     --on-accent: #171024;
@@ -60,7 +62,9 @@
     --danger-line: #74425b;
     --success: #8fd8b5;
     --gold: #f0bd63;
-    --status-bg: #3c2a16;
+    --gold-strong: #ffe0a0;
+    --gold-soft: rgba(240, 189, 99, 0.16);
+    --status-bg: var(--gold-soft);
     --avatar-ink: #e5dcff;
     --avatar-bg: #34264f;
     --avatar-line: #5b4a80;
@@ -254,14 +258,23 @@ textarea {
 
 .brand-link span {
     min-width: 0;
+    color: var(--gold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+.brand-link img {
+    filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--gold) 32%, transparent));
+}
+
 .brand-link:hover {
     background: var(--selected-panel);
-    color: var(--accent-strong);
+    color: var(--gold-strong);
+}
+
+.brand-link:hover span {
+    color: var(--gold-strong);
 }
 
 .main {
@@ -433,9 +446,11 @@ textarea {
 .auth-hero h1 {
     align-self: start;
     margin: 0;
+    color: #f3c65f;
     font-size: clamp(3.25rem, 8vw, 6.8rem);
     line-height: 0.9;
     letter-spacing: 0;
+    text-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
 }
 
 .auth-hero p {
@@ -465,10 +480,10 @@ textarea {
 
 .auth-kicker {
     margin: 0;
-    color: var(--accent);
+    color: var(--gold);
     font-size: 0.82rem;
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0;
     text-transform: uppercase;
 }
 
@@ -602,8 +617,9 @@ textarea {
 }
 
 .category-button.active {
-    border-color: var(--accent);
+    border-color: var(--gold);
     background: var(--selected-panel);
+    box-shadow: inset 3px 0 0 var(--gold);
 }
 
 .category-rename-form {
@@ -652,7 +668,7 @@ textarea {
 }
 
 .floating-menu-panel button:not(:disabled):hover {
-    border-color: var(--accent);
+    border-color: var(--gold);
     background: var(--selected-panel);
 }
 
@@ -783,7 +799,7 @@ a.small-button:hover,
 .account-menu-item.active,
 .account-menu-item:not(:disabled):hover,
 .account-menu-item:focus-visible {
-    border-color: var(--accent);
+    border-color: var(--gold);
     background: var(--selected-panel);
 }
 

@@ -131,7 +131,7 @@ const ICONS: Record<IconName, string> = {
     undo: "↶",
     up: "↑"
 };
-type AuthMode = "signin" | "signup";
+type AuthMode = "signin" | "signup" | "reset-request";
 
 export const Route = createFileRoute("/")({
     loader: async () => {
@@ -222,6 +222,29 @@ function AuthPage({
         }
     }
 
+    async function handleRequestPasswordReset(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setError(null);
+        setStatusMessage(null);
+        setSubmitting(true);
+        const form = new FormData(event.currentTarget);
+        const email = String(form.get("email") ?? "");
+
+        try {
+            await requestPasswordResetEmail({ email });
+            setStatusMessage("If that email exists, check your inbox for a reset link.");
+        } catch (authError) {
+            const message = authError instanceof Error ? authError.message.toLowerCase() : "";
+            if (message.includes("too many") || message.includes("rate")) {
+                setError("Too many attempts. Try again later.");
+            } else {
+                setStatusMessage("If that email exists, check your inbox for a reset link.");
+            }
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
     async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         if (!resetToken) {
@@ -264,23 +287,39 @@ function AuthPage({
     return (
         <main className="auth-page">
             <div className="auth-shell">
-                <section className="auth-hero" aria-label="Rankly">
-                    <h1>Rankly</h1>
+                <section className="auth-hero" aria-label="goldshelf">
+                    <h1>Goldshelf</h1>
                     <p>Rank your taste, one choice at a time.</p>
                 </section>
 
                 <section className="auth-panel" aria-labelledby="auth-heading">
                     <div className="auth-copy">
-                        <p className="auth-kicker"> {authMode === "signin" ? "Welcome Back" : "Welcome to Rankly"}</p>
+                        <p className="auth-kicker">
+                            {resetToken
+                                ? "Account Recovery"
+                                : authMode === "signin"
+                                    ? "Welcome Back"
+                                    : authMode === "reset-request"
+                                        ? "Account Recovery"
+                                        : "Welcome to goldshelf"}
+                        </p>
                         <h2 id="auth-heading">
-                            {resetToken ? "Reset password" : authMode === "signin" ? "Sign in" : "Create account"}
+                            {resetToken
+                                ? "Reset password"
+                                : authMode === "signin"
+                                    ? "Sign in"
+                                    : authMode === "reset-request"
+                                        ? "Reset password"
+                                        : "Create account"}
                         </h2>
                         <p className="muted">
                             {resetToken
                                 ? "Choose a new password to get back to your lists."
                                 : authMode === "signin"
                                     ? "Pick up where your rankings left off."
-                                    : "Start building rankings that actually reflect your taste."}
+                                    : authMode === "reset-request"
+                                        ? "Enter your email and we will send a reset link."
+                                        : "Start building rankings that actually reflect your taste."}
                         </p>
                     </div>
 
@@ -303,6 +342,16 @@ function AuthPage({
                             />
                             <button className="primary auth-submit" disabled={submitting} type="submit">
                                 {submitting ? "Updating..." : "Update password"}
+                            </button>
+                        </form>
+                    ) : authMode === "reset-request" ? (
+                        <form className="auth-form" onSubmit={handleRequestPasswordReset}>
+                            <label className="auth-field">
+                                <span>Email</span>
+                                <input name="email" type="email" placeholder="you@example.com" autoComplete="email" required />
+                            </label>
+                            <button className="primary auth-submit" disabled={submitting} type="submit">
+                                {submitting ? "Sending..." : "Send reset link"}
                             </button>
                         </form>
                     ) : (
@@ -333,7 +382,22 @@ function AuthPage({
 
                     {!resetToken ? (
                         <p className="auth-switch muted">
-                            {authMode === "signin" ? "New to Rankly?" : "Already have an account?"}{" "}
+                            {authMode === "signin" ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setError(null);
+                                            setStatusMessage(null);
+                                            setAuthMode("reset-request");
+                                        }}
+                                    >
+                                        Forgot password?
+                                    </button>
+                                    <span aria-hidden="true"> · </span>
+                                    New to goldshelf?{" "}
+                                </>
+                            ) : authMode === "reset-request" ? "Remembered it?" : "Already have an account?"}{" "}
                             <button
                                 type="button"
                                 onClick={() => {
@@ -437,6 +501,23 @@ async function resetPasswordWithToken({
 
     if (!response.ok) {
         throw new Error(await readAuthError(response, "Password reset failed"));
+    }
+}
+
+async function requestPasswordResetEmail({ email }: { email: string }) {
+    const response = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: {
+            "content-type": "application/json"
+        },
+        body: JSON.stringify({
+            email: email.trim(),
+            redirectTo: "https://goldshelf.net/"
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(await readAuthError(response, "Password reset request failed"));
     }
 }
 
@@ -1657,7 +1738,7 @@ function Dashboard({
                 <div className="sidebar-header">
                     <Link className="brand-link" to="/">
                         <img src="/favicon.svg" alt="" aria-hidden="true" />
-                        <span>Rankly</span>
+                        <span>Goldshelf</span>
                     </Link>
                     <AccountMenu
                         busy={busy}
@@ -2439,7 +2520,7 @@ function CategoryListItem({
                 }
 
                 event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("application/x-rankly-category-id", category.id);
+                event.dataTransfer.setData("application/x-goldshelf-category-id", category.id);
                 event.dataTransfer.setData("text/plain", `category:${category.id}`);
                 setCategoryDragImage(event);
                 setMenuOpen(false);
@@ -2454,7 +2535,7 @@ function CategoryListItem({
                 event.stopPropagation();
                 const plainData = event.dataTransfer.getData("text/plain");
                 const droppedCategoryId =
-                    event.dataTransfer.getData("application/x-rankly-category-id") ||
+                    event.dataTransfer.getData("application/x-goldshelf-category-id") ||
                     (plainData.startsWith("category:") ? plainData.slice("category:".length) : "") ||
                     draggedCategoryId;
                 if (droppedCategoryId && droppedCategoryId !== category.id) {
@@ -3579,7 +3660,7 @@ function EntryCard({
                 }
 
                 event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("application/x-rankly-entry-id", entry.id);
+                event.dataTransfer.setData("application/x-goldshelf-entry-id", entry.id);
                 event.dataTransfer.setData("text/plain", entry.id);
                 setCardDragImage(event);
                 setMenuOpen(false);
@@ -3594,7 +3675,7 @@ function EntryCard({
                 event.preventDefault();
                 event.stopPropagation();
                 const droppedEntryId =
-                    event.dataTransfer.getData("application/x-rankly-entry-id") ||
+                    event.dataTransfer.getData("application/x-goldshelf-entry-id") ||
                     event.dataTransfer.getData("text/plain") ||
                     draggedEntryId;
                 if (droppedEntryId && droppedEntryId !== entry.id) {

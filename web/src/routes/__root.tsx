@@ -16,10 +16,10 @@ export const Route = createRootRoute({
         meta: [
             { charSet: "utf-8" },
             { name: "viewport", content: "width=device-width, initial-scale=1" },
-            { name: "application-name", content: "Rankly" },
-            { name: "apple-mobile-web-app-title", content: "Rankly" },
-            { name: "theme-color", content: "#5748bf" },
-            { title: "Rankly" }
+            { name: "application-name", content: "goldshelf" },
+            { name: "apple-mobile-web-app-title", content: "goldshelf" },
+            { name: "theme-color", content: "#1a1330" },
+            { title: "goldshelf" }
         ],
         links: [
             { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },

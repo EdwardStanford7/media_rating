@@ -3,6 +3,25 @@ import { readFileSync } from "node:fs";
 const config = JSON.parse(readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
 const failures = [];
 
+if (config.name !== "goldshelf") {
+  failures.push(`Worker name should be "goldshelf", found "${config.name}".`);
+}
+
+if (config.workers_dev !== false) {
+  failures.push("workers_dev should be false for the custom-domain production deploy.");
+}
+
+if (config.preview_urls !== false) {
+  failures.push("preview_urls should be false for the custom-domain production deploy.");
+}
+
+const hasGoldshelfCustomDomain = config.routes?.some(
+  (route) => route.pattern === "goldshelf.net" && route.custom_domain === true
+);
+if (!hasGoldshelfCustomDomain) {
+  failures.push("Missing custom domain route for goldshelf.net.");
+}
+
 const d1 = config.d1_databases?.find((binding) => binding.binding === "DB");
 if (!d1) {
   failures.push("Missing D1 binding named DB in wrangler.jsonc.");
@@ -25,8 +44,8 @@ if (!r2) {
 const authUrl = config.vars?.BETTER_AUTH_URL;
 if (!authUrl) {
   failures.push("BETTER_AUTH_URL is missing from wrangler.jsonc vars.");
-} else if (authUrl.includes("localhost") || !authUrl.startsWith("https://")) {
-  failures.push("BETTER_AUTH_URL must be the production HTTPS URL before deploy.");
+} else if (authUrl !== "https://goldshelf.net") {
+  failures.push(`BETTER_AUTH_URL should be "https://goldshelf.net", found "${authUrl}".`);
 }
 
 if (failures.length > 0) {

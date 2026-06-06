@@ -1,4 +1,4 @@
-APP_NAME = rankly
+APP_NAME = goldshelf
 D1_NAME = media-rating
 R2_BUCKET = media-rating-images
 
@@ -88,7 +88,8 @@ cf-secret-auth:
 	openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET
 
 cf-secret-password-reset:
-	@echo "Set these after creating a Resend API key and verified sender/domain."
+	@echo "Set these after creating a Resend API key and verifying send.goldshelf.net."
+	@echo "Use PASSWORD_RESET_FROM_EMAIL value: goldshelf <reset@send.goldshelf.net>"
 	npx wrangler secret put RESEND_API_KEY
 	npx wrangler secret put PASSWORD_RESET_FROM_EMAIL
 
@@ -108,5 +109,6 @@ deploy: verify-deploy-config check
 deploy-first: install cf-login cf-create-d1 cf-create-r2 cf-secret-auth
 	@echo ""
 	@echo "Before running make deploy:"
-	@echo "1. Set vars.BETTER_AUTH_URL in wrangler.jsonc to your production HTTPS URL."
-	@echo "2. Run make deploy."
+	@echo "1. Confirm goldshelf.net is active in Cloudflare and has no conflicting apex DNS record."
+	@echo "2. Run make cf-secret-auth again after the Worker rename, then make cf-secret-password-reset after Resend is ready."
+	@echo "3. Run make deploy."

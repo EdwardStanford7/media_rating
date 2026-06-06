@@ -1,14 +1,19 @@
 export type ThemeMode = "light" | "dark" | "system";
 
-const THEME_STORAGE_KEY = "rankly-theme";
+const THEME_STORAGE_KEY = "goldshelf-theme";
+const LEGACY_THEME_STORAGE_KEY = "rankly-theme";
 
 export function readInitialThemeMode(): ThemeMode {
     if (typeof window === "undefined") {
         return "system";
     }
 
-    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const savedTheme =
+        window.localStorage.getItem(THEME_STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
     if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") {
+        window.localStorage.setItem(THEME_STORAGE_KEY, savedTheme);
+        window.localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
         return savedTheme;
     }
 

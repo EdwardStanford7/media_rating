@@ -1,6 +1,6 @@
 {
-  "name": "Rankly",
-  "short_name": "Rankly",
+  "name": "goldshelf",
+  "short_name": "goldshelf",
   "icons": [
     {
       "src": "/favicon.svg",
@@ -8,7 +8,7 @@
       "type": "image/svg+xml"
     }
   ],
-  "theme_color": "#5748bf",
-  "background_color": "#130c2a",
+  "theme_color": "#1a1330",
+  "background_color": "#120d20",
   "display": "standalone"
 }
