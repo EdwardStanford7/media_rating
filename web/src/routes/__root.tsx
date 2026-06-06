@@ -11,6 +11,8 @@ import {
 import { applyThemeMode, readInitialThemeMode } from "@/lib/theme";
 import "../styles/global.css";
 
+const SITE_DESCRIPTION = "Build personal ranked lists for movies, books, games, and more by comparing choices one at a time.";
+
 export const Route = createRootRoute({
     head: () => ({
         meta: [
@@ -18,7 +20,16 @@ export const Route = createRootRoute({
             { name: "viewport", content: "width=device-width, initial-scale=1" },
             { name: "application-name", content: "Goldshelf" },
             { name: "apple-mobile-web-app-title", content: "Goldshelf" },
+            { name: "description", content: SITE_DESCRIPTION },
             { name: "theme-color", content: "#1a1330" },
+            { property: "og:site_name", content: "Goldshelf" },
+            { property: "og:type", content: "website" },
+            { property: "og:title", content: "Goldshelf" },
+            { property: "og:description", content: SITE_DESCRIPTION },
+            { property: "og:url", content: "https://goldshelf.net/" },
+            { name: "twitter:card", content: "summary" },
+            { name: "twitter:title", content: "Goldshelf" },
+            { name: "twitter:description", content: SITE_DESCRIPTION },
             { title: "Goldshelf" }
         ],
         links: [

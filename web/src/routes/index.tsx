@@ -134,6 +134,11 @@ const ICONS: Record<IconName, string> = {
 type AuthMode = "signin" | "signup" | "reset-request";
 
 export const Route = createFileRoute("/")({
+    head: () => ({
+        links: [
+            { rel: "canonical", href: "https://goldshelf.net/" }
+        ]
+    }),
     loader: async () => {
         const authOptions = await getAuthOptions();
         const session = await getSession();
