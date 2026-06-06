@@ -1,8 +1,15 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { followButtonLabel, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import { orderEntries } from "@/lib/ranking";
-import { loadPublicProfile, setProfileFriend } from "@/lib/server/actions";
+import {
+    approveFollowRequest,
+    cancelFollowRequest,
+    followProfile,
+    loadPublicProfile,
+    removeFollow
+} from "@/lib/server/actions";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
 
 const TOAST_TIMEOUT_MS = 5_000;
@@ -23,7 +30,7 @@ export const Route = createFileRoute("/u/$profileSlug")({
 function PublicProfileRoute() {
     const loaderData = Route.useLoaderData();
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
-    const [friendSaving, setFriendSaving] = useState(false);
+    const [followSaving, setFollowSaving] = useState(false);
     const [toasts, setToasts] = useState<PublicProfileToast[]>([]);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
         loaderData?.categories[0]?.id ?? null
@@ -61,43 +68,60 @@ function PublicProfileRoute() {
         toastTimeoutsRef.current.set(id, timeoutId);
     }
 
-    async function handleFriendToggle() {
+    async function handleFollowAction() {
         if (!profileData || profileData.viewer.isSelf) {
             return;
         }
 
-        setFriendSaving(true);
+        setFollowSaving(true);
 
         try {
-            const nextFriendState = !profileData.viewer.isFriend;
-            await setProfileFriend({
-                data: {
-                    profileUserId: profileData.profile.userId,
-                    isFriend: nextFriendState
-                }
-            });
+            const currentRelation = profileData.viewer.relationState;
+            let nextRelation = currentRelation;
+            let message = "Profile followed.";
+
+            if (currentRelation === "incoming_request") {
+                const result = await approveFollowRequest({
+                    data: { followerUserId: profileData.profile.userId }
+                });
+                nextRelation = result.relationState;
+                message = "Follow request accepted.";
+            } else if (currentRelation === "requested") {
+                await cancelFollowRequest({ data: { followedUserId: profileData.profile.userId } });
+                nextRelation = "none";
+                message = "Follow request canceled.";
+            } else if (currentRelation === "following" || currentRelation === "mutual") {
+                await removeFollow({ data: { followedUserId: profileData.profile.userId } });
+                nextRelation = currentRelation === "mutual" ? "follows_you" : "none";
+                message = "Profile unfollowed.";
+            } else {
+                const result = await followProfile({ data: { profileUserId: profileData.profile.userId } });
+                nextRelation = result.relationState;
+                message = nextRelation === "requested" ? "Follow request sent." : "Profile followed.";
+            }
+
             setProfileData({
                 ...profileData,
                 profile: {
                     ...profileData.profile,
-                    isFriend: nextFriendState
+                    relationState: nextRelation
                 },
                 viewer: {
                     ...profileData.viewer,
-                    isFriend: nextFriendState
+                    relationState: nextRelation
                 }
             });
             pushToast({
-                message: nextFriendState ? "Friend saved." : "Friend removed.",
+                message,
                 variant: "success"
             });
-        } catch (friendError) {
+        } catch (followError) {
             pushToast({
-                message: friendError instanceof Error ? friendError.message : String(friendError),
+                message: followError instanceof Error ? followError.message : String(followError),
                 variant: "danger"
             });
         } finally {
-            setFriendSaving(false);
+            setFollowSaving(false);
         }
     }
 
@@ -128,14 +152,23 @@ function PublicProfileRoute() {
                 />
                 <div>
                     <h1>{profile.name}</h1>
-                    <p className="muted">@{profile.slug}</p>
+                    <p className="muted">
+                        @{profile.slug}
+                        {!viewer.isSelf && viewer.isSignedIn
+                            ? ` · ${followRelationLabel(viewer.relationState)}`
+                            : null}
+                    </p>
                 </div>
                 <div className="public-profile-actions">
                     {viewer.isSelf ? (
                         <Link className="small-button" to="/profile">Edit Profile</Link>
                     ) : viewer.isSignedIn ? (
-                        <button disabled={friendSaving} type="button" onClick={() => void handleFriendToggle()}>
-                            {friendSaving ? "Saving..." : viewer.isFriend ? "Remove Friend" : "Add Friend"}
+                        <button
+                            disabled={followSaving}
+                            type="button"
+                            onClick={() => void handleFollowAction()}
+                        >
+                            {followSaving ? "Saving..." : followButtonLabel(viewer.relationState)}
                         </button>
                     ) : (
                         <Link className="small-button" to="/">Sign In</Link>

@@ -59,14 +59,29 @@ export interface ProfileSettingsCategory {
     isPublic: boolean;
 }
 
-export interface FriendProfileSummary {
+export type FollowStatus = "pending" | "accepted";
+export type FollowRelationState =
+    | "none"
+    | "requested"
+    | "incoming_request"
+    | "following"
+    | "follows_you"
+    | "mutual";
+
+export interface FollowProfileSummary {
     userId: string;
     name: string;
     imageKey: string | null;
     slug: string;
     isPublic: boolean;
     publicCategoryCount: number;
-    friendedAt: number;
+    relationState: FollowRelationState;
+    createdAt: number;
+    acceptedAt: number | null;
+}
+
+export interface FollowSearchResult extends FollowProfileSummary {
+    matchKind: "public_profile";
 }
 
 export interface ProfileSettingsData {
@@ -78,7 +93,10 @@ export interface ProfileSettingsData {
         isPublic: boolean;
     };
     categories: ProfileSettingsCategory[];
-    friends: FriendProfileSummary[];
+    following: FollowProfileSummary[];
+    followers: FollowProfileSummary[];
+    incomingFollowRequests: FollowProfileSummary[];
+    outgoingFollowRequests: FollowProfileSummary[];
 }
 
 export interface PublicProfileSummary {
@@ -88,7 +106,7 @@ export interface PublicProfileSummary {
     slug: string;
     isPublic: boolean;
     isSelf: boolean;
-    isFriend: boolean;
+    relationState: FollowRelationState;
 }
 
 export interface PublicProfileData {
@@ -97,7 +115,7 @@ export interface PublicProfileData {
     viewer: {
         isSignedIn: boolean;
         isSelf: boolean;
-        isFriend: boolean;
+        relationState: FollowRelationState;
     };
 }
 

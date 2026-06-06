@@ -905,7 +905,7 @@ a.small-button:hover,
 
 .profile-title-row,
 .public-profile-header,
-.friend-row,
+.follow-row,
 .public-entry-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -952,7 +952,7 @@ a.small-button:hover,
 }
 
 .profile-form,
-.friend-add-form {
+.follow-add-form {
     display: grid;
     gap: 0.8rem;
 }
@@ -981,7 +981,7 @@ a.small-button:hover,
 }
 
 .profile-category-list,
-.friend-list,
+.follow-list,
 .public-entry-list {
     display: grid;
     gap: 0.65rem;
@@ -999,7 +999,7 @@ a.small-button:hover,
 }
 
 .profile-category-row small,
-.friend-row p {
+.follow-row p {
     display: block;
     margin: 0.15rem 0 0;
 }
@@ -1009,26 +1009,48 @@ a.small-button:hover,
     width: auto;
 }
 
-.friend-add-form {
+.follow-add-form {
     grid-template-columns: minmax(0, 1fr) auto;
     margin-bottom: 0.8rem;
 }
 
-.friend-row {
+.follow-row {
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--subtle-panel);
     padding: 0.65rem;
 }
 
-.friend-row a {
+.follow-row a,
+.follow-row strong {
     color: var(--ink);
     font-weight: 700;
     text-decoration: none;
 }
 
-.friend-row a:hover {
+.follow-row a:hover {
     color: var(--accent-strong);
+}
+
+.follow-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
+.relation-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.35rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+    padding: 0 0.75rem;
+}
+
+.compact-note {
+    margin: 0;
 }
 
 .public-profile-header,

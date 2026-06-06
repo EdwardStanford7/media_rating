@@ -48,28 +48,60 @@ export const updateCategoryVisibility = createServerFn({ method: "POST" })
         return repo.updateCategoryVisibility(user.id, data);
     });
 
-export const addFriendByProfileSlug = createServerFn({ method: "POST" })
+export const searchPublicProfiles = createServerFn({ method: "GET" })
+    .inputValidator((data: { query: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.searchPublicProfiles(user.id, data.query);
+    });
+
+export const requestFollowByProfileSlug = createServerFn({ method: "POST" })
     .inputValidator((data: { profileSlugOrUrl: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
-        return repo.addFriendByProfileSlug(user.id, data.profileSlugOrUrl);
+        return repo.requestFollowByProfileSlug(user.id, data.profileSlugOrUrl);
     });
 
-export const setProfileFriend = createServerFn({ method: "POST" })
-    .inputValidator((data: { profileUserId: string; isFriend: boolean }) => data)
+export const followProfile = createServerFn({ method: "POST" })
+    .inputValidator((data: { profileUserId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
-        return repo.setProfileFriend(user.id, data);
+        return repo.followProfile(user.id, data.profileUserId);
     });
 
-export const removeFriend = createServerFn({ method: "POST" })
-    .inputValidator((data: { friendUserId: string }) => data)
+export const approveFollowRequest = createServerFn({ method: "POST" })
+    .inputValidator((data: { followerUserId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
         const repo = await import("./repository");
-        return repo.removeFriend(user.id, data.friendUserId);
+        return repo.approveFollowRequest(user.id, data.followerUserId);
+    });
+
+export const declineFollowRequest = createServerFn({ method: "POST" })
+    .inputValidator((data: { followerUserId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.declineFollowRequest(user.id, data.followerUserId);
+    });
+
+export const cancelFollowRequest = createServerFn({ method: "POST" })
+    .inputValidator((data: { followedUserId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.cancelFollowRequest(user.id, data.followedUserId);
+    });
+
+export const removeFollow = createServerFn({ method: "POST" })
+    .inputValidator((data: { followedUserId: string }) => data)
+    .handler(async ({ data }) => {
+        const user = await requireUser();
+        const repo = await import("./repository");
+        return repo.removeFollow(user.id, data.followedUserId);
     });
 
 export const createCategory = createServerFn({ method: "POST" })

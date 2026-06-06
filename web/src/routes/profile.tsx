@@ -1,20 +1,27 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import {
-    addFriendByProfileSlug,
+    approveFollowRequest,
+    cancelFollowRequest,
+    declineFollowRequest,
+    followProfile,
     getSession,
     loadProfileSettings,
-    removeFriend,
+    removeFollow,
+    requestFollowByProfileSlug,
+    searchPublicProfiles,
     updateCategoryVisibility,
     updateUserProfile
 } from "@/lib/server/actions";
+import { canViewProfile, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage } from "@/lib/images";
-import type { FriendProfileSummary, ProfileSettingsData } from "@/lib/types";
+import type { FollowProfileSummary, FollowSearchResult, ProfileSettingsData } from "@/lib/types";
 
 const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const TOAST_TIMEOUT_MS = 5_000;
+const FOLLOW_SEARCH_DELAY_MS = 250;
 
 interface ProfileToast {
     id: number;
@@ -43,11 +50,13 @@ function ProfileRoute() {
     const [displayName, setDisplayName] = useState(loaderData.settings?.user.name ?? "");
     const [profileSlug, setProfileSlug] = useState(loaderData.settings?.user.slug ?? "");
     const [profileIsPublic, setProfileIsPublic] = useState(loaderData.settings?.user.isPublic ?? false);
-    const [friendInput, setFriendInput] = useState("");
+    const [followInput, setFollowInput] = useState("");
+    const [followSearchResults, setFollowSearchResults] = useState<FollowSearchResult[]>([]);
+    const [followSearchLoading, setFollowSearchLoading] = useState(false);
     const [savingProfile, setSavingProfile] = useState(false);
     const [savingProfileImage, setSavingProfileImage] = useState(false);
     const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
-    const [savingFriendId, setSavingFriendId] = useState<string | null>(null);
+    const [savingFollowId, setSavingFollowId] = useState<string | null>(null);
     const [toasts, setToasts] = useState<ProfileToast[]>([]);
     const toastIdRef = useRef(0);
     const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
@@ -65,6 +74,42 @@ function ProfileRoute() {
         }
         toastTimeoutsRef.current.clear();
     }, []);
+
+    useEffect(() => {
+        const query = followInput.trim();
+        if (query.length < 2 || !loaderData.session?.user) {
+            setFollowSearchResults([]);
+            setFollowSearchLoading(false);
+            return;
+        }
+
+        let canceled = false;
+        setFollowSearchLoading(true);
+        const timeoutId = window.setTimeout(() => {
+            searchPublicProfiles({ data: { query } })
+                .then((results) => {
+                    if (!canceled) {
+                        setFollowSearchResults(results);
+                    }
+                })
+                .catch((searchError) => {
+                    if (!canceled) {
+                        setFollowSearchResults([]);
+                        setError(errorMessage(searchError));
+                    }
+                })
+                .finally(() => {
+                    if (!canceled) {
+                        setFollowSearchLoading(false);
+                    }
+                });
+        }, FOLLOW_SEARCH_DELAY_MS);
+
+        return () => {
+            canceled = true;
+            window.clearTimeout(timeoutId);
+        };
+    }, [followInput, loaderData.session?.user]);
 
     function dismissToast(toastId: number) {
         const timeoutId = toastTimeoutsRef.current.get(toastId);
@@ -201,37 +246,102 @@ function ProfileRoute() {
         }
     }
 
-    async function handleAddFriend(event: FormEvent<HTMLFormElement>) {
+    async function handleRequestFollow(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        setSavingFriendId("new");
+        setSavingFollowId("new");
         setStatus(null);
         setError(null);
 
         try {
-            await addFriendByProfileSlug({ data: { profileSlugOrUrl: friendInput } });
-            setFriendInput("");
+            const result = await requestFollowByProfileSlug({ data: { profileSlugOrUrl: followInput } });
+            setFollowInput("");
+            setFollowSearchResults([]);
             await refreshSettings();
-            setStatus("Friend saved.");
-        } catch (friendError) {
-            setError(errorMessage(friendError));
+            setStatus(result.relationState === "requested" ? "Follow request sent." : "Profile followed.");
+        } catch (followError) {
+            setError(errorMessage(followError));
         } finally {
-            setSavingFriendId(null);
+            setSavingFollowId(null);
         }
     }
 
-    async function handleRemoveFriend(friend: FriendProfileSummary) {
-        setSavingFriendId(friend.userId);
+    async function handleFollowSearchResult(profile: FollowSearchResult) {
+        setSavingFollowId(profile.userId);
         setStatus(null);
         setError(null);
 
         try {
-            await removeFriend({ data: { friendUserId: friend.userId } });
+            await followProfile({ data: { profileUserId: profile.userId } });
             await refreshSettings();
-            setStatus("Friend removed.");
-        } catch (friendError) {
-            setError(errorMessage(friendError));
+            setStatus("Profile followed.");
+        } catch (followError) {
+            setError(errorMessage(followError));
         } finally {
-            setSavingFriendId(null);
+            setSavingFollowId(null);
+        }
+    }
+
+    async function handleApproveFollow(profile: FollowProfileSummary) {
+        setSavingFollowId(profile.userId);
+        setStatus(null);
+        setError(null);
+
+        try {
+            await approveFollowRequest({ data: { followerUserId: profile.userId } });
+            await refreshSettings();
+            setStatus("Follow request accepted.");
+        } catch (followError) {
+            setError(errorMessage(followError));
+        } finally {
+            setSavingFollowId(null);
+        }
+    }
+
+    async function handleDeclineFollow(profile: FollowProfileSummary) {
+        setSavingFollowId(profile.userId);
+        setStatus(null);
+        setError(null);
+
+        try {
+            await declineFollowRequest({ data: { followerUserId: profile.userId } });
+            await refreshSettings();
+            setStatus("Follow request declined.");
+        } catch (followError) {
+            setError(errorMessage(followError));
+        } finally {
+            setSavingFollowId(null);
+        }
+    }
+
+    async function handleCancelFollow(profile: FollowProfileSummary) {
+        setSavingFollowId(profile.userId);
+        setStatus(null);
+        setError(null);
+
+        try {
+            await cancelFollowRequest({ data: { followedUserId: profile.userId } });
+            await refreshSettings();
+            setStatus("Follow request canceled.");
+        } catch (followError) {
+            setError(errorMessage(followError));
+        } finally {
+            setSavingFollowId(null);
+        }
+    }
+
+    async function handleRemoveFollow(profile: FollowProfileSummary) {
+        setSavingFollowId(profile.userId);
+        setStatus(null);
+        setError(null);
+
+        try {
+            await removeFollow({ data: { followedUserId: profile.userId } });
+            await refreshSettings();
+            setStatus("Profile unfollowed.");
+        } catch (followError) {
+            setError(errorMessage(followError));
+        } finally {
+            setSavingFollowId(null);
         }
     }
 
@@ -243,6 +353,56 @@ function ProfileRoute() {
         const url = `${window.location.origin}/u/${settings.user.slug}`;
         await navigator.clipboard.writeText(url);
         setStatus("Profile link copied.");
+    }
+
+    function renderSearchAction(profile: FollowSearchResult) {
+        const disabled = savingFollowId === profile.userId
+            || profile.relationState === "requested"
+            || profile.relationState === "following"
+            || profile.relationState === "mutual";
+        if (profile.relationState === "incoming_request") {
+            return (
+                <button
+                    disabled={savingFollowId === profile.userId}
+                    type="button"
+                    onClick={() => void handleApproveFollow(profile)}
+                >
+                    {savingFollowId === profile.userId ? "Saving..." : "Accept"}
+                </button>
+            );
+        }
+
+        return (
+            <button
+                disabled={disabled}
+                type="button"
+                onClick={() => void handleFollowSearchResult(profile)}
+            >
+                {savingFollowId === profile.userId
+                    ? "Saving..."
+                    : profile.relationState === "requested"
+                        ? "Requested"
+                        : profile.relationState === "following" || profile.relationState === "mutual"
+                            ? "Following"
+                            : "Follow"}
+            </button>
+        );
+    }
+
+    function renderFollowerAction(profile: FollowProfileSummary) {
+        if (profile.relationState === "mutual") {
+            return <span className="relation-pill">Mutual</span>;
+        }
+
+        return (
+            <button
+                disabled={savingFollowId === profile.userId}
+                type="button"
+                onClick={() => void handleFollowSearchResult({ ...profile, matchKind: "public_profile" })}
+            >
+                {savingFollowId === profile.userId ? "Saving..." : "Follow"}
+            </button>
+        );
     }
 
     if (!loaderData.session?.user || !settings) {
@@ -376,55 +536,196 @@ function ProfileRoute() {
 
                 <section className="profile-panel">
                     <div className="section-heading-row">
-                        <h2>Friends</h2>
-                        <span className="muted">{settings.friends.length}</span>
+                        <h2>Find Profiles</h2>
+                        <span className="muted">{followSearchLoading ? "Searching..." : "Public search"}</span>
                     </div>
-                    <form className="friend-add-form" onSubmit={handleAddFriend}>
+                    <form className="follow-add-form" onSubmit={handleRequestFollow}>
                         <input
-                            aria-label="Friend handle or profile link"
-                            placeholder="handle or profile link"
-                            value={friendInput}
-                            onChange={(event) => setFriendInput(event.target.value)}
+                            aria-label="Profile handle, name, or profile link"
+                            placeholder="search public profiles or paste a private handle"
+                            value={followInput}
+                            onChange={(event) => setFollowInput(event.target.value)}
                         />
-                        <button disabled={savingFriendId === "new" || !friendInput.trim()} type="submit">
-                            {savingFriendId === "new" ? "Saving..." : "Add"}
+                        <button disabled={savingFollowId === "new" || !followInput.trim()} type="submit">
+                            {savingFollowId === "new" ? "Saving..." : "Follow"}
                         </button>
                     </form>
-                    {settings.friends.length > 0 ? (
-                        <div className="friend-list">
-                            {settings.friends.map((friend) => (
-                                <div className="friend-row" key={friend.userId}>
-                                    <ProfileAvatar imageKey={friend.imageKey} userId={friend.userId} />
-                                    <div>
-                                        <Link to="/u/$profileSlug" params={{ profileSlug: friend.slug }}>
-                                            {friend.name}
-                                        </Link>
-                                        <p className="muted">
-                                            @{friend.slug} · {friend.publicCategoryCount} public rankings
-                                        </p>
-                                    </div>
+                    {followSearchResults.length > 0 ? (
+                        <FollowProfileList
+                            profiles={followSearchResults}
+                            renderActions={renderSearchAction}
+                        />
+                    ) : followInput.trim().length >= 2 && !followSearchLoading ? (
+                        <p className="muted compact-note">No public profiles match that search.</p>
+                    ) : (
+                        <p className="muted compact-note">
+                            Public profiles appear as you type. Exact private handles can still receive follow requests.
+                        </p>
+                    )}
+                </section>
+
+                <section className="profile-panel">
+                    <div className="section-heading-row">
+                        <h2>Following</h2>
+                        <span className="muted">{settings.following.length}</span>
+                    </div>
+                    {settings.following.length > 0 ? (
+                        <FollowProfileList
+                            profiles={settings.following}
+                            renderActions={(profile) => (
+                                <button
+                                    disabled={savingFollowId === profile.userId}
+                                    type="button"
+                                    onClick={() => void handleRemoveFollow(profile)}
+                                >
+                                    {savingFollowId === profile.userId ? "Saving..." : "Unfollow"}
+                                </button>
+                            )}
+                        />
+                    ) : (
+                        <FollowEmptyState
+                            icon="+"
+                            title="Not Following Anyone"
+                            text="Profiles you follow appear here."
+                        />
+                    )}
+                </section>
+
+                <section className="profile-panel">
+                    <div className="section-heading-row">
+                        <h2>Followers</h2>
+                        <span className="muted">{settings.followers.length}</span>
+                    </div>
+                    {settings.followers.length > 0 ? (
+                        <FollowProfileList
+                            profiles={settings.followers}
+                            renderActions={renderFollowerAction}
+                        />
+                    ) : (
+                        <FollowEmptyState
+                            icon="◎"
+                            title="No Followers"
+                            text="Accepted followers appear here."
+                        />
+                    )}
+                </section>
+
+                <section className="profile-panel">
+                    <div className="section-heading-row">
+                        <h2>Follow Requests</h2>
+                        <span className="muted">{settings.incomingFollowRequests.length}</span>
+                    </div>
+                    {settings.incomingFollowRequests.length > 0 ? (
+                        <FollowProfileList
+                            profiles={settings.incomingFollowRequests}
+                            renderActions={(profile) => (
+                                <div className="follow-row-actions">
                                     <button
-                                        disabled={savingFriendId === friend.userId}
+                                        disabled={savingFollowId === profile.userId}
                                         type="button"
-                                        onClick={() => void handleRemoveFriend(friend)}
+                                        onClick={() => void handleApproveFollow(profile)}
                                     >
-                                        Remove
+                                        Accept
+                                    </button>
+                                    <button
+                                        disabled={savingFollowId === profile.userId}
+                                        type="button"
+                                        onClick={() => void handleDeclineFollow(profile)}
+                                    >
+                                        Decline
                                     </button>
                                 </div>
-                            ))}
-                        </div>
+                            )}
+                        />
                     ) : (
-                        <div className="empty-state compact">
-                            <div className="empty-state-icon">+</div>
-                            <div>
-                                <strong>No Friends</strong>
-                                <p className="muted">Saved profiles appear here.</p>
-                            </div>
-                        </div>
+                        <FollowEmptyState
+                            icon="+"
+                            title="No Pending Requests"
+                            text="Requests to follow private profiles appear here."
+                        />
+                    )}
+                </section>
+
+                <section className="profile-panel">
+                    <div className="section-heading-row">
+                        <h2>Sent Requests</h2>
+                        <span className="muted">{settings.outgoingFollowRequests.length}</span>
+                    </div>
+                    {settings.outgoingFollowRequests.length > 0 ? (
+                        <FollowProfileList
+                            profiles={settings.outgoingFollowRequests}
+                            renderActions={(profile) => (
+                                <button
+                                    disabled={savingFollowId === profile.userId}
+                                    type="button"
+                                    onClick={() => void handleCancelFollow(profile)}
+                                >
+                                    {savingFollowId === profile.userId ? "Saving..." : "Cancel"}
+                                </button>
+                            )}
+                        />
+                    ) : (
+                        <FollowEmptyState
+                            icon=">"
+                            title="No Sent Requests"
+                            text="Private-profile requests you send appear here."
+                        />
                     )}
                 </section>
             </div>
         </main>
+    );
+}
+
+function FollowProfileList<TProfile extends FollowProfileSummary>({
+    profiles,
+    renderActions
+}: {
+    profiles: TProfile[];
+    renderActions: (profile: TProfile) => ReactNode;
+}) {
+    return (
+        <div className="follow-list">
+            {profiles.map((profile) => (
+                <div className="follow-row" key={profile.userId}>
+                    <ProfileAvatar imageKey={profile.imageKey} userId={profile.userId} />
+                    <div>
+                        {canViewProfile(profile.isPublic, false, profile.relationState) ? (
+                            <Link to="/u/$profileSlug" params={{ profileSlug: profile.slug }}>
+                                {profile.name}
+                            </Link>
+                        ) : (
+                            <strong>{profile.name}</strong>
+                        )}
+                        <p className="muted">
+                            @{profile.slug} · {profile.publicCategoryCount} public rankings ·{" "}
+                            {followRelationLabel(profile.relationState)}
+                        </p>
+                    </div>
+                    {renderActions(profile)}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function FollowEmptyState({
+    icon,
+    text,
+    title
+}: {
+    icon: string;
+    text: string;
+    title: string;
+}) {
+    return (
+        <div className="empty-state compact">
+            <div className="empty-state-icon">{icon}</div>
+            <div>
+                <strong>{title}</strong>
+                <p className="muted">{text}</p>
+            </div>
+        </div>
     );
 }
 
