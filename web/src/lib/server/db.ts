@@ -21,6 +21,14 @@ export async function first<T>(statement: D1PreparedStatement) {
     return (await statement.first<T>()) ?? null;
 }
 
+const BATCH_SIZE = 100;
+
+export async function runBatches(db: D1Database, statements: D1PreparedStatement[]) {
+    for (let index = 0; index < statements.length; index += BATCH_SIZE) {
+        await db.batch(statements.slice(index, index + BATCH_SIZE));
+    }
+}
+
 export function assertOwned<T>(
     row: T | null | undefined,
     resource = "Resource"
