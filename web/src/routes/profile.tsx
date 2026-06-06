@@ -411,7 +411,7 @@ function ProfileRoute() {
                 <section className="standalone-panel">
                     <Link className="brand-link" to="/">
                         <img alt="" src="/favicon.svg" />
-                        <span>goldshelf</span>
+                        <span>Goldshelf</span>
                     </Link>
                     <h1>Profile</h1>
                     <p className="muted">Sign in to edit your profile.</p>
@@ -427,7 +427,7 @@ function ProfileRoute() {
             <header className="profile-page-header">
                 <Link className="brand-link" to="/">
                     <img alt="" src="/favicon.svg" />
-                    <span>goldshelf</span>
+                    <span>Goldshelf</span>
                 </Link>
                 <nav className="profile-page-nav" aria-label="Profile navigation">
                     <Link to="/">Rankings</Link>
@@ -436,242 +436,248 @@ function ProfileRoute() {
             </header>
 
             <div className="profile-page-grid">
-                <section className="profile-panel profile-main-panel">
-                    <div className="profile-title-row">
-                        <ProfileAvatar currentUser imageKey={settings.user.imageKey} userId={settings.user.id} />
-                        <div>
-                            <h1>{settings.user.name}</h1>
-                            <p className="muted">@{settings.user.slug}</p>
-                            <div className="profile-avatar-actions profile-page-avatar-actions">
-                                <label className={`file-button ${savingProfileImage ? "disabled" : ""}`}>
-                                    <span>{savingProfileImage ? "Uploading..." : "Upload Photo"}</span>
-                                    <input
-                                        accept="image/*"
-                                        disabled={savingProfileImage}
-                                        type="file"
-                                        onChange={(event) => void handleProfileImageInput(event)}
-                                    />
-                                </label>
-                                <button
-                                    disabled={savingProfileImage || !hasStoredImage(settings.user.imageKey)}
-                                    type="button"
-                                    onClick={() => void handleRemoveProfileImage()}
-                                >
-                                    Remove
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <form className="profile-form" onSubmit={handleProfileSubmit}>
-                        <label>
-                            <span>Display Name</span>
-                            <input
-                                required
-                                maxLength={80}
-                                value={displayName}
-                                onChange={(event) => setDisplayName(event.target.value)}
-                            />
-                        </label>
-                        <label>
-                            <span>Public Handle</span>
-                            <input
-                                required
-                                maxLength={40}
-                                value={profileSlug}
-                                onChange={(event) => setProfileSlug(event.target.value)}
-                            />
-                        </label>
-                        <label className="switch-row profile-switch-row">
-                            <input
-                                checked={profileIsPublic}
-                                type="checkbox"
-                                onChange={(event) => setProfileIsPublic(event.target.checked)}
-                            />
-                            <span>Public profile</span>
-                        </label>
-                        <div className="profile-actions">
-                            <button className="primary" disabled={savingProfile} type="submit">
-                                {savingProfile ? "Saving..." : "Save Profile"}
-                            </button>
-                            <button disabled={!settings.user.isPublic} type="button" onClick={handleCopyProfileLink}>
-                                Copy Link
-                            </button>
-                        </div>
-                    </form>
-                </section>
-
-                <section className="profile-panel">
-                    <div className="section-heading-row">
-                        <h2>Public Rankings</h2>
-                        <span className="muted">{settings.categories.filter((category) => category.isPublic).length}</span>
-                    </div>
-                    {settings.categories.length > 0 ? (
-                        <div className="profile-category-list">
-                            {settings.categories.map((category) => (
-                                <label className="profile-category-row" key={category.id}>
-                                    <span>
-                                        <strong>{category.name}</strong>
-                                        <small className="muted">{category.entryCount} entries</small>
-                                    </span>
-                                    <input
-                                        checked={category.isPublic}
-                                        disabled={savingCategoryId === category.id}
-                                        type="checkbox"
-                                        onChange={(event) => void handleCategoryVisibility(category.id, event.target.checked)}
-                                    />
-                                </label>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="empty-state compact">
-                            <div className="empty-state-icon">◎</div>
+                <div className="profile-column profile-account-column">
+                    <section className="profile-panel profile-main-panel">
+                        <div className="profile-title-row">
+                            <ProfileAvatar currentUser imageKey={settings.user.imageKey} userId={settings.user.id} />
                             <div>
-                                <strong>No Rankings</strong>
-                                <p className="muted">Create a category before sharing rankings.</p>
-                            </div>
-                        </div>
-                    )}
-                </section>
-
-                <section className="profile-panel">
-                    <div className="section-heading-row">
-                        <h2>Find Profiles</h2>
-                        <span className="muted">{followSearchLoading ? "Searching..." : "Public search"}</span>
-                    </div>
-                    <form className="follow-add-form" onSubmit={handleRequestFollow}>
-                        <input
-                            aria-label="Profile handle, name, or profile link"
-                            placeholder="search public profiles or paste a private handle"
-                            value={followInput}
-                            onChange={(event) => setFollowInput(event.target.value)}
-                        />
-                        <button disabled={savingFollowId === "new" || !followInput.trim()} type="submit">
-                            {savingFollowId === "new" ? "Saving..." : "Follow"}
-                        </button>
-                    </form>
-                    {followSearchResults.length > 0 ? (
-                        <FollowProfileList
-                            profiles={followSearchResults}
-                            renderActions={renderSearchAction}
-                        />
-                    ) : followInput.trim().length >= 2 && !followSearchLoading ? (
-                        <p className="muted compact-note">No public profiles match that search.</p>
-                    ) : (
-                        <p className="muted compact-note">
-                            Public profiles appear as you type. Exact private handles can still receive follow requests.
-                        </p>
-                    )}
-                </section>
-
-                <section className="profile-panel">
-                    <div className="section-heading-row">
-                        <h2>Following</h2>
-                        <span className="muted">{settings.following.length}</span>
-                    </div>
-                    {settings.following.length > 0 ? (
-                        <FollowProfileList
-                            profiles={settings.following}
-                            renderActions={(profile) => (
-                                <button
-                                    disabled={savingFollowId === profile.userId}
-                                    type="button"
-                                    onClick={() => void handleRemoveFollow(profile)}
-                                >
-                                    {savingFollowId === profile.userId ? "Saving..." : "Unfollow"}
-                                </button>
-                            )}
-                        />
-                    ) : (
-                        <FollowEmptyState
-                            icon="+"
-                            title="Not Following Anyone"
-                            text="Profiles you follow appear here."
-                        />
-                    )}
-                </section>
-
-                <section className="profile-panel">
-                    <div className="section-heading-row">
-                        <h2>Followers</h2>
-                        <span className="muted">{settings.followers.length}</span>
-                    </div>
-                    {settings.followers.length > 0 ? (
-                        <FollowProfileList
-                            profiles={settings.followers}
-                            renderActions={renderFollowerAction}
-                        />
-                    ) : (
-                        <FollowEmptyState
-                            icon="◎"
-                            title="No Followers"
-                            text="Accepted followers appear here."
-                        />
-                    )}
-                </section>
-
-                <section className="profile-panel">
-                    <div className="section-heading-row">
-                        <h2>Follow Requests</h2>
-                        <span className="muted">{settings.incomingFollowRequests.length}</span>
-                    </div>
-                    {settings.incomingFollowRequests.length > 0 ? (
-                        <FollowProfileList
-                            profiles={settings.incomingFollowRequests}
-                            renderActions={(profile) => (
-                                <div className="follow-row-actions">
+                                <h1>{settings.user.name}</h1>
+                                <p className="muted">@{settings.user.slug}</p>
+                                <div className="profile-avatar-actions profile-page-avatar-actions">
+                                    <label className={`file-button ${savingProfileImage ? "disabled" : ""}`}>
+                                        <span>{savingProfileImage ? "Uploading..." : "Upload Photo"}</span>
+                                        <input
+                                            accept="image/*"
+                                            disabled={savingProfileImage}
+                                            type="file"
+                                            onChange={(event) => void handleProfileImageInput(event)}
+                                        />
+                                    </label>
                                     <button
-                                        disabled={savingFollowId === profile.userId}
+                                        disabled={savingProfileImage || !hasStoredImage(settings.user.imageKey)}
                                         type="button"
-                                        onClick={() => void handleApproveFollow(profile)}
+                                        onClick={() => void handleRemoveProfileImage()}
                                     >
-                                        Accept
-                                    </button>
-                                    <button
-                                        disabled={savingFollowId === profile.userId}
-                                        type="button"
-                                        onClick={() => void handleDeclineFollow(profile)}
-                                    >
-                                        Decline
+                                        Remove
                                     </button>
                                 </div>
-                            )}
-                        />
-                    ) : (
-                        <FollowEmptyState
-                            icon="+"
-                            title="No Pending Requests"
-                            text="Requests to follow private profiles appear here."
-                        />
-                    )}
-                </section>
+                            </div>
+                        </div>
 
-                <section className="profile-panel">
-                    <div className="section-heading-row">
-                        <h2>Sent Requests</h2>
-                        <span className="muted">{settings.outgoingFollowRequests.length}</span>
-                    </div>
-                    {settings.outgoingFollowRequests.length > 0 ? (
-                        <FollowProfileList
-                            profiles={settings.outgoingFollowRequests}
-                            renderActions={(profile) => (
-                                <button
-                                    disabled={savingFollowId === profile.userId}
-                                    type="button"
-                                    onClick={() => void handleCancelFollow(profile)}
-                                >
-                                    {savingFollowId === profile.userId ? "Saving..." : "Cancel"}
+                        <form className="profile-form" onSubmit={handleProfileSubmit}>
+                            <label>
+                                <span>Display Name</span>
+                                <input
+                                    required
+                                    maxLength={80}
+                                    value={displayName}
+                                    onChange={(event) => setDisplayName(event.target.value)}
+                                />
+                            </label>
+                            <label>
+                                <span>Public Handle</span>
+                                <input
+                                    required
+                                    maxLength={40}
+                                    value={profileSlug}
+                                    onChange={(event) => setProfileSlug(event.target.value)}
+                                />
+                            </label>
+                            <label className="switch-row profile-switch-row">
+                                <input
+                                    checked={profileIsPublic}
+                                    type="checkbox"
+                                    onChange={(event) => setProfileIsPublic(event.target.checked)}
+                                />
+                                <span>Public profile</span>
+                            </label>
+                            <div className="profile-actions">
+                                <button className="primary" disabled={savingProfile} type="submit">
+                                    {savingProfile ? "Saving..." : "Save Profile"}
                                 </button>
-                            )}
-                        />
-                    ) : (
-                        <FollowEmptyState
-                            icon=">"
-                            title="No Sent Requests"
-                            text="Private-profile requests you send appear here."
-                        />
-                    )}
-                </section>
+                                <button disabled={!settings.user.isPublic} type="button" onClick={handleCopyProfileLink}>
+                                    Copy Link
+                                </button>
+                            </div>
+                        </form>
+                    </section>
+                </div>
+
+                <div className="profile-column profile-follow-column">
+                    <section className="profile-panel">
+                        <div className="section-heading-row">
+                            <h2>Find Profiles</h2>
+                            <span className="muted">{followSearchLoading ? "Searching..." : "Public search"}</span>
+                        </div>
+                        <form className="follow-add-form" onSubmit={handleRequestFollow}>
+                            <input
+                                aria-label="Profile handle, name, or profile link"
+                                placeholder="search public profiles or paste a private handle"
+                                value={followInput}
+                                onChange={(event) => setFollowInput(event.target.value)}
+                            />
+                            <button disabled={savingFollowId === "new" || !followInput.trim()} type="submit">
+                                {savingFollowId === "new" ? "Saving..." : "Follow"}
+                            </button>
+                        </form>
+                        {followSearchResults.length > 0 ? (
+                            <FollowProfileList
+                                profiles={followSearchResults}
+                                renderActions={renderSearchAction}
+                            />
+                        ) : followInput.trim().length >= 2 && !followSearchLoading ? (
+                            <p className="muted compact-note">No public profiles match that search.</p>
+                        ) : (
+                            <p className="muted compact-note">
+                                Public profiles appear as you type. Exact private handles can still receive follow requests.
+                            </p>
+                        )}
+                    </section>
+
+                    <section className="profile-panel">
+                        <div className="section-heading-row">
+                            <h2>Following</h2>
+                            <span className="muted">{settings.following.length}</span>
+                        </div>
+                        {settings.following.length > 0 ? (
+                            <FollowProfileList
+                                profiles={settings.following}
+                                renderActions={(profile) => (
+                                    <button
+                                        disabled={savingFollowId === profile.userId}
+                                        type="button"
+                                        onClick={() => void handleRemoveFollow(profile)}
+                                    >
+                                        {savingFollowId === profile.userId ? "Saving..." : "Unfollow"}
+                                    </button>
+                                )}
+                            />
+                        ) : (
+                            <FollowEmptyState
+                                icon="+"
+                                title="Not Following Anyone"
+                                text="Profiles you follow appear here."
+                            />
+                        )}
+                    </section>
+
+                    <section className="profile-panel">
+                        <div className="section-heading-row">
+                            <h2>Followers</h2>
+                            <span className="muted">{settings.followers.length}</span>
+                        </div>
+                        {settings.followers.length > 0 ? (
+                            <FollowProfileList
+                                profiles={settings.followers}
+                                renderActions={renderFollowerAction}
+                            />
+                        ) : (
+                            <FollowEmptyState
+                                icon="◎"
+                                title="No Followers"
+                                text="Accepted followers appear here."
+                            />
+                        )}
+                    </section>
+
+                    <section className="profile-panel">
+                        <div className="section-heading-row">
+                            <h2>Follow Requests</h2>
+                            <span className="muted">{settings.incomingFollowRequests.length}</span>
+                        </div>
+                        {settings.incomingFollowRequests.length > 0 ? (
+                            <FollowProfileList
+                                profiles={settings.incomingFollowRequests}
+                                renderActions={(profile) => (
+                                    <div className="follow-row-actions">
+                                        <button
+                                            disabled={savingFollowId === profile.userId}
+                                            type="button"
+                                            onClick={() => void handleApproveFollow(profile)}
+                                        >
+                                            Accept
+                                        </button>
+                                        <button
+                                            disabled={savingFollowId === profile.userId}
+                                            type="button"
+                                            onClick={() => void handleDeclineFollow(profile)}
+                                        >
+                                            Decline
+                                        </button>
+                                    </div>
+                                )}
+                            />
+                        ) : (
+                            <FollowEmptyState
+                                icon="+"
+                                title="No Pending Requests"
+                                text="Requests to follow private profiles appear here."
+                            />
+                        )}
+                    </section>
+
+                    <section className="profile-panel">
+                        <div className="section-heading-row">
+                            <h2>Sent Requests</h2>
+                            <span className="muted">{settings.outgoingFollowRequests.length}</span>
+                        </div>
+                        {settings.outgoingFollowRequests.length > 0 ? (
+                            <FollowProfileList
+                                profiles={settings.outgoingFollowRequests}
+                                renderActions={(profile) => (
+                                    <button
+                                        disabled={savingFollowId === profile.userId}
+                                        type="button"
+                                        onClick={() => void handleCancelFollow(profile)}
+                                    >
+                                        {savingFollowId === profile.userId ? "Saving..." : "Cancel"}
+                                    </button>
+                                )}
+                            />
+                        ) : (
+                            <FollowEmptyState
+                                icon=">"
+                                title="No Sent Requests"
+                                text="Private-profile requests you send appear here."
+                            />
+                        )}
+                    </section>
+                </div>
+
+                <div className="profile-column profile-rankings-column">
+                    <section className="profile-panel">
+                        <div className="section-heading-row">
+                            <h2>Public Rankings</h2>
+                            <span className="muted">{settings.categories.filter((category) => category.isPublic).length}</span>
+                        </div>
+                        {settings.categories.length > 0 ? (
+                            <div className="profile-category-list">
+                                {settings.categories.map((category) => (
+                                    <label className="profile-category-row" key={category.id}>
+                                        <span>
+                                            <strong>{category.name}</strong>
+                                            <small className="muted">{category.entryCount} entries</small>
+                                        </span>
+                                        <input
+                                            checked={category.isPublic}
+                                            disabled={savingCategoryId === category.id}
+                                            type="checkbox"
+                                            onChange={(event) => void handleCategoryVisibility(category.id, event.target.checked)}
+                                        />
+                                    </label>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="empty-state compact">
+                                <div className="empty-state-icon">◎</div>
+                                <div>
+                                    <strong>No Rankings</strong>
+                                    <p className="muted">Create a category before sharing rankings.</p>
+                                </div>
+                            </div>
+                        )}
+                    </section>
+                </div>
             </div>
         </main>
     );

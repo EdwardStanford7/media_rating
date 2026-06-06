@@ -82,6 +82,10 @@
     box-sizing: border-box;
 }
 
+html {
+    font-size: clamp(14px, 0.84vw, 16px);
+}
+
 body {
     margin: 0;
     background: var(--bg);
@@ -870,16 +874,16 @@ a.small-button:hover,
     display: grid;
     align-content: start;
     gap: 1rem;
-    padding: 1rem;
+    padding: 1.25rem clamp(1rem, 3vw, 2.25rem);
 }
 
 .profile-page-header {
-    width: min(1180px, 100%);
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    margin: 0 auto;
+    margin: 0;
 }
 
 .profile-page-nav {
@@ -898,11 +902,19 @@ a.small-button:hover,
 }
 
 .profile-page-grid {
-    width: min(1180px, 100%);
+    width: 100%;
     display: grid;
-    grid-template-columns: minmax(22rem, 1fr) minmax(18rem, 0.8fr);
+    grid-template-columns: minmax(18rem, 0.8fr) minmax(24rem, 1fr) minmax(18rem, 0.82fr);
+    align-items: start;
     gap: 1rem;
-    margin: 0 auto;
+    margin: 0;
+}
+
+.profile-column {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
 }
 
 .profile-panel,
@@ -913,10 +925,6 @@ a.small-button:hover,
     background: var(--panel);
     box-shadow: var(--shadow);
     padding: 1rem;
-}
-
-.profile-main-panel {
-    grid-row: span 2;
 }
 
 .profile-title-row,
@@ -1071,8 +1079,8 @@ a.small-button:hover,
 
 .public-profile-header,
 .public-empty-state {
-    width: min(960px, 100%);
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
 }
 
 .public-profile-actions {
@@ -1126,10 +1134,10 @@ a.small-button:hover,
 }
 
 .public-profile-body {
-    width: min(960px, 100%);
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     display: grid;
-    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-columns: 220px minmax(0, 1fr);
     align-items: start;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -1564,6 +1572,16 @@ img.match-poster {
     }
 }
 
+@media (max-width: 1100px) {
+    .profile-page-grid {
+        grid-template-columns: minmax(18rem, 0.85fr) minmax(24rem, 1fr);
+    }
+
+    .profile-rankings-column {
+        grid-column: 1 / -1;
+    }
+}
+
 .match-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1807,6 +1825,9 @@ img.match-poster {
 }
 
 @media (max-width: 820px) {
+    html {
+        font-size: 16px;
+    }
 
     .app-shell,
     .auth-shell,
@@ -1871,6 +1892,14 @@ img.match-poster {
 
     .settings-toggle-grid {
         grid-template-columns: 1fr;
+    }
+
+    .profile-page-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-rankings-column {
+        grid-column: auto;
     }
 
     .topbar,

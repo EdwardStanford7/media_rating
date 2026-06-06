@@ -227,7 +227,7 @@ function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
         <header className="profile-page-header">
             <Link className="brand-link" to="/">
                 <img alt="" src="/favicon.svg" />
-                <span>goldshelf</span>
+                <span>Goldshelf</span>
             </Link>
             <nav className="profile-page-nav" aria-label="Public profile navigation">
                 {signedIn ? (

@@ -301,7 +301,7 @@ function AuthPage({
                                     ? "Welcome Back"
                                     : authMode === "reset-request"
                                         ? "Account Recovery"
-                                        : "Welcome to goldshelf"}
+                                        : "Welcome to Goldshelf"}
                         </p>
                         <h2 id="auth-heading">
                             {resetToken
@@ -395,7 +395,6 @@ function AuthPage({
                                         Forgot password?
                                     </button>
                                     <span aria-hidden="true"> · </span>
-                                    New to goldshelf?{" "}
                                 </>
                             ) : authMode === "reset-request" ? "Remembered it?" : "Already have an account?"}{" "}
                             <button
