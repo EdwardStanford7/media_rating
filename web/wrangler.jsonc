@@ -1,0 +1,37 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "goldshelf",
+    "compatibility_date": "2026-05-22",
+    "compatibility_flags": [
+        "nodejs_compat"
+    ],
+    "main": "@tanstack/react-start/server-entry",
+    "workers_dev": false,
+    "preview_urls": false,
+    "observability": {
+        "enabled": true
+    },
+    "routes": [
+        {
+            "pattern": "goldshelf.net",
+            "custom_domain": true
+        }
+    ],
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "media-rating",
+            "database_id": "06785885-2db1-4110-befd-90a4bca94f5d",
+            "migrations_dir": "migrations"
+        }
+    ],
+    "r2_buckets": [
+        {
+            "bucket_name": "media-rating-images",
+            "binding": "IMAGES"
+        }
+    ],
+    "vars": {
+        "BETTER_AUTH_URL": "https://goldshelf.net"
+    }
+}
