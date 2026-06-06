@@ -31,6 +31,7 @@ import {
 import { signIn, signOut, signUp } from "@/lib/auth-client";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
 import { orderEntries } from "@/lib/ranking";
+import { applyThemeMode, readInitialThemeMode, saveThemeMode, type ThemeMode } from "@/lib/theme";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type {
     BinarySessionView,
@@ -109,7 +110,6 @@ const POSTER_WIDTH = 380;
 const POSTER_HEIGHT = 475;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
-const THEME_STORAGE_KEY = "rankly-theme";
 const TOAST_TIMEOUT_MS = 7000;
 const UNDO_STACK_LIMIT = 20;
 const ICONS: Record<IconName, string> = {
@@ -131,7 +131,6 @@ const ICONS: Record<IconName, string> = {
     undo: "↶",
     up: "↑"
 };
-type ThemeMode = "light" | "dark" | "system";
 type AuthMode = "signin" | "signup";
 
 export const Route = createFileRoute("/")({
@@ -153,10 +152,6 @@ export const Route = createFileRoute("/")({
 
 function Home() {
     const { session, dashboard, authOptions } = Route.useLoaderData();
-
-    useEffect(() => {
-        return applyThemeMode(readInitialThemeMode());
-    }, []);
 
     if (!session?.user || !dashboard) {
         return <AuthPage authOptions={authOptions} />;
@@ -565,7 +560,6 @@ function Dashboard({
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
-    const [message, setMessage] = useState<string | null>(null);
     const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
     const [importToastOpen, setImportToastOpen] = useState(false);
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
@@ -646,7 +640,7 @@ function Dashboard({
     }
 
     useEffect(() => {
-        window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+        saveThemeMode(themeMode);
         return applyThemeMode(themeMode);
     }, [themeMode]);
 
@@ -744,6 +738,18 @@ function Dashboard({
         return id;
     }
 
+    function setMessage(message: string | null, variant: AppToast["variant"] = "default") {
+        if (!message) {
+            return;
+        }
+
+        pushToast({ message, variant });
+    }
+
+    function setErrorMessage(error: unknown) {
+        setMessage(errorMessage(error), "danger");
+    }
+
     function takeReversibleAction(stack: ReversibleAction[], actionId?: number) {
         const actionIndex = actionId === undefined
             ? stack.length - 1
@@ -806,7 +812,7 @@ function Dashboard({
                 variant: "success"
             });
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -836,7 +842,7 @@ function Dashboard({
                 variant: action.variant
             });
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -907,7 +913,7 @@ function Dashboard({
             formElement.reset();
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -921,7 +927,7 @@ function Dashboard({
             await renameCategory({ data: { categoryId, name } });
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1006,7 +1012,7 @@ function Dashboard({
                 });
             }
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
             handleCategoryDragEnd();
@@ -1056,7 +1062,7 @@ function Dashboard({
                 variant: "danger"
             });
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1076,7 +1082,7 @@ function Dashboard({
         const targetCategoryId = String(form.get("categoryId") ?? selectedCategory?.id ?? "");
         const targetCategory = dashboard.categories.find((category) => category.id === targetCategoryId);
         if (!cleanName || !targetCategory) {
-            setMessage("Choose a category and enter a name.");
+            setMessage("Choose a category and enter a name.", "danger");
             return;
         }
 
@@ -1125,7 +1131,7 @@ function Dashboard({
 
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1141,7 +1147,7 @@ function Dashboard({
             await updateQueueSettings({ data: settings });
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             if (!options.quiet) {
                 finishBusy();
@@ -1197,7 +1203,7 @@ function Dashboard({
             }
         } catch (error) {
             setQueueRankingActive(false);
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1211,7 +1217,7 @@ function Dashboard({
         try {
             await beginQueuedEntryRanking(entry, true);
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1251,7 +1257,7 @@ function Dashboard({
                 variant: "danger"
             });
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1265,7 +1271,7 @@ function Dashboard({
             await renameQueuedEntry({ data: { queuedEntryId: entry.id, name } });
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1283,7 +1289,7 @@ function Dashboard({
             }
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1368,7 +1374,7 @@ function Dashboard({
                 });
             }
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
             handleEntryDragEnd();
@@ -1411,7 +1417,7 @@ function Dashboard({
             await renameEntry({ data: { entryId, name } });
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1441,7 +1447,7 @@ function Dashboard({
                 variant: "danger"
             });
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1459,7 +1465,7 @@ function Dashboard({
             setSelectedCategoryId(targetCategoryId);
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1485,7 +1491,7 @@ function Dashboard({
             );
             await refresh();
         } catch (error) {
-            setMessage(errorMessage(error));
+            setErrorMessage(error);
         } finally {
             finishBusy();
         }
@@ -1512,7 +1518,7 @@ function Dashboard({
             return;
         }
 
-        setMessage("That ranking is no longer active.");
+        setMessage("That ranking is no longer active.", "danger");
     }
 
     async function handleImport(event: FormEvent<HTMLFormElement>) {
@@ -1752,8 +1758,6 @@ function Dashboard({
                     </div>
                 </div>
 
-                {message ? <div className="status">{message}</div> : null}
-
                 {dashboard.categories.length === 0 ? (
                     <EmptyState
                         icon="category"
@@ -1967,40 +1971,6 @@ function useEscapeKey(isActive: boolean, onEscape: () => void) {
         document.addEventListener("keydown", handleKeyDown);
         return () => document.removeEventListener("keydown", handleKeyDown);
     }, [isActive, onEscape]);
-}
-
-function readInitialThemeMode(): ThemeMode {
-    if (typeof window === "undefined") {
-        return "system";
-    }
-
-    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") {
-        return savedTheme;
-    }
-
-    return "system";
-}
-
-function applyThemeMode(themeMode: ThemeMode) {
-    if (typeof window === "undefined") {
-        return undefined;
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-        document.documentElement.dataset.theme = themeMode === "system"
-            ? mediaQuery.matches ? "dark" : "light"
-            : themeMode;
-    };
-
-    apply();
-    if (themeMode !== "system") {
-        return undefined;
-    }
-
-    mediaQuery.addEventListener("change", apply);
-    return () => mediaQuery.removeEventListener("change", apply);
 }
 
 function isEditableShortcutTarget(target: EventTarget | null) {

@@ -1,12 +1,14 @@
 /// <reference types="vite/client" />
 
 import type { ReactNode } from "react";
+import { useEffect } from "react";
 import {
     HeadContent,
     Outlet,
     Scripts,
     createRootRoute
 } from "@tanstack/react-router";
+import { applyThemeMode, readInitialThemeMode } from "@/lib/theme";
 import "../styles/global.css";
 
 export const Route = createRootRoute({
@@ -29,6 +31,10 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+    useEffect(() => {
+        return applyThemeMode(readInitialThemeMode());
+    }, []);
+
     return (
         <RootDocument>
             <Outlet />

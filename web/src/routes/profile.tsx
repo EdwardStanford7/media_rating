@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
     addFriendByProfileSlug,
@@ -14,6 +14,13 @@ import type { FriendProfileSummary, ProfileSettingsData } from "@/lib/types";
 
 const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
+const TOAST_TIMEOUT_MS = 5_000;
+
+interface ProfileToast {
+    id: number;
+    message: string;
+    variant?: "default" | "success" | "danger";
+}
 
 export const Route = createFileRoute("/profile")({
     loader: async () => {
@@ -41,8 +48,9 @@ function ProfileRoute() {
     const [savingProfileImage, setSavingProfileImage] = useState(false);
     const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
     const [savingFriendId, setSavingFriendId] = useState<string | null>(null);
-    const [status, setStatus] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [toasts, setToasts] = useState<ProfileToast[]>([]);
+    const toastIdRef = useRef(0);
+    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
 
     useEffect(() => {
         setSettings(loaderData.settings);
@@ -50,6 +58,43 @@ function ProfileRoute() {
         setProfileSlug(loaderData.settings?.user.slug ?? "");
         setProfileIsPublic(loaderData.settings?.user.isPublic ?? false);
     }, [loaderData.settings]);
+
+    useEffect(() => () => {
+        for (const timeoutId of toastTimeoutsRef.current.values()) {
+            window.clearTimeout(timeoutId);
+        }
+        toastTimeoutsRef.current.clear();
+    }, []);
+
+    function dismissToast(toastId: number) {
+        const timeoutId = toastTimeoutsRef.current.get(toastId);
+        if (timeoutId !== undefined) {
+            window.clearTimeout(timeoutId);
+            toastTimeoutsRef.current.delete(toastId);
+        }
+
+        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
+    }
+
+    function pushToast(toast: Omit<ProfileToast, "id">) {
+        const id = toastIdRef.current + 1;
+        toastIdRef.current = id;
+        setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
+        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
+        toastTimeoutsRef.current.set(id, timeoutId);
+    }
+
+    function setStatus(message: string | null) {
+        if (message) {
+            pushToast({ message, variant: "success" });
+        }
+    }
+
+    function setError(message: string | null) {
+        if (message) {
+            pushToast({ message, variant: "danger" });
+        }
+    }
 
     async function refreshSettings() {
         const nextSettings = await loadProfileSettings();
@@ -218,6 +263,7 @@ function ProfileRoute() {
 
     return (
         <main className="profile-page">
+            <ProfileToastStack toasts={toasts} onDismiss={dismissToast} />
             <header className="profile-page-header">
                 <Link className="brand-link" to="/">
                     <img alt="" src="/favicon.svg" />
@@ -256,9 +302,6 @@ function ProfileRoute() {
                             </div>
                         </div>
                     </div>
-
-                    {error ? <div className="status">{error}</div> : null}
-                    {status ? <div className="status success-status">{status}</div> : null}
 
                     <form className="profile-form" onSubmit={handleProfileSubmit}>
                         <label>
@@ -404,6 +447,36 @@ function ProfileAvatar({
         <span className="profile-avatar" aria-hidden="true">
             {src ? <img alt="" decoding="async" src={src} /> : null}
         </span>
+    );
+}
+
+function ProfileToastStack({
+    onDismiss,
+    toasts
+}: {
+    onDismiss: (toastId: number) => void;
+    toasts: ProfileToast[];
+}) {
+    if (toasts.length === 0) {
+        return null;
+    }
+
+    return (
+        <div aria-live="polite" className="toast-stack">
+            {toasts.map((toast) => (
+                <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
+                    <span>{toast.message}</span>
+                    <button
+                        aria-label="Dismiss notification"
+                        className="toast-close-button"
+                        type="button"
+                        onClick={() => onDismiss(toast.id)}
+                    >
+                        x
+                    </button>
+                </div>
+            ))}
+        </div>
     );
 }
 

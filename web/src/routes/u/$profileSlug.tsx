@@ -1,9 +1,17 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import { orderEntries } from "@/lib/ranking";
 import { loadPublicProfile, setProfileFriend } from "@/lib/server/actions";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
+
+const TOAST_TIMEOUT_MS = 5_000;
+
+interface PublicProfileToast {
+    id: number;
+    message: string;
+    variant?: "default" | "success" | "danger";
+}
 
 export const Route = createFileRoute("/u/$profileSlug")({
     loader: async ({ params }) => {
@@ -16,16 +24,42 @@ function PublicProfileRoute() {
     const loaderData = Route.useLoaderData();
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
     const [friendSaving, setFriendSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [toasts, setToasts] = useState<PublicProfileToast[]>([]);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
         loaderData?.categories[0]?.id ?? null
     );
+    const toastIdRef = useRef(0);
+    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
 
     useEffect(() => {
         setProfileData(loaderData);
-        setError(null);
         setSelectedCategoryId(loaderData?.categories[0]?.id ?? null);
     }, [loaderData]);
+
+    useEffect(() => () => {
+        for (const timeoutId of toastTimeoutsRef.current.values()) {
+            window.clearTimeout(timeoutId);
+        }
+        toastTimeoutsRef.current.clear();
+    }, []);
+
+    function dismissToast(toastId: number) {
+        const timeoutId = toastTimeoutsRef.current.get(toastId);
+        if (timeoutId !== undefined) {
+            window.clearTimeout(timeoutId);
+            toastTimeoutsRef.current.delete(toastId);
+        }
+
+        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
+    }
+
+    function pushToast(toast: Omit<PublicProfileToast, "id">) {
+        const id = toastIdRef.current + 1;
+        toastIdRef.current = id;
+        setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
+        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
+        toastTimeoutsRef.current.set(id, timeoutId);
+    }
 
     async function handleFriendToggle() {
         if (!profileData || profileData.viewer.isSelf) {
@@ -33,7 +67,6 @@ function PublicProfileRoute() {
         }
 
         setFriendSaving(true);
-        setError(null);
 
         try {
             const nextFriendState = !profileData.viewer.isFriend;
@@ -54,8 +87,15 @@ function PublicProfileRoute() {
                     isFriend: nextFriendState
                 }
             });
+            pushToast({
+                message: nextFriendState ? "Friend saved." : "Friend removed.",
+                variant: "success"
+            });
         } catch (friendError) {
-            setError(friendError instanceof Error ? friendError.message : String(friendError));
+            pushToast({
+                message: friendError instanceof Error ? friendError.message : String(friendError),
+                variant: "danger"
+            });
         } finally {
             setFriendSaving(false);
         }
@@ -77,6 +117,7 @@ function PublicProfileRoute() {
 
     return (
         <main className="public-profile-page">
+            <PublicProfileToastStack toasts={toasts} onDismiss={dismissToast} />
             <PublicProfileTopbar signedIn={viewer.isSignedIn} />
 
             <section className="public-profile-header">
@@ -101,8 +142,6 @@ function PublicProfileRoute() {
                     )}
                 </div>
             </section>
-
-            {error ? <div className="status public-profile-status">{error}</div> : null}
 
             {profileData.categories.length > 0 ? (
                 <div className="public-profile-body">
@@ -266,5 +305,35 @@ function PublicProfileAvatar({
         <span className="profile-avatar public-profile-avatar" aria-hidden="true">
             {src ? <img alt="" decoding="async" src={src} onError={() => setFailed(true)} /> : null}
         </span>
+    );
+}
+
+function PublicProfileToastStack({
+    onDismiss,
+    toasts
+}: {
+    onDismiss: (toastId: number) => void;
+    toasts: PublicProfileToast[];
+}) {
+    if (toasts.length === 0) {
+        return null;
+    }
+
+    return (
+        <div aria-live="polite" className="toast-stack">
+            {toasts.map((toast) => (
+                <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
+                    <span>{toast.message}</span>
+                    <button
+                        aria-label="Dismiss notification"
+                        className="toast-close-button"
+                        type="button"
+                        onClick={() => onDismiss(toast.id)}
+                    >
+                        x
+                    </button>
+                </div>
+            ))}
+        </div>
     );
 }
