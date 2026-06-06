@@ -1,4 +1,6 @@
-import ExcelJS from "exceljs";
+import { readSheet } from "read-excel-file/universal";
+import writeXlsxFile from "write-excel-file/universal";
+import type { SheetData } from "write-excel-file/universal";
 import type {
     CategoryWithEntries,
     ParsedImport
@@ -8,14 +10,8 @@ export async function parseLegacyWorkbook(
     buffer: ArrayBuffer,
     defaultFirstConsumedAt: number | null
 ): Promise<ParsedImport> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
-        throw new Error("Spreadsheet contains no importable entries. Put category names in the first row and entries below them.");
-    }
-
-    const headers = rowValues(sheet.getRow(1));
+    const rows = await readSheet(buffer);
+    const headers = rows[0] ?? [];
     const entries = [];
 
     for (let column = 0; column < headers.length; column += 1) {
@@ -24,9 +20,8 @@ export async function parseLegacyWorkbook(
             continue;
         }
 
-        for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
-            const values = rowValues(sheet.getRow(rowNumber));
-            const name = String(values[column] ?? "").trim();
+        for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+            const name = String(rows[rowIndex]?.[column] ?? "").trim();
             if (!name) {
                 continue;
             }
@@ -34,7 +29,7 @@ export async function parseLegacyWorkbook(
             entries.push({
                 categoryName,
                 name,
-                rankPosition: rowNumber - 2,
+                rankPosition: rowIndex - 1,
                 firstConsumedAt: defaultFirstConsumedAt
             });
         }
@@ -47,18 +42,11 @@ export async function parseLegacyWorkbook(
     return { entries };
 }
 
-export async function writeExportWorkbook(categories: CategoryWithEntries[]) {
+export async function writeExportWorkbook(categories: CategoryWithEntries[]): Promise<Blob> {
     const entryCount = categories.reduce((count, category) => count + category.entries.length, 0);
     if (entryCount === 0) {
         throw new Error("Export requires at least one entry");
     }
-
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = "Rankings";
-    workbook.created = new Date();
-
-    const sortedSheet = workbook.addWorksheet("Sorted");
-    writeSortedSheet(sortedSheet, categories);
 
     const entryMetadata = categories.flatMap((category) =>
         category.entries.map((entry) => ({
@@ -69,41 +57,43 @@ export async function writeExportWorkbook(categories: CategoryWithEntries[]) {
             first_consumed_at: entry.firstConsumedAt
         }))
     );
-    addObjectSheet(workbook, "Entry Metadata", entryMetadata);
 
-    return workbook.xlsx.writeBuffer();
+    const workbook = writeXlsxFile([
+        { sheet: "Sorted", data: sortedSheetData(categories) },
+        { sheet: "Entry Metadata", data: objectSheetData(entryMetadata) }
+    ]);
+
+    return workbook.toBlob();
 }
 
-function writeSortedSheet(sheet: ExcelJS.Worksheet, categories: CategoryWithEntries[]) {
+function sortedSheetData(categories: CategoryWithEntries[]): SheetData {
+    const data: SheetData = [];
+
     categories.forEach((category, categoryIndex) => {
-        const column = categoryIndex + 1;
-        sheet.getCell(1, column).value = category.name;
+        setCell(data, 0, categoryIndex, category.name);
 
         category.entries.forEach((entry, entryIndex) => {
-            sheet.getCell(entryIndex + 2, column).value = entry.name;
+            setCell(data, entryIndex + 1, categoryIndex, entry.name);
         });
     });
+
+    return data;
 }
 
-function rowValues(row: ExcelJS.Row) {
-    const values = Array.isArray(row.values) ? row.values : [];
-    return values.slice(1);
+function setCell(data: SheetData, rowIndex: number, columnIndex: number, value: string) {
+    const row = data[rowIndex] ?? (data[rowIndex] = []);
+    row[columnIndex] = value;
 }
 
-function addObjectSheet(
-    workbook: ExcelJS.Workbook,
-    name: string,
-    rows: Record<string, unknown>[]
-) {
-    const sheet = workbook.addWorksheet(name);
+function objectSheetData(rows: Record<string, string | number | null>[]): SheetData {
     const headers = Object.keys(rows[0] ?? {});
 
     if (headers.length === 0) {
-        return;
+        return [];
     }
 
-    sheet.addRow(headers);
-    for (const row of rows) {
-        sheet.addRow(headers.map((header) => row[header] ?? ""));
-    }
+    return [
+        headers,
+        ...rows.map((row) => headers.map((header) => row[header] ?? ""))
+    ];
 }
