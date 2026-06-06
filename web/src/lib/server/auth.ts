@@ -74,7 +74,7 @@ function escapeHtml(value: string) {
 }
 
 export const auth = betterAuth({
-    appName: "goldshelf",
+    appName: "Goldshelf",
     database: env.DB,
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,

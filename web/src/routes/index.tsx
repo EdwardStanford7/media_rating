@@ -287,7 +287,7 @@ function AuthPage({
     return (
         <main className="auth-page">
             <div className="auth-shell">
-                <section className="auth-hero" aria-label="goldshelf">
+                <section className="auth-hero" aria-label="Goldshelf">
                     <h1>Goldshelf</h1>
                     <p>Rank your taste, one choice at a time.</p>
                 </section>
