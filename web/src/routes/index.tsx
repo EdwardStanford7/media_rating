@@ -637,6 +637,8 @@ function Dashboard({
     const closedBinarySessionIdsRef = useRef<Set<string>>(new Set());
     const [queueRankMode, setQueueRankMode] = useState(false);
     const queueRankModeRef = useRef(false);
+    const [categoryDraftName, setCategoryDraftName] = useState("");
+    const [entryDraftName, setEntryDraftName] = useState("");
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
@@ -695,6 +697,8 @@ function Dashboard({
         selectedCategory.entries.length > 1
     );
     const canDragReorderCategories = !busy && dashboard.categories.length > 1;
+    const canCreateCategory = categoryDraftName.trim().length > 0;
+    const canCreateEntry = entryDraftName.trim().length > 0;
 
     useEffect(() => {
         setDraggedEntryId(null);
@@ -991,6 +995,7 @@ function Dashboard({
         try {
             await createCategory({ data: { name: String(form.get("name") ?? "") } });
             formElement.reset();
+            setCategoryDraftName("");
             await refresh();
         } catch (error) {
             setErrorMessage(error);
@@ -1179,6 +1184,7 @@ function Dashboard({
                     }
                 });
                 formElement.reset();
+                setEntryDraftName("");
                 setMessage(`Queued ${cleanName} for ranking on ${formatDateTime(result.availableAt)}.`);
                 if (dashboard.queueSettings.promptForMissingImages) {
                     setImagePickerTarget({
@@ -1203,6 +1209,7 @@ function Dashboard({
                 }
             });
             formElement.reset();
+            setEntryDraftName("");
 
             setSelectedCategoryId(targetCategory.id);
             if (result.kind === "session") {
@@ -1739,24 +1746,24 @@ function Dashboard({
                         <img src="/favicon.svg" alt="" aria-hidden="true" />
                         <span>Goldshelf</span>
                     </Link>
-                    <AccountMenu
-                        busy={busy}
-                        listLocked={Boolean(activeSessionId)}
-                        settings={dashboard.queueSettings}
-                        onExport={handleExport}
-                        onOpenImport={() => setImportToastOpen(true)}
-                        onSaveSettings={handleQueueSettings}
-                        onThemeChange={setThemeMode}
-                        themeMode={themeMode}
-                        userImage={currentUserImage}
-                        userImageVersion={currentUserImageVersion}
-                        userName={currentUserName}
-                    />
                 </div>
 
-                <form className="form-row" onSubmit={handleCreateCategory}>
-                    <input disabled={busy} name="name" placeholder="New category" required />
-                    <button disabled={busy} type="submit">Add</button>
+                <form className="form-row add-form" onSubmit={handleCreateCategory}>
+                    <input
+                        disabled={busy}
+                        name="name"
+                        placeholder="New category"
+                        required
+                        value={categoryDraftName}
+                        onChange={(event) => setCategoryDraftName(event.target.value)}
+                    />
+                    <button
+                        className={canCreateCategory ? "primary" : undefined}
+                        disabled={busy || !canCreateCategory}
+                        type="submit"
+                    >
+                        Add
+                    </button>
                 </form>
 
                 <div
@@ -1809,6 +1816,44 @@ function Dashboard({
                     ) : null}
                 </div>
 
+                {selectedCategory && !activeSessionId ? (
+                    <div className="entry-control-stack sidebar-entry-controls">
+                        <form className="entry-create-form" onSubmit={handleCreateEntry}>
+                            <input
+                                disabled={busy}
+                                name="name"
+                                placeholder="New entry"
+                                required
+                                value={entryDraftName}
+                                onChange={(event) => setEntryDraftName(event.target.value)}
+                            />
+                            <div className="entry-create-row">
+                                <select
+                                    aria-label="Category"
+                                    className="category-select"
+                                    defaultValue={selectedCategory.id}
+                                    disabled={busy}
+                                    key={selectedCategory.id}
+                                    name="categoryId"
+                                >
+                                    {dashboard.categories.map((category) => (
+                                        <option key={category.id} value={category.id}>
+                                            {category.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    className={canCreateEntry ? "primary" : undefined}
+                                    disabled={busy || !canCreateEntry}
+                                    type="submit"
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                ) : null}
+
                 <QueuePanel
                     activeSessionId={activeSessionId}
                     busy={busy}
@@ -1832,10 +1877,38 @@ function Dashboard({
             </aside>
 
             <section className="main stack" ref={mainRef}>
-                <div className="topbar">
-                    <div>
+                <div className="topbar main-topbar">
+                    <div className="main-topbar-title">
                         <h1>{selectedCategory?.name ?? "Categories"}</h1>
+                        <p className="muted">
+                            {selectedCategory
+                                ? `${displayedEntries.length}${entrySearch.trim() ? ` of ${selectedCategory.entries.length}` : ""} entries`
+                                : "Create a category to start ranking."}
+                        </p>
                     </div>
+                    {selectedCategory && !activeSessionId ? (
+                        <div className="entry-search-row main-search-row">
+                            <input
+                                aria-label="Search entries"
+                                value={entrySearch}
+                                placeholder="Search entries"
+                                onChange={(event) => setEntrySearch(event.target.value)}
+                            />
+                        </div>
+                    ) : null}
+                    <AccountMenu
+                        busy={busy}
+                        listLocked={Boolean(activeSessionId)}
+                        settings={dashboard.queueSettings}
+                        onExport={handleExport}
+                        onOpenImport={() => setImportToastOpen(true)}
+                        onSaveSettings={handleQueueSettings}
+                        onThemeChange={setThemeMode}
+                        themeMode={themeMode}
+                        userImage={currentUserImage}
+                        userImageVersion={currentUserImageVersion}
+                        userName={currentUserName}
+                    />
                 </div>
 
                 {dashboard.categories.length === 0 ? (
@@ -1845,42 +1918,6 @@ function Dashboard({
                     >
                         Categories keep each ranked list separate. Use the sidebar form to add one.
                     </EmptyState>
-                ) : null}
-
-                {selectedCategory && !activeSessionId ? (
-                    <div className="entry-control-stack">
-                        <form className="entry-create-form" onSubmit={handleCreateEntry}>
-                            <input disabled={busy} name="name" placeholder="New entry" required />
-                            <div className="entry-create-row">
-                                <select
-                                    aria-label="Category"
-                                    className="category-select"
-                                    defaultValue={selectedCategory.id}
-                                    disabled={busy}
-                                    key={selectedCategory.id}
-                                    name="categoryId"
-                                >
-                                    {dashboard.categories.map((category) => (
-                                        <option key={category.id} value={category.id}>
-                                            {category.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                <button className="primary" disabled={busy} type="submit">
-                                    {dashboard.queueSettings.enabled ? "Add to Queue" : "Add + Rank"}
-                                </button>
-                            </div>
-                        </form>
-
-                        <div className="entry-search-row">
-                            <input
-                                aria-label="Search entries"
-                                value={entrySearch}
-                                placeholder="Search entries"
-                                onChange={(event) => setEntrySearch(event.target.value)}
-                            />
-                        </div>
-                    </div>
                 ) : null}
 
                 {activeSessionId ? (
@@ -1957,8 +1994,8 @@ function Dashboard({
                         {entrySearch.trim()
                             ? "Try a different search term or clear the search field."
                             : dashboard.queueSettings.enabled
-                                ? "Add entries above to queue them for ranking."
-                                : "Add an entry above to start ranking this category."}
+                                ? "Add entries from the sidebar to queue them for ranking."
+                                : "Add an entry from the sidebar to start ranking this category."}
                     </EmptyState>
                 ) : null}
             </section>
@@ -2773,7 +2810,15 @@ function AccountMenu({
                     ref={floatingMenu.panelRef}
                     style={floatingMenu.style}
                 >
-                    <div className="account-menu-header">
+                    <Link
+                        className="account-menu-header account-menu-header-link"
+                        to="/profile"
+                        onClick={() => {
+                            setMenuOpen(false);
+                            clearPanel();
+                        }}
+                        onMouseEnter={clearPanel}
+                    >
                         <AccountAvatar
                             imageKey={userImage}
                             imageVersion={userImageVersion}
@@ -2783,7 +2828,7 @@ function AccountMenu({
                             <strong className="account-display-name">{userName}</strong>
                             <span className="muted">Account</span>
                         </div>
-                    </div>
+                    </Link>
                     <Link
                         className="account-menu-item"
                         to="/profile"

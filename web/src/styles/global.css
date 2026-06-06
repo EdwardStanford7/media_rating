@@ -330,6 +330,37 @@ textarea {
     margin-bottom: 1rem;
 }
 
+.main-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 35;
+    flex-wrap: nowrap;
+    align-items: center;
+    margin: -0.25rem 0 0.35rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    padding: 0.25rem 0 0.95rem;
+}
+
+.main-topbar-title {
+    flex: 0 1 auto;
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+    max-width: min(34rem, 42vw);
+}
+
+.main-topbar-title h1,
+.main-topbar-title p {
+    margin: 0;
+}
+
+.main-topbar-title h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .topbar button,
 .queue-rank-actions button {
     display: inline-flex;
@@ -716,6 +747,10 @@ a.small-button:hover,
     flex: 0 0 auto;
 }
 
+.main-topbar .account-menu {
+    margin-left: auto;
+}
+
 .account-menu-toggle {
     width: 2.35rem;
     height: 2.35rem;
@@ -754,7 +789,7 @@ a.small-button:hover,
 }
 
 .account-menu-panel {
-    width: min(15.5rem, calc(100vw - 2rem));
+    width: min(13.75rem, calc(100vw - 2rem));
     max-height: min(78vh, 680px);
     overflow-x: hidden;
     overflow-y: auto;
@@ -769,6 +804,16 @@ a.small-button:hover,
     border-bottom: 1px solid var(--line);
     padding-bottom: 0.75rem;
     cursor: default;
+}
+
+.account-menu-header-link {
+    color: var(--ink);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.account-menu-header-link:hover {
+    color: var(--accent-strong);
 }
 
 .account-menu-header .muted {
@@ -798,6 +843,12 @@ a.small-button:hover,
     padding: 0.55rem 0.8rem;
     text-align: left;
     text-decoration: none;
+}
+
+.account-menu .floating-menu-panel button,
+.account-menu .account-menu-item {
+    justify-content: space-between;
+    text-align: left;
 }
 
 .account-menu-item.active,
@@ -1253,6 +1304,10 @@ a.small-button:hover,
     justify-items: stretch;
 }
 
+.sidebar-entry-controls {
+    width: 100%;
+}
+
 .entry-create-form,
 .entry-search-row {
     display: grid;
@@ -1276,6 +1331,13 @@ a.small-button:hover,
 
 .entry-search-row input {
     width: 100%;
+}
+
+.main-search-row {
+    flex: 0 1 26rem;
+    width: min(26rem, 100%);
+    max-width: 26rem;
+    margin-right: auto;
 }
 
 .compact-stack {
@@ -1907,6 +1969,19 @@ img.match-poster {
     .form-row {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .main-topbar {
+        align-items: stretch;
+    }
+
+    .main-topbar .account-menu {
+        align-self: flex-end;
+    }
+
+    .main-search-row {
+        width: 100%;
+        max-width: none;
     }
 
     .entry-create-row {
