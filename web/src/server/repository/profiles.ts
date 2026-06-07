@@ -11,7 +11,7 @@ import type {
     ProfileSettingsData,
     PublicProfileData
 } from "@/lib/types";
-import { all, assertOwned, first, getDb, now } from "../db";
+import { all, assertOwned, first, getDb, now } from "@/server/lib/db";
 import type { CategoryRow } from "./stores/categoryStore";
 import { type EntryRow, mapEntry } from "./stores/entryStore";
 

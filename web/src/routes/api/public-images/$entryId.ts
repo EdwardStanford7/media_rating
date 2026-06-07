@@ -1,6 +1,6 @@
 import { hasStoredImage } from "@/lib/images";
-import { auth } from "@/lib/server/auth";
-import { first, getDb } from "@/lib/server/db";
+import { auth } from "@/server/lib/auth";
+import { first, getDb } from "@/server/lib/db";
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
 

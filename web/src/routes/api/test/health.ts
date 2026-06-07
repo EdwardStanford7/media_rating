@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { testModeGate } from "@/lib/server/testMode";
+import { testModeGate } from "@/server/lib/testMode";
 
 export const Route = createFileRoute("/api/test/health")({
     server: {

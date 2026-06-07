@@ -1,6 +1,6 @@
-import { auth } from "@/lib/server/auth";
-import { first, getDb } from "@/lib/server/db";
-import { searchImageCandidates } from "@/lib/server/imageSearch";
+import { auth } from "@/server/lib/auth";
+import { first, getDb } from "@/server/lib/db";
+import { searchImageCandidates } from "@/server/lib/imageSearch";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/api/image-search")({

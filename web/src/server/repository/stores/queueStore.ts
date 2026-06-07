@@ -1,5 +1,5 @@
 import type { QueuedEntry, QueueSettings } from "@/lib/types";
-import { all, first, getDb } from "../../db";
+import { all, first, getDb } from "@/server/lib/db";
 
 export const DEFAULT_QUEUE_DELAY_DAYS = 3;
 export const MAX_QUEUE_DELAY_DAYS = 365;

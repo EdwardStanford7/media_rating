@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { IconButton } from "@/components/Icon";
+import { IconButton } from "@/components/ui/Icon";
 
 export interface AppToast {
     id: number;

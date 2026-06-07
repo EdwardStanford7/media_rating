@@ -1,6 +1,6 @@
 import { orderEntries } from "@/lib/ranking";
 import type { DashboardData, Entry } from "@/lib/types";
-import { all, getDb } from "../db";
+import { all, getDb } from "@/server/lib/db";
 import { type CategoryRow } from "./stores/categoryStore";
 import { type EntryRow, mapEntry } from "./stores/entryStore";
 import { getQueueSettings, listQueuedEntries } from "./stores/queueStore";

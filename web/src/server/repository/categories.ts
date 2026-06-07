@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { hasStoredImage } from "@/lib/images";
-import { all, assertOwned, first, getDb, newId, now } from "../db";
+import { all, assertOwned, first, getDb, newId, now } from "@/server/lib/db";
 import {
     type CategoryRow,
     getOwnedCategory,

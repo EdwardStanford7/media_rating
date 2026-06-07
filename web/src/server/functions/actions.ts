@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
-import { auth, getEmailSignUpOptions } from "./auth";
+import { auth, getEmailSignUpOptions } from "@/server/lib/auth";
 import type { ParsedImport } from "@/lib/types";
 
 export const getAuthOptions = createServerFn({ method: "GET" }).handler(getEmailSignUpOptions);
@@ -13,7 +13,7 @@ export const getSession = createServerFn({ method: "GET" }).handler(async () => 
 export const loadDashboard = createServerFn({ method: "GET" })
     .handler(async () => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.loadDashboard(user.id);
     });
 
@@ -21,14 +21,14 @@ export const updateUserProfile = createServerFn({ method: "POST" })
     .inputValidator((data: { name: string; slug?: string; isPublic?: boolean }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.updateUserProfile(user.id, data);
     });
 
 export const loadProfileSettings = createServerFn({ method: "GET" })
     .handler(async () => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.loadProfileSettings(user.id);
     });
 
@@ -36,7 +36,7 @@ export const loadPublicProfile = createServerFn({ method: "GET" })
     .inputValidator((data: { profileSlug: string }) => data)
     .handler(async ({ data }) => {
         const user = await getOptionalUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.loadPublicProfile(data.profileSlug, user?.id ?? null);
     });
 
@@ -44,7 +44,7 @@ export const updateCategoryVisibility = createServerFn({ method: "POST" })
     .inputValidator((data: { categoryId: string; isPublic: boolean }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.updateCategoryVisibility(user.id, data);
     });
 
@@ -52,7 +52,7 @@ export const searchPublicProfiles = createServerFn({ method: "GET" })
     .inputValidator((data: { query: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.searchPublicProfiles(user.id, data.query);
     });
 
@@ -60,7 +60,7 @@ export const requestFollowByProfileSlug = createServerFn({ method: "POST" })
     .inputValidator((data: { profileSlugOrUrl: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.requestFollowByProfileSlug(user.id, data.profileSlugOrUrl);
     });
 
@@ -68,7 +68,7 @@ export const followProfile = createServerFn({ method: "POST" })
     .inputValidator((data: { profileUserId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.followProfile(user.id, data.profileUserId);
     });
 
@@ -76,7 +76,7 @@ export const approveFollowRequest = createServerFn({ method: "POST" })
     .inputValidator((data: { followerUserId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.approveFollowRequest(user.id, data.followerUserId);
     });
 
@@ -84,7 +84,7 @@ export const declineFollowRequest = createServerFn({ method: "POST" })
     .inputValidator((data: { followerUserId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.declineFollowRequest(user.id, data.followerUserId);
     });
 
@@ -92,7 +92,7 @@ export const cancelFollowRequest = createServerFn({ method: "POST" })
     .inputValidator((data: { followedUserId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.cancelFollowRequest(user.id, data.followedUserId);
     });
 
@@ -100,7 +100,7 @@ export const removeFollow = createServerFn({ method: "POST" })
     .inputValidator((data: { followedUserId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.removeFollow(user.id, data.followedUserId);
     });
 
@@ -108,7 +108,7 @@ export const createCategory = createServerFn({ method: "POST" })
     .inputValidator((data: { name: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.createCategory(user.id, data.name);
     });
 
@@ -116,7 +116,7 @@ export const renameCategory = createServerFn({ method: "POST" })
     .inputValidator((data: { categoryId: string; name: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.renameCategory(user.id, data.categoryId, data.name);
     });
 
@@ -126,7 +126,7 @@ export const moveCategoryRelativeToCategory = createServerFn({ method: "POST" })
     )
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.moveCategoryRelativeToCategory(user.id, data);
     });
 
@@ -134,7 +134,7 @@ export const deleteCategory = createServerFn({ method: "POST" })
     .inputValidator((data: { categoryId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.deleteCategory(user.id, data.categoryId);
     });
 
@@ -148,7 +148,7 @@ export const createEntryWithBinaryRanking = createServerFn({ method: "POST" })
     )
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.createEntryWithBinaryRanking(user.id, data);
     });
 
@@ -162,7 +162,7 @@ export const createQueuedEntry = createServerFn({ method: "POST" })
     )
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.createQueuedEntry(user.id, data);
     });
 
@@ -174,7 +174,7 @@ export const updateQueueSettings = createServerFn({ method: "POST" })
     }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.updateQueueSettings(user.id, data);
     });
 
@@ -182,7 +182,7 @@ export const markImageUnavailable = createServerFn({ method: "POST" })
     .inputValidator((data: { targetKind: "entry" | "queue"; targetId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.markImageUnavailable(user.id, data);
     });
 
@@ -190,7 +190,7 @@ export const startQueuedEntryRanking = createServerFn({ method: "POST" })
     .inputValidator((data: { queuedEntryId: string; overrideDelay?: boolean }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.startQueuedEntryRanking(user.id, data);
     });
 
@@ -198,7 +198,7 @@ export const deleteQueuedEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { queuedEntryId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.deleteQueuedEntry(user.id, data.queuedEntryId);
     });
 
@@ -206,7 +206,7 @@ export const restoreQueuedEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { queuedEntryId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.restoreQueuedEntry(user.id, data.queuedEntryId);
     });
 
@@ -214,7 +214,7 @@ export const renameQueuedEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { queuedEntryId: string; name: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.renameQueuedEntry(user.id, data.queuedEntryId, data.name);
     });
 
@@ -222,7 +222,7 @@ export const startRerankEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.startRerankEntry(user.id, data.entryId);
     });
 
@@ -230,7 +230,7 @@ export const moveEntryRelativeToEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string; targetEntryId: string; placement: "before" | "after" }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.moveEntryRelativeToEntry(user.id, data);
     });
 
@@ -238,7 +238,7 @@ export const renameEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string; name: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.renameEntry(user.id, data.entryId, data.name);
     });
 
@@ -246,7 +246,7 @@ export const deleteEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.deleteEntry(user.id, data.entryId);
     });
 
@@ -254,7 +254,7 @@ export const restoreEntry = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.restoreEntry(user.id, data.entryId);
     });
 
@@ -262,7 +262,7 @@ export const switchEntryCategory = createServerFn({ method: "POST" })
     .inputValidator((data: { entryId: string; targetCategoryId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.switchEntryCategory(user.id, data);
     });
 
@@ -270,7 +270,7 @@ export const getBinarySession = createServerFn({ method: "GET" })
     .inputValidator((data: { sessionId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.getBinarySession(user.id, data.sessionId);
     });
 
@@ -278,7 +278,7 @@ export const cancelBinarySession = createServerFn({ method: "POST" })
     .inputValidator((data: { sessionId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.cancelBinarySession(user.id, data.sessionId);
     });
 
@@ -286,7 +286,7 @@ export const submitBinaryWinner = createServerFn({ method: "POST" })
     .inputValidator((data: { sessionId: string; winnerId: string }) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.submitBinaryWinner(user.id, data);
     });
 
@@ -294,7 +294,7 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
     .inputValidator((data: ParsedImport) => data)
     .handler(async ({ data }) => {
         const user = await requireUser();
-        const repo = await import("./repository");
+        const repo = await import("@/server/repository");
         return repo.importLegacyEntries(user.id, data);
     });
 

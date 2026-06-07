@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { errorMessage } from "@/lib/format";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
-import { getBinarySession, submitBinaryWinner } from "@/lib/server/actions";
+import { getBinarySession, submitBinaryWinner } from "@/server/functions/actions";
 import type { BinarySessionView, CategoryWithEntries, Entry } from "@/lib/types";
 
 export function BinaryRankPanel({

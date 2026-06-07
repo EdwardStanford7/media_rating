@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AuthPage } from "@/components/AuthPage";
-import { Dashboard } from "@/components/Dashboard";
-import { getAuthOptions, getSession, loadDashboard } from "@/lib/server/actions";
+import { AuthPage } from "@/components/auth/AuthPage";
+import { Dashboard } from "@/components/dashboard/Dashboard";
+import { getAuthOptions, getSession, loadDashboard } from "@/server/functions/actions";
 
 export const Route = createFileRoute("/")({
     head: () => ({

@@ -1,4 +1,4 @@
-import { first, getDb } from "../../db";
+import { first, getDb } from "@/server/lib/db";
 
 export interface CategoryRow {
     id: string;

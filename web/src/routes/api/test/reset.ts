@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { all, getDb } from "@/lib/server/db";
-import { testModeGate } from "@/lib/server/testMode";
+import { all, getDb } from "@/server/lib/db";
+import { testModeGate } from "@/server/lib/testMode";
 
 // Tables that must never be wiped: SQLite internals, D1 bookkeeping, and the
 // migrations ledger (the e2e runner applies migrations once before the server starts).

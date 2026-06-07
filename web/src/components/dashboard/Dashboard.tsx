@@ -1,17 +1,17 @@
 import { Link } from "@tanstack/react-router";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccountMenu } from "@/components/AccountMenu";
-import { BinaryRankPanel } from "@/components/BinaryRankPanel";
-import { BusyOverlay } from "@/components/BusyOverlay";
-import { CategoryListItem } from "@/components/CategoryListItem";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { EmptyState } from "@/components/EmptyState";
-import { EntryCard } from "@/components/EntryCard";
-import { ImagePickerModal } from "@/components/ImagePickerModal";
-import { ImportSpreadsheetToast } from "@/components/ImportSpreadsheetToast";
-import { QueuePanel } from "@/components/QueuePanel";
-import { ToastStack, type AppToast } from "@/components/ToastStack";
+import { AccountMenu } from "@/components/layout/AccountMenu";
+import { BinaryRankPanel } from "@/components/ranking/BinaryRankPanel";
+import { BusyOverlay } from "@/components/ui/BusyOverlay";
+import { CategoryListItem } from "@/components/dashboard/CategoryListItem";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { EntryCard } from "@/components/dashboard/EntryCard";
+import { ImagePickerModal } from "@/components/ranking/ImagePickerModal";
+import { ImportSpreadsheetToast } from "@/components/queue/ImportSpreadsheetToast";
+import { QueuePanel } from "@/components/queue/QueuePanel";
+import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
 import { isEditableShortcutTarget, nextPaint } from "@/lib/dom";
 import {
     isReorderNoop,
@@ -47,7 +47,7 @@ import {
     startQueuedEntryRanking,
     switchEntryCategory,
     updateQueueSettings
-} from "@/lib/server/actions";
+} from "@/server/functions/actions";
 import { applyThemeMode, readInitialThemeMode, saveThemeMode, type ThemeMode } from "@/lib/theme";
 import type {
     BinarySessionView,

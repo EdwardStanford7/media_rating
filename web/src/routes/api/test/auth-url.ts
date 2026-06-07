@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { testModeGate, takeAuthUrl, type CapturedAuthUrlType } from "@/lib/server/testMode";
+import { testModeGate, takeAuthUrl, type CapturedAuthUrlType } from "@/server/lib/testMode";
 
 const AUTH_URL_TYPES: CapturedAuthUrlType[] = ["reset-password"];
 

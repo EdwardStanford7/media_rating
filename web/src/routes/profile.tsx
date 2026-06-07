@@ -13,7 +13,7 @@ import {
     searchPublicProfiles,
     updateCategoryVisibility,
     updateUserProfile
-} from "@/lib/server/actions";
+} from "@/server/functions/actions";
 import { canViewProfile, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage } from "@/lib/images";
 import type { FollowProfileSummary, FollowSearchResult, ProfileSettingsData } from "@/lib/types";

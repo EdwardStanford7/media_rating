@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { env } from "cloudflare:workers";
 import { hasStoredImage } from "@/lib/images";
-import { all, assertOwned, first, getDb, newId, now, runBatches } from "../db";
+import { all, assertOwned, first, getDb, newId, now, runBatches } from "@/server/lib/db";
 import { getOwnedCategory } from "./stores/categoryStore";
 import {
     getNextActiveRankPosition,

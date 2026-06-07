@@ -1,7 +1,7 @@
 import { orderEntries } from "@/lib/ranking";
 import { env } from "cloudflare:workers";
 import { NO_IMAGE_KEY, hasStoredImage } from "@/lib/images";
-import { assertOwned, first, getDb, newId, now } from "../db";
+import { assertOwned, first, getDb, newId, now } from "@/server/lib/db";
 import { getOwnedCategory } from "./stores/categoryStore";
 import {
     getActiveEntryCount,

@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
-import { MenuIconLabel } from "@/components/Icon";
+import { MenuIconLabel } from "@/components/ui/Icon";
 import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useFloatingMenu } from "@/hooks/useFloatingMenu";
 import { signOut } from "@/lib/auth-client";

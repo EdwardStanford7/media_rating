@@ -1,4 +1,4 @@
-import { assertOwned, getDb, newId, now } from "../db";
+import { assertOwned, getDb, newId, now } from "@/server/lib/db";
 import { getOwnedCategory } from "./stores/categoryStore";
 import {
     getOwnedQueuedEntry,

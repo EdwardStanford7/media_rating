@@ -1,5 +1,5 @@
 import type { Entry } from "@/lib/types";
-import { all, first, getDb } from "../../db";
+import { all, first, getDb } from "@/server/lib/db";
 
 export interface EntryRow {
     id: string;

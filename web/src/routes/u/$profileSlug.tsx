@@ -9,7 +9,7 @@ import {
     followProfile,
     loadPublicProfile,
     removeFollow
-} from "@/lib/server/actions";
+} from "@/server/functions/actions";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
 
 const TOAST_TIMEOUT_MS = 5_000;

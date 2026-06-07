@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { hasStoredImage } from "@/lib/images";
-import { all, getDb, now } from "../db";
+import { all, getDb, now } from "@/server/lib/db";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DELETED_ITEM_RETENTION_MS = 30 * DAY_MS;

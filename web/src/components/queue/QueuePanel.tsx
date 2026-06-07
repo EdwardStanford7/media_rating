@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { EmptyState } from "@/components/EmptyState";
-import { Icon } from "@/components/Icon";
-import { QueuedEntryRow } from "@/components/QueuedEntryRow";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Icon } from "@/components/ui/Icon";
+import { QueuedEntryRow } from "@/components/queue/QueuedEntryRow";
 import type { QueuedEntry } from "@/lib/types";
 
 export function QueuePanel({

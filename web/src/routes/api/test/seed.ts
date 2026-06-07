@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { NO_IMAGE_KEY } from "@/lib/images";
-import { auth } from "@/lib/server/auth";
-import { getDb, newId, now } from "@/lib/server/db";
-import { testModeGate } from "@/lib/server/testMode";
+import { auth } from "@/server/lib/auth";
+import { getDb, newId, now } from "@/server/lib/db";
+import { testModeGate } from "@/server/lib/testMode";
 
 interface SeedEntry {
     name: string;

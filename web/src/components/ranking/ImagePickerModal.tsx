@@ -10,7 +10,7 @@ import {
     type ImagePickerTarget,
     type ImageSearchCandidate
 } from "@/lib/posterImage";
-import { markImageUnavailable } from "@/lib/server/actions";
+import { markImageUnavailable } from "@/server/functions/actions";
 
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 
