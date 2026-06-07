@@ -11,7 +11,9 @@
     "db:migrate:local": "wrangler d1 migrations apply media-rating --local",
     "db:migrate:remote": "wrangler d1 migrations apply media-rating --remote",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsr generate && tsc --noEmit"
+    "test:dev": "wrangler d1 migrations apply media-rating --local --config wrangler.e2e.jsonc --persist-to .wrangler/e2e-state && vite dev --config vite.config.e2e.ts",
+    "test:e2e": "playwright test",
+    "typecheck": "tsr generate && tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.9",
@@ -26,6 +28,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.39.0",
     "@cloudflare/workers-types": "^4.20260529.1",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/router-cli": "^1.167.9",
     "@types/node": "^25.9.1",

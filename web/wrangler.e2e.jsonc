@@ -1,0 +1,33 @@
+// E2E-only wrangler config. Never deployed: local Playwright runs only.
+// State is isolated under .wrangler/e2e-state so e2e runs never touch the
+// regular local dev database. TEST_MODE unlocks the /api/test/* endpoints.
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "goldshelf-e2e",
+    "compatibility_date": "2026-05-22",
+    "compatibility_flags": [
+        "nodejs_compat"
+    ],
+    "main": "@tanstack/react-start/server-entry",
+    "workers_dev": false,
+    "preview_urls": false,
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "media-rating",
+            "database_id": "06785885-2db1-4110-befd-90a4bca94f5d",
+            "migrations_dir": "migrations"
+        }
+    ],
+    "r2_buckets": [
+        {
+            "bucket_name": "media-rating-images",
+            "binding": "IMAGES"
+        }
+    ],
+    "vars": {
+        "BETTER_AUTH_URL": "http://localhost:3100",
+        "BETTER_AUTH_SECRET": "e2e-only-secret-not-used-in-production",
+        "TEST_MODE": "true"
+    }
+}

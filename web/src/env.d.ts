@@ -6,5 +6,6 @@ declare namespace Cloudflare {
         BETTER_AUTH_SECRET: string;
         RESEND_API_KEY?: string;
         PASSWORD_RESET_FROM_EMAIL?: string;
+        TEST_MODE?: string;
     }
 }

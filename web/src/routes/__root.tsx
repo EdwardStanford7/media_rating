@@ -46,6 +46,11 @@ function RootComponent() {
         return applyThemeMode(readInitialThemeMode());
     }, []);
 
+    // Marks client-side hydration so e2e tests can wait before interacting.
+    useEffect(() => {
+        document.documentElement.dataset.hydrated = "true";
+    }, []);
+
     return (
         <RootDocument>
             <Outlet />
