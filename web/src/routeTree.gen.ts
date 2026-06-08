@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SigninRouteImport } from './routes/signin'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UProfileSlugRouteImport } from './routes/u/$profileSlug'
@@ -25,6 +26,11 @@ import { Route as ApiPublicImagesEntryIdRouteImport } from './routes/api/public-
 import { Route as ApiImagesEntryIdRouteImport } from './routes/api/images/$entryId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -106,6 +112,7 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
@@ -123,6 +130,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/profile'
+    | '/signin'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/profile'
+    | '/signin'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
@@ -194,6 +205,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/profile'
+    | '/signin'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
@@ -212,6 +224,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProfileRoute: typeof ProfileRoute
+  SigninRoute: typeof SigninRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
   ApiImageSearchRoute: typeof ApiImageSearchRoute
   ApiProfileImageRoute: typeof ApiProfileImageRoute
@@ -229,6 +242,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profile': {
       id: '/profile'
       path: '/profile'
@@ -340,6 +360,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProfileRoute: ProfileRoute,
+  SigninRoute: SigninRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
   ApiImageSearchRoute: ApiImageSearchRoute,
   ApiProfileImageRoute: ApiProfileImageRoute,

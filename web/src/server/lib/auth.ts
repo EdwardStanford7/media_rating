@@ -6,6 +6,17 @@ import { captureAuthUrl, isTestMode } from "./testMode";
 export const MIN_PASSWORD_LENGTH = 12;
 const MAX_PASSWORD_LENGTH = 128;
 
+// better-auth names the session cookie `<prefix>better-auth.session_token`
+// (prefixed with `__Secure-` when secure cookies are on). We only need to
+// know whether a session cookie is present to decide if a DB session lookup
+// is worth attempting, so a substring check on the opaque name is enough.
+const SESSION_COOKIE_HINT = "better-auth.session_token";
+
+/** True when the request carries a better-auth session cookie. */
+export function requestHasSessionCookie(headers: Headers) {
+    return headers.get("cookie")?.includes(SESSION_COOKIE_HINT) ?? false;
+}
+
 function optionalEnv(value: string | undefined) {
     const trimmed = value?.trim();
     return trimmed ? trimmed : undefined;

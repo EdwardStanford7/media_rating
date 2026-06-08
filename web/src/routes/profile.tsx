@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { updateCategoryVisibility } from "@/server/categories";
@@ -35,7 +35,7 @@ export const Route = createFileRoute("/profile")({
     loader: async () => {
         const session = await getSession();
         if (!session?.user) {
-            return { session: null, settings: null };
+            throw redirect({ to: "/signin" });
         }
 
         return {

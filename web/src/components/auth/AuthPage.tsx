@@ -122,7 +122,7 @@ export function AuthPage({
       setResetToken(null);
       setStatusMessage('Password updated. Sign in with your new password.');
       if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', '/');
+        window.history.replaceState(null, '', '/signin');
       }
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : 'Password reset failed');
@@ -363,7 +363,7 @@ async function requestPasswordResetEmail({ email }: { email: string }) {
     },
     body: JSON.stringify({
       email: email.trim(),
-      redirectTo: 'https://goldshelf.net/',
+      redirectTo: 'https://goldshelf.net/signin',
     }),
   });
 

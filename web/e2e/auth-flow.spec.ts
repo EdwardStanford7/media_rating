@@ -2,14 +2,24 @@ import { test, expect } from "./base";
 import { getAuthUrl, gotoApp, seedUsers, signInViaApi, TEST_PASSWORD } from "./helpers";
 
 test.describe("Auth flows", () => {
-    test("shows the sign-in page when logged out", async ({ page }) => {
+    test("marketing landing shows for logged-out visitors at /", async ({ page }) => {
         await gotoApp(page);
+        await expect(
+            page.getByRole("heading", { name: "Rank everything you love." })
+        ).toBeVisible();
+
+        await page.getByRole("link", { name: "Get started" }).click();
+        await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    });
+
+    test("shows the sign-in page when logged out", async ({ page }) => {
+        await gotoApp(page, "/signin");
         await expect(page.getByRole("heading", { name: "Goldshelf" })).toBeVisible();
         await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     });
 
     test("sign up lands on an empty dashboard", async ({ page }) => {
-        await gotoApp(page);
+        await gotoApp(page, "/signin");
         await page.getByRole("button", { name: "Create an account" }).click();
         await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
 
@@ -30,7 +40,7 @@ test.describe("Auth flows", () => {
             }
         ]);
 
-        await gotoApp(page);
+        await gotoApp(page, "/signin");
         await page.getByLabel("Email").fill("reader@e2e.test");
         await page.getByRole("textbox", { name: /^Password/ }).fill(TEST_PASSWORD);
         await page.getByRole("button", { name: "Sign in" }).click();
@@ -43,7 +53,7 @@ test.describe("Auth flows", () => {
     test("wrong password shows an error", async ({ page }) => {
         await seedUsers([{ email: "reader@e2e.test", name: "Reader" }]);
 
-        await gotoApp(page);
+        await gotoApp(page, "/signin");
         await page.getByLabel("Email").fill("reader@e2e.test");
         await page.getByRole("textbox", { name: /^Password/ }).fill("not-the-right-password");
         await page.getByRole("button", { name: "Sign in" }).click();
@@ -51,7 +61,7 @@ test.describe("Auth flows", () => {
         await expect(page.getByText("Email or password is incorrect.")).toBeVisible();
     });
 
-    test("sign out returns to the auth page", async ({ page, context }) => {
+    test("sign out returns to the marketing home", async ({ page, context }) => {
         await seedUsers([{ email: "reader@e2e.test", name: "Reader" }]);
         await signInViaApi(context, "reader@e2e.test");
 
@@ -61,7 +71,9 @@ test.describe("Auth flows", () => {
         await page.getByRole("button", { name: "Account menu" }).click();
         await page.getByRole("menuitem", { name: "Sign Out" }).click();
 
-        await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible({ timeout: 15_000 });
+        await expect(
+            page.getByRole("heading", { name: "Rank everything you love." })
+        ).toBeVisible({ timeout: 15_000 });
     });
 
     test("password reset via captured email link", async ({ page }) => {
@@ -69,7 +81,7 @@ test.describe("Auth flows", () => {
         await seedUsers([{ email, name: "Forgetful" }]);
         const newPassword = "brand-new-passphrase-42";
 
-        await gotoApp(page);
+        await gotoApp(page, "/signin");
         await page.getByRole("button", { name: "Forgot password?" }).click();
         await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
         await page.getByLabel("Email").fill(email);
@@ -83,7 +95,7 @@ test.describe("Auth flows", () => {
         const token = /reset-password\/([^/?]+)/.exec(resetUrl)?.[1];
         expect(token, `unexpected reset URL shape: ${resetUrl}`).toBeTruthy();
 
-        await gotoApp(page, `/?token=${token}`);
+        await gotoApp(page, `/signin?token=${token}`);
         await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
         await page.getByRole("textbox", { name: /^New password/ }).fill(newPassword);
         await page.getByRole("textbox", { name: /^Confirm password/ }).fill(newPassword);

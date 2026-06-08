@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ListOrdered } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,10 +25,28 @@ const POSTER_CLASS =
 
 export const Route = createFileRoute("/u/$profileSlug")({
     loader: async ({ params }) => {
-        return loadPublicProfile({ data: { profileSlug: params.profileSlug } });
+        const data = await loadPublicProfile({ data: { profileSlug: params.profileSlug } });
+        if (!data) {
+            throw notFound();
+        }
+
+        return data;
     },
-    component: PublicProfileRoute
+    component: PublicProfileRoute,
+    notFoundComponent: ProfileNotFound
 });
+
+function ProfileNotFound() {
+    return (
+        <main className="grid min-h-screen content-start gap-4 bg-app px-[clamp(1rem,3vw,2.25rem)] py-5 text-ink">
+            <PublicProfileTopbar signedIn={false} />
+            <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
+                <h1 className="text-2xl font-bold">Profile Not Found</h1>
+                <p className="text-muted-foreground">This profile is private or does not exist.</p>
+            </Card>
+        </main>
+    );
+}
 
 function PublicProfileRoute() {
     const loaderData = Route.useLoaderData();

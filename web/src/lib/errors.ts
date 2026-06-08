@@ -26,7 +26,7 @@ export function isUnauthorizedError(error: unknown) {
  */
 export function redirectIfUnauthorized(error: unknown) {
     if (typeof window !== "undefined" && isUnauthorizedError(error)) {
-        window.location.assign("/");
+        window.location.assign("/signin");
         return true;
     }
 

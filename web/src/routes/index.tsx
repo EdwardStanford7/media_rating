@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AuthPage } from "@/components/auth/AuthPage";
 import { Dashboard } from "@/components/dashboard/Dashboard";
-import { loadDashboard } from "@/server/dashboard";
-import { getAuthOptions, getSession } from "@/server/session";
+import { MarketingLanding } from "@/components/marketing/MarketingLanding";
+import { loadHome } from "@/server/dashboard";
 
 export const Route = createFileRoute("/")({
     head: () => ({
@@ -10,34 +9,22 @@ export const Route = createFileRoute("/")({
             { rel: "canonical", href: "https://goldshelf.net/" }
         ]
     }),
-    loader: async () => {
-        const authOptions = await getAuthOptions();
-        const session = await getSession();
-        if (!session?.user) {
-            return { session: null, dashboard: null, authOptions };
-        }
-
-        return {
-            session,
-            authOptions,
-            dashboard: await loadDashboard()
-        };
-    },
+    loader: () => loadHome(),
     component: Home
 });
 
 function Home() {
-    const { session, dashboard, authOptions } = Route.useLoaderData();
+    const { dashboard, user } = Route.useLoaderData();
 
-    if (!session?.user || !dashboard) {
-        return <AuthPage authOptions={authOptions} />;
+    if (!dashboard || !user) {
+        return <MarketingLanding />;
     }
 
     return (
         <Dashboard
             initialDashboard={dashboard}
-            userImage={session.user.image ?? null}
-            userName={session.user.name}
+            userImage={user.image}
+            userName={user.name}
         />
     );
 }
