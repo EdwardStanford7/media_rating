@@ -1,6 +1,8 @@
-import type { DragEvent, FormEvent } from "react";
+import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
@@ -10,25 +12,22 @@ import {
 } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import type { DropPlacement } from "@/lib/dragReorder";
 import type { CategoryWithEntries } from "@/lib/types";
 
-const CATEGORY_BUTTON_DRAGGING_CLASS =
-    "cursor-grabbing border-dashed border-brand bg-selected-panel shadow-none [&>*]:opacity-0";
+function categoryButtonClass(isActive: boolean) {
+    return `block w-full min-w-0 cursor-pointer rounded-control border px-[0.8rem] py-[0.55rem] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
+        isActive
+            ? "border-gold bg-selected-panel"
+            : "border-line bg-panel hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--line))]"
+    }`;
+}
 
 export function CategoryListItem({
     category,
     isActive,
     busy,
     canDragReorder,
-    draggedCategoryId,
-    isDragging,
     listLocked,
-    onDragEnd,
-    onDragPreview,
-    onDragStart,
-    onDropCategory,
-    onDropPreview,
     onDelete,
     onRename,
     onSelect
@@ -37,14 +36,7 @@ export function CategoryListItem({
     isActive: boolean;
     busy: boolean;
     canDragReorder: boolean;
-    draggedCategoryId: string | null;
-    isDragging: boolean;
     listLocked: boolean;
-    onDragEnd: () => void;
-    onDragPreview: (categoryId: string, targetCategoryId: string, placement: DropPlacement) => void;
-    onDragStart: () => void;
-    onDropCategory: (categoryId: string, targetCategoryId: string, placement: DropPlacement) => Promise<void>;
-    onDropPreview: () => void;
     onDelete: () => void;
     onRename: (name: string) => Promise<void>;
     onSelect: () => void;
@@ -53,6 +45,16 @@ export function CategoryListItem({
     const [menuOpen, setMenuOpen] = useState(false);
     const [name, setName] = useState(category.name);
     useEscapeKey(isRenaming, () => { setName(category.name); setIsRenaming(false); });
+
+    // The whole row is draggable: `listeners` go on the wrapper so a press-and-drag
+    // anywhere reorders, while a plain click still selects (MouseSensor only starts a
+    // drag after an 8px move). The grip is a decorative affordance. We don't spread
+    // `attributes` (it would add role="button" to the wrapper and collide with the
+    // inner category button e2e selects by name).
+    const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: category.id,
+        disabled: !canDragReorder || isRenaming || menuOpen
+    });
 
     useEffect(() => {
         setName(category.name);
@@ -64,35 +66,6 @@ export function CategoryListItem({
         await onRename(name);
         setIsRenaming(false);
     }
-
-    function dragPlacementForEvent(event: DragEvent<HTMLElement>): DropPlacement {
-        const rect = event.currentTarget.getBoundingClientRect();
-        return event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-    }
-
-    function setCategoryDragImage(event: DragEvent<HTMLElement>) {
-        const row = event.currentTarget;
-        const rect = row.getBoundingClientRect();
-        const dragImage = row.cloneNode(true) as HTMLElement;
-        dragImage.querySelector("button")?.classList.remove(...CATEGORY_BUTTON_DRAGGING_CLASS.split(" "));
-        dragImage.style.opacity = "0.96";
-        dragImage.style.transform = "rotate(0.5deg)";
-        dragImage.style.boxShadow = "var(--floating-shadow)";
-        dragImage.style.width = `${rect.width}px`;
-        dragImage.style.height = `${rect.height}px`;
-        dragImage.style.position = "fixed";
-        dragImage.style.left = "-10000px";
-        dragImage.style.top = "-10000px";
-        dragImage.style.pointerEvents = "none";
-        document.body.appendChild(dragImage);
-
-        const offsetX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-        const offsetY = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
-        event.dataTransfer.setDragImage(dragImage, offsetX, offsetY);
-        window.setTimeout(() => dragImage.remove(), 0);
-    }
-
-    const isCategoryDraggable = canDragReorder && !isRenaming && !menuOpen;
 
     if (isRenaming) {
         return (
@@ -127,74 +100,36 @@ export function CategoryListItem({
         <ContextMenu onOpenChange={setMenuOpen}>
             <ContextMenuTrigger asChild disabled={busy}>
                 <div
-            className={`relative grid min-w-0 grid-cols-[minmax(0,1fr)] ${isCategoryDraggable ? "cursor-grab" : ""}`.trim()}
-            data-category-id={category.id}
-            draggable={isCategoryDraggable}
-            onDragEnd={onDragEnd}
-            onDragOver={(event) => {
-                if (!isCategoryDraggable || !draggedCategoryId || isDragging) {
-                    return;
-                }
-
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                onDragPreview(draggedCategoryId, category.id, dragPlacementForEvent(event));
-            }}
-            onDragStart={(event) => {
-                if (!isCategoryDraggable) {
-                    event.preventDefault();
-                    return;
-                }
-
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("application/x-goldshelf-category-id", category.id);
-                event.dataTransfer.setData("text/plain", `category:${category.id}`);
-                setCategoryDragImage(event);
-                onDragStart();
-            }}
-            onDrop={(event) => {
-                if (!isCategoryDraggable) {
-                    return;
-                }
-
-                event.preventDefault();
-                event.stopPropagation();
-                const plainData = event.dataTransfer.getData("text/plain");
-                const droppedCategoryId =
-                    event.dataTransfer.getData("application/x-goldshelf-category-id") ||
-                    (plainData.startsWith("category:") ? plainData.slice("category:".length) : "") ||
-                    draggedCategoryId;
-                if (droppedCategoryId && droppedCategoryId !== category.id) {
-                    void onDropCategory(droppedCategoryId, category.id, dragPlacementForEvent(event));
-                } else if (droppedCategoryId) {
-                    onDropPreview();
-                } else {
-                    onDragEnd();
-                }
-            }}
-        >
-            <button
-                className={`block w-full min-w-0 cursor-pointer rounded-control border px-[0.8rem] py-[0.55rem] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
-                    isDragging
-                        ? CATEGORY_BUTTON_DRAGGING_CLASS
-                        : isActive
-                            ? "border-gold bg-selected-panel"
-                            : "border-line bg-panel hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--line))]"
-                } ${isCategoryDraggable && !isDragging ? "cursor-grab" : ""}`.trim()}
-                disabled={busy}
-                title="Double-click to rename · Right-click for actions"
-                type="button"
-                onClick={onSelect}
-                onDoubleClick={() => {
-                    if (!busy) {
-                        setName(category.name);
-                        setIsRenaming(true);
-                    }
-                }}
-            >
-                <strong>{category.name}</strong>
-                <span className="text-muted-foreground"> · {category.entries.length}</span>
-            </button>
+                    ref={setNodeRef}
+                    className={`relative min-w-0 ${canDragReorder ? "cursor-grab" : ""} ${isDragging ? "opacity-40" : ""}`.trim()}
+                    data-category-id={category.id}
+                    style={{ transform: CSS.Transform.toString(transform), transition }}
+                    {...listeners}
+                >
+                    <button
+                        className={`${categoryButtonClass(isActive)} ${canDragReorder ? "pr-9" : ""}`.trim()}
+                        disabled={busy}
+                        title="Double-click to rename · Right-click for actions"
+                        type="button"
+                        onClick={onSelect}
+                        onDoubleClick={() => {
+                            if (!busy) {
+                                setName(category.name);
+                                setIsRenaming(true);
+                            }
+                        }}
+                    >
+                        <strong>{category.name}</strong>
+                        <span className="text-muted-foreground"> · {category.entries.length}</span>
+                    </button>
+                    {canDragReorder ? (
+                        <span
+                            aria-hidden="true"
+                            className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center justify-center text-muted-foreground"
+                        >
+                            <GripVertical className="size-4" />
+                        </span>
+                    ) : null}
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
@@ -215,5 +150,25 @@ export function CategoryListItem({
                 </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>
+    );
+}
+
+export function CategoryDragOverlay({
+    category,
+    isActive
+}: {
+    category: CategoryWithEntries;
+    isActive: boolean;
+}) {
+    return (
+        <div className="relative min-w-0 rotate-[0.5deg] cursor-grabbing">
+            <span className={`${categoryButtonClass(isActive)} block pr-9 shadow-floating`}>
+                <strong>{category.name}</strong>
+                <span className="text-muted-foreground"> · {category.entries.length}</span>
+            </span>
+            <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center justify-center text-muted-foreground">
+                <GripVertical className="size-4" />
+            </span>
+        </div>
     );
 }

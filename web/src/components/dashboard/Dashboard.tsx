@@ -1,15 +1,31 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    DndContext,
+    DragOverlay,
+    MouseSensor,
+    TouchSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+    type DragStartEvent
+} from "@dnd-kit/core";
+import {
+    SortableContext,
+    arrayMove,
+    rectSortingStrategy,
+    verticalListSortingStrategy
+} from "@dnd-kit/sortable";
 import { Library, Search, Swords } from "lucide-react";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { BinaryRankPanel } from "@/components/ranking/BinaryRankPanel";
 import { Button } from "@/components/ui/button";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { BusyOverlay } from "@/components/ui/BusyOverlay";
-import { CategoryListItem } from "@/components/dashboard/CategoryListItem";
+import { CategoryDragOverlay, CategoryListItem } from "@/components/dashboard/CategoryListItem";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { EntryCard } from "@/components/dashboard/EntryCard";
+import { EntryCard, EntryDragOverlay } from "@/components/dashboard/EntryCard";
 import { ImagePickerModal } from "@/components/ranking/ImagePickerModal";
 import { ImportSpreadsheetToast } from "@/components/queue/ImportSpreadsheetToast";
 import { Input } from "@/components/ui/input";
@@ -26,11 +42,8 @@ import { showActionToast, showToast, type ToastVariant } from "@/lib/toast";
 import { isEditableShortcutTarget, nextPaint } from "@/lib/dom";
 import {
     isReorderNoop,
-    previewCategoryReorder,
-    previewEntryReorder,
-    type CategoryDragPreview,
-    type DropPlacement,
-    type EntryDragPreview
+    placementForSortableMove,
+    type DropPlacement
 } from "@/lib/dragReorder";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { currentDateTimestamp, dateInputToTimestamp, errorMessage, formatDateTime } from "@/lib/format";
@@ -85,6 +98,24 @@ interface ReversibleAction {
 
 const UNDO_STACK_LIMIT = 20;
 
+/**
+ * Apply an optimistic drag ordering (a list of ids) on top of the canonical
+ * items so a reorder shows immediately, before the server refresh lands. Falls
+ * back to the canonical order if the id set no longer matches (e.g. after a
+ * refresh adds/removes items).
+ */
+function applyDragOrder<T extends { id: string }>(items: T[], order: string[] | null): T[] {
+    if (!order) {
+        return items;
+    }
+
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const ordered = order
+        .map((id) => byId.get(id))
+        .filter((item): item is T => Boolean(item));
+    return ordered.length === items.length ? ordered : items;
+}
+
 export function Dashboard({
     initialDashboard,
     userImage,
@@ -119,10 +150,16 @@ export function Dashboard({
     const [currentUserName, setCurrentUserName] = useState(userName);
     const [currentUserImage, setCurrentUserImage] = useState(userImage);
     const [currentUserImageVersion, setCurrentUserImageVersion] = useState(0);
-    const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
-    const [entryDragPreview, setEntryDragPreview] = useState<EntryDragPreview | null>(null);
-    const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
-    const [categoryDragPreview, setCategoryDragPreview] = useState<CategoryDragPreview | null>(null);
+    // `active*Id` drives the floating DragOverlay; `*DragOrder` is the optimistic
+    // post-drop ordering shown until the server refresh lands.
+    const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+    const [entryDragOrder, setEntryDragOrder] = useState<string[] | null>(null);
+    const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+    const [categoryDragOrder, setCategoryDragOrder] = useState<string[] | null>(null);
+    const sensors = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } })
+    );
     const mainRef = useRef<HTMLElement | null>(null);
     const reversibleActionIdRef = useRef(0);
     const undoStackRef = useRef<ReversibleAction[]>([]);
@@ -135,9 +172,9 @@ export function Dashboard({
             null,
         [dashboard.categories, selectedCategoryId]
     );
-    const previewedCategories = useMemo(
-        () => previewCategoryReorder(dashboard.categories, categoryDragPreview),
-        [categoryDragPreview, dashboard.categories]
+    const orderedCategories = useMemo(
+        () => applyDragOrder(dashboard.categories, categoryDragOrder),
+        [categoryDragOrder, dashboard.categories]
     );
     const displayedEntries = useMemo(() => {
         if (!selectedCategory) {
@@ -151,9 +188,9 @@ export function Dashboard({
 
         return orderEntries(entries);
     }, [entrySearch, selectedCategory]);
-    const previewedEntries = useMemo(
-        () => previewEntryReorder(displayedEntries, entryDragPreview),
-        [displayedEntries, entryDragPreview]
+    const orderedEntries = useMemo(
+        () => applyDragOrder(displayedEntries, entryDragOrder),
+        [displayedEntries, entryDragOrder]
     );
     const canDragReorderEntries = Boolean(
         selectedCategory &&
@@ -166,14 +203,14 @@ export function Dashboard({
     const canCreateEntry = entryDraftName.trim().length > 0;
 
     useEffect(() => {
-        setDraggedEntryId(null);
-        setEntryDragPreview(null);
+        setActiveEntryId(null);
+        setEntryDragOrder(null);
     }, [activeSessionId, entrySearch, selectedCategoryId]);
 
     useEffect(() => {
         if (!canDragReorderCategories) {
-            setDraggedCategoryId(null);
-            setCategoryDragPreview(null);
+            setActiveCategoryId(null);
+            setCategoryDragOrder(null);
         }
     }, [canDragReorderCategories]);
 
@@ -207,12 +244,14 @@ export function Dashboard({
     }, [userImage]);
 
     useEffect(() => {
-        setDraggedEntryId(null);
+        setActiveEntryId(null);
+        setEntryDragOrder(null);
     }, [selectedCategoryId]);
 
     useEffect(() => {
         if (!canDragReorderEntries) {
-            setDraggedEntryId(null);
+            setActiveEntryId(null);
+            setEntryDragOrder(null);
         }
     }, [canDragReorderEntries]);
 
@@ -472,48 +511,33 @@ export function Dashboard({
         }
     }
 
-    function handleCategoryDragStart(categoryId: string) {
-        setDraggedCategoryId(categoryId);
-        setCategoryDragPreview(null);
+    function handleCategoryDragStart(event: DragStartEvent) {
+        setActiveCategoryId(String(event.active.id));
     }
 
-    function handleCategoryDragPreview(
-        categoryId: string,
-        targetCategoryId: string,
-        placement: DropPlacement
-    ) {
-        if (!canDragReorderCategories || categoryId === targetCategoryId) {
+    function handleCategoryDragCancel() {
+        setActiveCategoryId(null);
+    }
+
+    function handleCategoryDragEnd(event: DragEndEvent) {
+        setActiveCategoryId(null);
+        const { active, over } = event;
+        if (!over || active.id === over.id) {
             return;
         }
 
-        setCategoryDragPreview((currentPreview) => {
-            if (
-                currentPreview?.draggedCategoryId === categoryId &&
-                currentPreview.targetCategoryId === targetCategoryId &&
-                currentPreview.placement === placement
-            ) {
-                return currentPreview;
-            }
-
-            return { draggedCategoryId: categoryId, targetCategoryId, placement };
-        });
-    }
-
-    function handleCategoryDragEnd() {
-        setDraggedCategoryId(null);
-        setCategoryDragPreview(null);
-    }
-
-    function handleCommitCategoryDragPreview() {
-        if (!categoryDragPreview) {
-            handleCategoryDragEnd();
+        const ids = dashboard.categories.map((category) => category.id);
+        const oldIndex = ids.indexOf(String(active.id));
+        const newIndex = ids.indexOf(String(over.id));
+        if (oldIndex < 0 || newIndex < 0) {
             return;
         }
 
+        setCategoryDragOrder(arrayMove(ids, oldIndex, newIndex));
         void handleMoveCategoryRelativeToCategory(
-            categoryDragPreview.draggedCategoryId,
-            categoryDragPreview.targetCategoryId,
-            categoryDragPreview.placement
+            String(active.id),
+            String(over.id),
+            placementForSortableMove(oldIndex, newIndex)
         );
     }
 
@@ -523,14 +547,14 @@ export function Dashboard({
         placement: DropPlacement
     ) {
         if (categoryId === targetCategoryId) {
-            handleCategoryDragEnd();
+            setCategoryDragOrder(null);
             return;
         }
 
         const orderedCategoryIds = dashboard.categories.map((category) => category.id);
         const originalCategoryIndex = orderedCategoryIds.indexOf(categoryId);
         if (isReorderNoop(orderedCategoryIds, categoryId, targetCategoryId, placement)) {
-            handleCategoryDragEnd();
+            setCategoryDragOrder(null);
             return;
         }
 
@@ -554,7 +578,7 @@ export function Dashboard({
             setErrorMessage(error);
         } finally {
             finishBusy();
-            handleCategoryDragEnd();
+            setCategoryDragOrder(null);
         }
     }
 
@@ -836,48 +860,33 @@ export function Dashboard({
         }
     }
 
-    function handleEntryDragStart(entryId: string) {
-        setDraggedEntryId(entryId);
-        setEntryDragPreview(null);
+    function handleEntryDragStart(event: DragStartEvent) {
+        setActiveEntryId(String(event.active.id));
     }
 
-    function handleEntryDragPreview(
-        entryId: string,
-        targetEntryId: string,
-        placement: DropPlacement
-    ) {
-        if (!canDragReorderEntries || entryId === targetEntryId) {
+    function handleEntryDragCancel() {
+        setActiveEntryId(null);
+    }
+
+    function handleEntryDragEnd(event: DragEndEvent) {
+        setActiveEntryId(null);
+        const { active, over } = event;
+        if (!over || active.id === over.id) {
             return;
         }
 
-        setEntryDragPreview((currentPreview) => {
-            if (
-                currentPreview?.draggedEntryId === entryId &&
-                currentPreview.targetEntryId === targetEntryId &&
-                currentPreview.placement === placement
-            ) {
-                return currentPreview;
-            }
-
-            return { draggedEntryId: entryId, targetEntryId, placement };
-        });
-    }
-
-    function handleEntryDragEnd() {
-        setDraggedEntryId(null);
-        setEntryDragPreview(null);
-    }
-
-    function handleCommitEntryDragPreview() {
-        if (!entryDragPreview) {
-            handleEntryDragEnd();
+        const ids = displayedEntries.map((entry) => entry.id);
+        const oldIndex = ids.indexOf(String(active.id));
+        const newIndex = ids.indexOf(String(over.id));
+        if (oldIndex < 0 || newIndex < 0) {
             return;
         }
 
+        setEntryDragOrder(arrayMove(ids, oldIndex, newIndex));
         void handleMoveEntryRelativeToEntry(
-            entryDragPreview.draggedEntryId,
-            entryDragPreview.targetEntryId,
-            entryDragPreview.placement
+            String(active.id),
+            String(over.id),
+            placementForSortableMove(oldIndex, newIndex)
         );
     }
 
@@ -887,14 +896,14 @@ export function Dashboard({
         placement: DropPlacement
     ) {
         if (entryId === targetEntryId) {
-            handleEntryDragEnd();
+            setEntryDragOrder(null);
             return;
         }
 
         const orderedEntryIds = selectedCategory ? orderEntries(selectedCategory.entries).map((entry) => entry.id) : [];
         const originalEntryIndex = orderedEntryIds.indexOf(entryId);
         if (isReorderNoop(orderedEntryIds, entryId, targetEntryId, placement)) {
-            handleEntryDragEnd();
+            setEntryDragOrder(null);
             return;
         }
 
@@ -918,7 +927,7 @@ export function Dashboard({
             setErrorMessage(error);
         } finally {
             finishBusy();
-            handleEntryDragEnd();
+            setEntryDragOrder(null);
         }
     }
 
@@ -1217,55 +1226,57 @@ export function Dashboard({
                     </Button>
                 </form>
 
-                <div
-                    className="m-0 grid max-h-[min(30vh,22rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[820px]:max-h-none max-[820px]:overflow-y-visible max-[820px]:pr-0"
-                    onDragOver={(event) => {
-                        if (!draggedCategoryId || !categoryDragPreview) {
-                            return;
-                        }
-
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = "move";
-                    }}
-                    onDrop={(event) => {
-                        if (!draggedCategoryId || !categoryDragPreview) {
-                            return;
-                        }
-
-                        event.preventDefault();
-                        handleCommitCategoryDragPreview();
-                    }}
+                <DndContext
+                    sensors={sensors}
+                    onDragStart={handleCategoryDragStart}
+                    onDragEnd={handleCategoryDragEnd}
+                    onDragCancel={handleCategoryDragCancel}
                 >
-                    {previewedCategories.map((category) => (
-                        <CategoryListItem
-                            category={category}
-                            isActive={category.id === selectedCategory?.id}
-                            key={category.id}
-                            busy={busy}
-                            canDragReorder={canDragReorderCategories}
-                            draggedCategoryId={draggedCategoryId}
-                            isDragging={draggedCategoryId === category.id}
-                            listLocked={Boolean(activeSessionId)}
-                            onDragEnd={handleCategoryDragEnd}
-                            onDragPreview={handleCategoryDragPreview}
-                            onDragStart={() => handleCategoryDragStart(category.id)}
-                            onDropCategory={handleMoveCategoryRelativeToCategory}
-                            onDropPreview={handleCommitCategoryDragPreview}
-                            onDelete={() => setCategoryDeleteTarget(category)}
-                            onRename={(name) => handleRenameCategory(category.id, name)}
-                            onSelect={() => setSelectedCategoryId(category.id)}
-                        />
-                    ))}
-                    {dashboard.categories.length === 0 ? (
-                        <EmptyState
-                            compact
-                            icon={Library}
-                            title="No Categories"
-                        >
-                            Add a category to start building a ranked list.
-                        </EmptyState>
-                    ) : null}
-                </div>
+                    <SortableContext
+                        items={orderedCategories.map((category) => category.id)}
+                        strategy={verticalListSortingStrategy}
+                    >
+                        <div className="m-0 grid max-h-[min(30vh,22rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[820px]:max-h-none max-[820px]:overflow-y-visible max-[820px]:pr-0">
+                            {orderedCategories.map((category) => (
+                                <CategoryListItem
+                                    category={category}
+                                    isActive={category.id === selectedCategory?.id}
+                                    key={category.id}
+                                    busy={busy}
+                                    canDragReorder={canDragReorderCategories}
+                                    listLocked={Boolean(activeSessionId)}
+                                    onDelete={() => setCategoryDeleteTarget(category)}
+                                    onRename={(name) => handleRenameCategory(category.id, name)}
+                                    onSelect={() => setSelectedCategoryId(category.id)}
+                                />
+                            ))}
+                            {dashboard.categories.length === 0 ? (
+                                <EmptyState
+                                    compact
+                                    icon={Library}
+                                    title="No Categories"
+                                >
+                                    Add a category to start building a ranked list.
+                                </EmptyState>
+                            ) : null}
+                        </div>
+                    </SortableContext>
+                    <DragOverlay>
+                        {activeCategoryId
+                            ? (() => {
+                                const activeCategory = dashboard.categories.find(
+                                    (category) => category.id === activeCategoryId
+                                );
+                                return activeCategory ? (
+                                    <CategoryDragOverlay
+                                        category={activeCategory}
+                                        isActive={activeCategory.id === selectedCategory?.id}
+                                    />
+                                ) : null;
+                            })()
+                            : null}
+                    </DragOverlay>
+                </DndContext>
 
                 {selectedCategory && !activeSessionId ? (
                     <div className="grid w-full justify-items-stretch gap-[0.7rem]">
@@ -1399,52 +1410,47 @@ export function Dashboard({
                     />
                 ) : null}
 
-                <section
-                    className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-4 min-[900px]:grid-cols-[repeat(auto-fill,minmax(min(100%,440px),1fr))]"
-                    onDragOver={(event) => {
-                        if (!draggedEntryId || !entryDragPreview) {
-                            return;
-                        }
-
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = "move";
-                    }}
-                    onDrop={(event) => {
-                        if (!draggedEntryId || !entryDragPreview) {
-                            return;
-                        }
-
-                        event.preventDefault();
-                        handleCommitEntryDragPreview();
-                    }}
+                <DndContext
+                    sensors={sensors}
+                    onDragStart={handleEntryDragStart}
+                    onDragEnd={handleEntryDragEnd}
+                    onDragCancel={handleEntryDragCancel}
                 >
-                    {selectedCategory ? previewedEntries.map((entry) => (
-                        <EntryCard
-                            entry={entry}
-                            categories={dashboard.categories}
-                            key={entry.id}
-                            canDragReorder={canDragReorderEntries}
-                            draggedEntryId={draggedEntryId}
-                            isDragging={draggedEntryId === entry.id}
-                            listLocked={Boolean(activeSessionId)}
-                            selectedCategoryId={selectedCategory.id}
-                            onDelete={() => handleDelete(entry)}
-                            onDragEnd={handleEntryDragEnd}
-                            onDragPreview={handleEntryDragPreview}
-                            onDragStart={() => handleEntryDragStart(entry.id)}
-                            onDropPreview={handleCommitEntryDragPreview}
-                            onDropEntry={handleMoveEntryRelativeToEntry}
-                            onPickImage={() => setImagePickerTarget({
-                                kind: "entry",
-                                item: entry,
-                                category: selectedCategory
-                            })}
-                            onRename={(name) => handleRename(entry.id, name)}
-                            onRerank={() => handleRerank(entry.id)}
-                            onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
-                        />
-                    )) : null}
-                </section>
+                    <SortableContext
+                        items={orderedEntries.map((entry) => entry.id)}
+                        strategy={rectSortingStrategy}
+                    >
+                        <section className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-4 min-[900px]:grid-cols-[repeat(auto-fill,minmax(min(100%,440px),1fr))]">
+                            {selectedCategory ? orderedEntries.map((entry) => (
+                                <EntryCard
+                                    entry={entry}
+                                    categories={dashboard.categories}
+                                    key={entry.id}
+                                    canDragReorder={canDragReorderEntries}
+                                    listLocked={Boolean(activeSessionId)}
+                                    selectedCategoryId={selectedCategory.id}
+                                    onDelete={() => handleDelete(entry)}
+                                    onPickImage={() => setImagePickerTarget({
+                                        kind: "entry",
+                                        item: entry,
+                                        category: selectedCategory
+                                    })}
+                                    onRename={(name) => handleRename(entry.id, name)}
+                                    onRerank={() => handleRerank(entry.id)}
+                                    onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
+                                />
+                            )) : null}
+                        </section>
+                    </SortableContext>
+                    <DragOverlay>
+                        {activeEntryId
+                            ? (() => {
+                                const activeEntry = displayedEntries.find((entry) => entry.id === activeEntryId);
+                                return activeEntry ? <EntryDragOverlay entry={activeEntry} /> : null;
+                            })()
+                            : null}
+                    </DragOverlay>
+                </DndContext>
                 {selectedCategory && displayedEntries.length === 0 ? (
                     <EmptyState
                         icon={entrySearch.trim() ? Search : Swords}

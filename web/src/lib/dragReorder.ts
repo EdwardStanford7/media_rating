@@ -1,18 +1,4 @@
-import type { CategoryWithEntries, Entry } from "@/lib/types";
-
 export type DropPlacement = "before" | "after";
-
-export interface EntryDragPreview {
-    draggedEntryId: string;
-    targetEntryId: string;
-    placement: DropPlacement;
-}
-
-export interface CategoryDragPreview {
-    draggedCategoryId: string;
-    targetCategoryId: string;
-    placement: DropPlacement;
-}
 
 export function isReorderNoop(
     orderedItemIds: string[],
@@ -34,52 +20,11 @@ export function isReorderNoop(
         );
 }
 
-export function previewEntryReorder(entries: Entry[], preview: EntryDragPreview | null) {
-    if (!preview || preview.draggedEntryId === preview.targetEntryId) {
-        return entries;
-    }
-
-    const draggedIndex = entries.findIndex((entry) => entry.id === preview.draggedEntryId);
-    const targetIndex = entries.findIndex((entry) => entry.id === preview.targetEntryId);
-    if (draggedIndex < 0 || targetIndex < 0) {
-        return entries;
-    }
-
-    const nextEntries = entries.slice();
-    const [draggedEntry] = nextEntries.splice(draggedIndex, 1);
-    const targetIndexAfterRemoval = nextEntries.findIndex((entry) => entry.id === preview.targetEntryId);
-    if (!draggedEntry || targetIndexAfterRemoval < 0) {
-        return entries;
-    }
-
-    const insertionIndex = preview.placement === "before"
-        ? targetIndexAfterRemoval
-        : targetIndexAfterRemoval + 1;
-    nextEntries.splice(insertionIndex, 0, draggedEntry);
-    return nextEntries;
-}
-
-export function previewCategoryReorder(categories: CategoryWithEntries[], preview: CategoryDragPreview | null) {
-    if (!preview || preview.draggedCategoryId === preview.targetCategoryId) {
-        return categories;
-    }
-
-    const draggedIndex = categories.findIndex((category) => category.id === preview.draggedCategoryId);
-    const targetIndex = categories.findIndex((category) => category.id === preview.targetCategoryId);
-    if (draggedIndex < 0 || targetIndex < 0) {
-        return categories;
-    }
-
-    const nextCategories = categories.slice();
-    const [draggedCategory] = nextCategories.splice(draggedIndex, 1);
-    const targetIndexAfterRemoval = nextCategories.findIndex((category) => category.id === preview.targetCategoryId);
-    if (!draggedCategory || targetIndexAfterRemoval < 0) {
-        return categories;
-    }
-
-    const insertionIndex = preview.placement === "before"
-        ? targetIndexAfterRemoval
-        : targetIndexAfterRemoval + 1;
-    nextCategories.splice(insertionIndex, 0, draggedCategory);
-    return nextCategories;
+/**
+ * Translate a dnd-kit sortable drop (active dropped over a target) into the
+ * backend's "move relative to a target" contract. Dropping onto an item below
+ * the dragged one lands it after that item; onto one above, before it.
+ */
+export function placementForSortableMove(oldIndex: number, newIndex: number): DropPlacement {
+    return oldIndex < newIndex ? "after" : "before";
 }
