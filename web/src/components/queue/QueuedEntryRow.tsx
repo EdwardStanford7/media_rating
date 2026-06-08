@@ -68,6 +68,7 @@ export function QueuedEntryRow({
                     <form className="queue-rename-form" onSubmit={handleSubmit}>
                         <input
                             autoFocus
+                            aria-label={`Rename ${entry.name}`}
                             disabled={disabled}
                             value={name}
                             onChange={(event) => setName(event.target.value)}

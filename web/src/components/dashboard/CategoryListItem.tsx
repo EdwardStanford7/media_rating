@@ -94,6 +94,7 @@ export function CategoryListItem({
             <form className="category-rename-form" onSubmit={handleSubmit}>
                 <input
                     autoFocus
+                    aria-label={`Rename ${category.name}`}
                     disabled={busy}
                     value={name}
                     onChange={(event) => setName(event.target.value)}

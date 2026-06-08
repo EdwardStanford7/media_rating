@@ -1,31 +1,11 @@
 import { test, expect } from "./base";
-import { gotoApp, seedUsers, signInViaApi } from "./helpers";
+import { gotoApp, seedUsers, signInViaApi, winMatchups } from "./helpers";
 
 const RANKER = {
     email: "ranker@e2e.test",
     name: "Ranker",
     categories: [{ name: "Movies", entries: ["Alpha", "Beta", "Gamma"] }]
 };
-
-/**
- * Plays out a binary ranking session by always picking the given entry as the
- * winner, so it must finish at #1. Covers both the binary search and the
- * local repair verification phase.
- */
-async function alwaysChoose(page: import("@playwright/test").Page, entryName: string) {
-    const rankPanel = page.getByText(/Binary Rank|Local Repair/);
-    for (let round = 0; round < 12; round++) {
-        if (!(await rankPanel.isVisible().catch(() => false))) {
-            return;
-        }
-
-        await page.getByRole("button", { name: entryName }).click();
-        // Wait for either the next matchup or panel teardown before re-checking.
-        await page.waitForTimeout(150);
-    }
-
-    await expect(rankPanel).toBeHidden();
-}
 
 test.describe("Ranking", () => {
     test("create a category and add the first entry", async ({ page, context }) => {
@@ -55,7 +35,7 @@ test.describe("Ranking", () => {
         await page.getByPlaceholder("New entry").press("Enter");
 
         await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
-        await alwaysChoose(page, "Zeta");
+        await winMatchups(page, "Zeta");
 
         await expect(page.getByText("#1 Zeta")).toBeVisible({ timeout: 15_000 });
         await expect(page.getByText("#2 Alpha")).toBeVisible();
