@@ -8,8 +8,8 @@ test.describe("Auth flows", () => {
             page.getByRole("heading", { name: "Rank everything you love." })
         ).toBeVisible();
 
-        await page.getByRole("link", { name: "Get started" }).click();
-        await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+        await page.getByRole("link", { name: "Start your shelf" }).first().click();
+        await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
     });
 
     test("shows the sign-in page when logged out", async ({ page }) => {
@@ -20,7 +20,7 @@ test.describe("Auth flows", () => {
 
     test("sign up lands on an empty dashboard", async ({ page }) => {
         await gotoApp(page, "/signin");
-        await page.getByRole("button", { name: "Create an account" }).click();
+        await page.getByRole("link", { name: "Create an account" }).click();
         await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
 
         await page.getByLabel("Name").fill("Test User");
