@@ -24,7 +24,7 @@ test.describe("Entry operations", () => {
 
         // --- Reranking the last entry to the top reorders everything below it. ---
         await page.getByText("#4 Solaris").click({ button: "right" });
-        await page.getByRole("button", { name: "Rerank" }).click();
+        await page.getByRole("menuitem", { name: "Rerank" }).click();
         await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await winMatchups(page, "Solaris");
 
@@ -40,7 +40,7 @@ test.describe("Entry operations", () => {
 
         // --- Cancelling a rerank restores the entry to its old position. ---
         await page.getByText("#2 Arrival").click({ button: "right" });
-        await page.getByRole("button", { name: "Rerank" }).click();
+        await page.getByRole("menuitem", { name: "Rerank" }).click();
         await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await page.getByRole("button", { name: "Cancel Rerank" }).click();
         await expect(page.getByText("Cancelled reranking Arrival.")).toBeVisible();
@@ -50,7 +50,7 @@ test.describe("Entry operations", () => {
 
         // --- Moving an entry into an empty category places it directly at #1. ---
         await page.getByText("#3 Dune").click({ button: "right" });
-        await page.getByRole("button", { name: "Change Category" }).click();
+        await page.getByRole("menuitem", { name: "Change Category" }).click();
         await page.getByLabel("Move Dune").selectOption({ label: "Books" });
         await page.getByRole("button", { name: "Move", exact: true }).click();
 
@@ -65,7 +65,7 @@ test.describe("Entry operations", () => {
 
         // --- Moving into a non-empty category runs a ranking session there. ---
         await page.getByText("#3 Heat").click({ button: "right" });
-        await page.getByRole("button", { name: "Change Category" }).click();
+        await page.getByRole("menuitem", { name: "Change Category" }).click();
         await page.getByLabel("Move Heat").selectOption({ label: "Books" });
         await page.getByRole("button", { name: "Move", exact: true }).click();
 
@@ -103,7 +103,7 @@ test.describe("Entry operations", () => {
 
         // --- Rename a category from its context menu. ---
         await page.getByRole("button", { name: "Books" }).click({ button: "right" });
-        await page.getByRole("button", { name: "Rename" }).click();
+        await page.getByRole("menuitem", { name: "Rename" }).click();
         await page.getByLabel("Rename Books").fill("Novels");
         await page.getByRole("button", { name: "Save" }).click();
         await expect(page.getByRole("button", { name: "Novels" })).toBeVisible();
@@ -111,7 +111,7 @@ test.describe("Entry operations", () => {
 
         // --- Deleting goes through a confirm dialog and removes its entries. ---
         await page.getByRole("button", { name: "Novels" }).click({ button: "right" });
-        await page.getByRole("button", { name: "Delete" }).click();
+        await page.getByRole("menuitem", { name: "Delete" }).click();
         await expect(page.getByText("Delete Novels?")).toBeVisible();
         await expect(page.getByText(/permanently removes 1 ranked entry/)).toBeVisible();
         await page.getByRole("button", { name: "Delete Category" }).click();

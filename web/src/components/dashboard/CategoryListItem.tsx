@@ -1,10 +1,13 @@
 import type { DragEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { CONTEXT_MENU_HOST_CLASS, CONTEXT_MENU_PANEL_CLASS, MENU_BUTTON_CLASS, MENU_DANGER_BUTTON_CLASS } from "@/components/ui/classes";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger
+} from "@/components/ui/context-menu";
 import { MenuIconLabel } from "@/components/ui/Icon";
-import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { useFloatingMenu } from "@/hooks/useFloatingMenu";
 import type { DropPlacement } from "@/lib/dragReorder";
 import type { CategoryWithEntries } from "@/lib/types";
 
@@ -46,17 +49,12 @@ export function CategoryListItem({
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [name, setName] = useState(category.name);
-    const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
-    const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
     useEscapeKey(isRenaming, () => { setName(category.name); setIsRenaming(false); });
 
     useEffect(() => {
         setName(category.name);
         setIsRenaming(false);
-        setMenuOpen(false);
-        setMenuPoint(null);
     }, [category.name]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -84,7 +82,6 @@ export function CategoryListItem({
         dragImage.style.left = "-10000px";
         dragImage.style.top = "-10000px";
         dragImage.style.pointerEvents = "none";
-        dragImage.querySelector("[data-context-menu-host]")?.remove();
         document.body.appendChild(dragImage);
 
         const offsetX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
@@ -123,7 +120,9 @@ export function CategoryListItem({
     }
 
     return (
-        <div
+        <ContextMenu onOpenChange={setMenuOpen}>
+            <ContextMenuTrigger asChild disabled={busy}>
+                <div
             className={`relative grid min-w-0 grid-cols-[minmax(0,1fr)] ${isCategoryDraggable ? "cursor-grab" : ""}`.trim()}
             data-category-id={category.id}
             draggable={isCategoryDraggable}
@@ -147,7 +146,6 @@ export function CategoryListItem({
                 event.dataTransfer.setData("application/x-goldshelf-category-id", category.id);
                 event.dataTransfer.setData("text/plain", `category:${category.id}`);
                 setCategoryDragImage(event);
-                setMenuOpen(false);
                 onDragStart();
             }}
             onDrop={(event) => {
@@ -170,14 +168,6 @@ export function CategoryListItem({
                     onDragEnd();
                 }
             }}
-            onContextMenu={(event) => {
-                event.preventDefault();
-                if (busy) {
-                    return;
-                }
-                setMenuPoint({ left: event.clientX, top: event.clientY });
-                setMenuOpen(true);
-            }}
         >
             <button
                 className={`min-w-0 text-left ${
@@ -193,7 +183,6 @@ export function CategoryListItem({
                 onClick={onSelect}
                 onDoubleClick={() => {
                     if (!busy) {
-                        setMenuOpen(false);
                         setName(category.name);
                         setIsRenaming(true);
                     }
@@ -202,38 +191,25 @@ export function CategoryListItem({
                 <strong>{category.name}</strong>
                 <span className="text-muted-foreground"> · {category.entries.length}</span>
             </button>
-            <div className={CONTEXT_MENU_HOST_CLASS} data-context-menu-host="" ref={menuRef}>
-                {menuOpen ? (
-                    <div
-                        className={CONTEXT_MENU_PANEL_CLASS}
-                        ref={floatingMenu.panelRef}
-                        style={floatingMenu.style}
-                    >
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                setName(category.name);
-                                setIsRenaming(true);
-                            }}
-                        >
-                            <MenuIconLabel icon="edit">Rename</MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_DANGER_BUTTON_CLASS}
-                            disabled={busy || listLocked}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                onDelete();
-                            }}
-                        >
-                            <MenuIconLabel icon="delete">Delete</MenuIconLabel>
-                        </button>
-                    </div>
-                ) : null}
-            </div>
-        </div>
+                </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+                <ContextMenuItem
+                    onSelect={() => {
+                        setName(category.name);
+                        setIsRenaming(true);
+                    }}
+                >
+                    <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem
+                    variant="destructive"
+                    disabled={busy || listLocked}
+                    onSelect={onDelete}
+                >
+                    <MenuIconLabel icon="delete">Delete</MenuIconLabel>
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }

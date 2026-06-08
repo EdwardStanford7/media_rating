@@ -11,14 +11,14 @@ const QUINN = {
 /** Opens the account menu's Settings flyout (queue toggles + delay days). */
 async function openQueueSettings(page: Page) {
     await page.getByRole("button", { name: "Account menu" }).click();
-    await page.getByRole("button", { name: "Settings" }).click();
-    await expect(page.getByLabel("Queue entries")).toBeVisible();
+    await page.getByRole("menuitem", { name: "Settings" }).click();
+    await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toBeVisible();
 }
 
 /** Closes the account menu by clicking outside of it. */
 async function closeAccountMenu(page: Page) {
     await page.getByRole("heading", { name: "Movies" }).click();
-    await expect(page.getByLabel("Queue entries")).toBeHidden();
+    await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toBeHidden();
 }
 
 /**
@@ -59,8 +59,8 @@ test.describe("Queue", () => {
 
         // --- Enable the queue with the default delay (3 days). ---
         await openQueueSettings(page);
-        await withSettingsSaved(page, () => page.getByLabel("Queue entries").check());
-        await expect(page.getByLabel("Queue entries")).toBeChecked();
+        await withSettingsSaved(page, () => page.getByRole("menuitemcheckbox", { name: "Queue entries" }).click());
+        await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "true");
         await closeAccountMenu(page);
 
         // --- New entries now land in the queue, not ready yet. ---
@@ -78,7 +78,7 @@ test.describe("Queue", () => {
 
         // --- Rename the queued entry from its context menu. ---
         await queueItem(page, "Solaris").click({ button: "right" });
-        await page.getByRole("button", { name: "Rename" }).click();
+        await page.getByRole("menuitem", { name: "Rename" }).click();
         await page.getByLabel("Rename Solaris").fill("Stalker");
         await page.getByRole("button", { name: "Save" }).click();
         await expect(queueItem(page, "Stalker")).toBeVisible();
@@ -86,7 +86,7 @@ test.describe("Queue", () => {
 
         // --- "Rank Now" overrides the delay and starts a binary session. ---
         await queueItem(page, "Stalker").click({ button: "right" });
-        await page.getByRole("button", { name: "Rank Now" }).click();
+        await page.getByRole("menuitem", { name: "Rank Now" }).click();
         await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await winMatchups(page, "Stalker");
 
@@ -118,7 +118,7 @@ test.describe("Queue", () => {
 
         // --- Removing a queued entry is reversible via the undo toast. ---
         await queueItem(page, "Klute").click({ button: "right" });
-        await page.getByRole("button", { name: "Remove" }).click();
+        await page.getByRole("menuitem", { name: "Remove" }).click();
         await expect(page.getByText("Removed Klute from the queue.")).toBeVisible();
         await expect(page.getByText("1 queued")).toBeVisible();
 
@@ -143,8 +143,8 @@ test.describe("Queue", () => {
 
         // --- Disabling the queue routes new entries straight to ranking. ---
         await openQueueSettings(page);
-        await withSettingsSaved(page, () => page.getByLabel("Queue entries").uncheck());
-        await expect(page.getByLabel("Queue entries")).not.toBeChecked();
+        await withSettingsSaved(page, () => page.getByRole("menuitemcheckbox", { name: "Queue entries" }).click());
+        await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "false");
         await closeAccountMenu(page);
 
         await page.getByPlaceholder("New entry").fill("Tron");

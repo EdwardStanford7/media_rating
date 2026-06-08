@@ -22,23 +22,6 @@ export const PRIMARY_BUTTON_CLASS =
 /** Destructive outline button (was `button.danger`). */
 export const DANGER_BUTTON_CLASS = "border-danger-line text-danger";
 
-/** Floating menu chrome shared by context menus and the account menu (was `.floating-menu-panel`). Add gap/padding per use. */
-export const FLOATING_MENU_CLASS =
-    "z-[80] grid max-w-[calc(100vw-1rem)] rounded-panel border border-menu-line bg-menu shadow-floating";
-
-/** Context menu panel at default density. */
-export const CONTEXT_MENU_PANEL_CLASS = `${FLOATING_MENU_CLASS} min-w-36 gap-[0.35rem] p-2`;
-
-/** Action button inside a floating menu (was `.floating-menu-panel button`). */
-export const MENU_BUTTON_CLASS = "w-full text-left enabled:hover:border-gold enabled:hover:bg-selected-panel";
-
-/** Destructive action button inside a floating menu (was `button.danger` + its floating-menu hover). */
-export const MENU_DANGER_BUTTON_CLASS =
-    "w-full border-danger-line text-left text-danger enabled:hover:bg-subtle-panel";
-
-/** Zero-size anchor hosting a context menu (was `.context-menu-host`). Pair with data-context-menu-host for DOM lookups. */
-export const CONTEXT_MENU_HOST_CLASS = "absolute top-0 left-0 h-0 w-0 overflow-visible";
-
 /** Compact button sizing (was `.small-button`). */
 export const SMALL_BUTTON_CLASS = "px-[0.6rem] py-[0.35rem] text-[0.85rem]";
 

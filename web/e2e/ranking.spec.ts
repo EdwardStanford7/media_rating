@@ -49,7 +49,7 @@ test.describe("Ranking", () => {
         await expect(page.getByText("#1 Alpha")).toBeVisible();
 
         await page.getByText("#1 Alpha").click({ button: "right" });
-        await page.getByRole("button", { name: "Delete" }).click();
+        await page.getByRole("menuitem", { name: "Delete" }).click();
 
         await expect(page.getByText("Deleted Alpha.")).toBeVisible();
         await expect(page.getByText("#1 Alpha")).toBeHidden();
@@ -66,7 +66,7 @@ test.describe("Ranking", () => {
         await expect(page.getByText("#2 Beta")).toBeVisible();
 
         await page.getByText("#2 Beta").click({ button: "right" });
-        await page.getByRole("button", { name: "Rename" }).click();
+        await page.getByRole("menuitem", { name: "Rename" }).click();
         await page.getByLabel("Rename Beta").fill("Beta Prime");
         await page.getByRole("button", { name: "Save" }).click();
 

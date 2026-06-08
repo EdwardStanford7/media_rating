@@ -1,10 +1,14 @@
 import type { DragEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { CONTEXT_MENU_HOST_CLASS, CONTEXT_MENU_PANEL_CLASS, MENU_BUTTON_CLASS, MENU_DANGER_BUTTON_CLASS, METRIC_CLASS, POSTER_CLASS } from "@/components/ui/classes";
+import { METRIC_CLASS, POSTER_CLASS } from "@/components/ui/classes";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger
+} from "@/components/ui/context-menu";
 import { MenuIconLabel } from "@/components/ui/Icon";
-import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { useFloatingMenu } from "@/hooks/useFloatingMenu";
 import type { DropPlacement } from "@/lib/dragReorder";
 import { formatDate } from "@/lib/format";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
@@ -54,18 +58,13 @@ export function EntryCard({
     const [renameValue, setRenameValue] = useState(entry.name);
     const [targetCategoryId, setTargetCategoryId] = useState(selectedCategoryId);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [moveControlsOpen, setMoveControlsOpen] = useState(false);
-    const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
-    const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
     useEscapeKey(isRenaming, () => { setRenameValue(entry.name); setIsRenaming(false); });
 
     useEffect(() => {
         setIsRenaming(false);
         setRenameValue(entry.name);
         setTargetCategoryId(selectedCategoryId);
-        setMenuOpen(false);
-        setMenuPoint(null);
         setMoveControlsOpen(false);
     }, [entry.name, selectedCategoryId]);
 
@@ -102,7 +101,6 @@ export function EntryCard({
         dragImage.style.left = "-10000px";
         dragImage.style.top = "-10000px";
         dragImage.style.pointerEvents = "none";
-        dragImage.querySelector("[data-context-menu-host]")?.remove();
         document.body.appendChild(dragImage);
 
         const offsetX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
@@ -114,7 +112,9 @@ export function EntryCard({
     const isEntryDraggable = canDragReorder && !isRenaming && !moveControlsOpen && !menuOpen;
 
     return (
-        <article
+        <ContextMenu onOpenChange={setMenuOpen}>
+            <ContextMenuTrigger asChild disabled={listLocked}>
+                <article
             className={`relative max-w-full min-w-0 rounded-panel border border-line bg-panel shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${
                 isDragging
                     ? ENTRY_CARD_DRAGGING_CLASS
@@ -142,7 +142,6 @@ export function EntryCard({
                 event.dataTransfer.setData("application/x-goldshelf-entry-id", entry.id);
                 event.dataTransfer.setData("text/plain", entry.id);
                 setCardDragImage(event);
-                setMenuOpen(false);
                 setMoveControlsOpen(false);
                 onDragStart();
             }}
@@ -164,12 +163,6 @@ export function EntryCard({
                 } else {
                     onDragEnd();
                 }
-            }}
-            onContextMenu={(event) => {
-                event.preventDefault();
-                setMoveControlsOpen(false);
-                setMenuPoint({ left: event.clientX, top: event.clientY });
-                setMenuOpen(true);
             }}
         >
             <EntryPoster entry={entry} />
@@ -202,7 +195,6 @@ export function EntryCard({
                         title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
                         onDoubleClick={() => {
                             if (!listLocked) {
-                                setMenuOpen(false);
                                 setMoveControlsOpen(false);
                                 setRenameValue(entry.name);
                                 setIsRenaming(true);
@@ -251,75 +243,35 @@ export function EntryCard({
                     </div>
                 ) : null}
             </div>
-            <div className={CONTEXT_MENU_HOST_CLASS} data-context-menu-host="" ref={menuRef}>
-                {menuOpen ? (
-                    <div
-                        className={CONTEXT_MENU_PANEL_CLASS}
-                        ref={floatingMenu.panelRef}
-                        style={floatingMenu.style}
-                    >
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            disabled={listLocked}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                setMoveControlsOpen(false);
-                                setRenameValue(entry.name);
-                                setIsRenaming(true);
-                            }}
-                        >
-                            <MenuIconLabel icon="edit">Rename</MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            disabled={listLocked}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                onRerank();
-                            }}
-                        >
-                            <MenuIconLabel icon="rerank">Rerank</MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                onPickImage();
-                            }}
-                        >
-                            <MenuIconLabel icon="image">
-                                {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
-                            </MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            disabled={listLocked}
-                            type="button"
-                            onClick={() => {
-                                setMoveControlsOpen(true);
-                                setMenuOpen(false);
-                            }}
-                        >
-                            <MenuIconLabel icon="category">Change Category</MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_DANGER_BUTTON_CLASS}
-                            disabled={listLocked}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                onDelete();
-                            }}
-                        >
-                            <MenuIconLabel icon="delete">Delete</MenuIconLabel>
-                        </button>
-                    </div>
-                ) : null}
-            </div>
-        </article>
+                </article>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+                <ContextMenuItem
+                    disabled={listLocked}
+                    onSelect={() => {
+                        setMoveControlsOpen(false);
+                        setRenameValue(entry.name);
+                        setIsRenaming(true);
+                    }}
+                >
+                    <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem disabled={listLocked} onSelect={onRerank}>
+                    <MenuIconLabel icon="rerank">Rerank</MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={onPickImage}>
+                    <MenuIconLabel icon="image">
+                        {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
+                    </MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem disabled={listLocked} onSelect={() => setMoveControlsOpen(true)}>
+                    <MenuIconLabel icon="category">Change Category</MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem variant="destructive" disabled={listLocked} onSelect={onDelete}>
+                    <MenuIconLabel icon="delete">Delete</MenuIconLabel>
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }
 

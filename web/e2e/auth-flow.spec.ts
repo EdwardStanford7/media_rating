@@ -59,7 +59,7 @@ test.describe("Auth flows", () => {
         await expect(page.getByText("Create Your First Category")).toBeVisible();
 
         await page.getByRole("button", { name: "Account menu" }).click();
-        await page.getByRole("button", { name: "Sign Out" }).click();
+        await page.getByRole("menuitem", { name: "Sign Out" }).click();
 
         await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible({ timeout: 15_000 });
     });

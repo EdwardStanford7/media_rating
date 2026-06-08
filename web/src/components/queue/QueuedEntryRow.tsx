@@ -1,10 +1,13 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { CONTEXT_MENU_HOST_CLASS, CONTEXT_MENU_PANEL_CLASS, MENU_BUTTON_CLASS, MENU_DANGER_BUTTON_CLASS } from "@/components/ui/classes";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger
+} from "@/components/ui/context-menu";
 import { MenuIconLabel } from "@/components/ui/Icon";
-import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { useFloatingMenu } from "@/hooks/useFloatingMenu";
 import { useHydrated } from "@/hooks/useHydrated";
 import { formatDateTime } from "@/lib/format";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
@@ -28,21 +31,15 @@ export function QueuedEntryRow({
     onStart: (entry: QueuedEntry) => Promise<void>;
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
-    const [menuOpen, setMenuOpen] = useState(false);
-    const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [name, setName] = useState(entry.name);
-    const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
     // availableAt is a real instant; the server can't know the client's
     // timezone, so render UTC until hydration and local time after mount.
     const hydrated = useHydrated();
-    const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
     useEscapeKey(isRenaming, () => { setName(entry.name); setIsRenaming(false); });
 
     useEffect(() => {
         setName(entry.name);
         setIsRenaming(false);
-        setMenuOpen(false);
-        setMenuPoint(null);
     }, [entry.name]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -52,18 +49,12 @@ export function QueuedEntryRow({
     }
 
     return (
-        <div
+        <ContextMenu>
+            <ContextMenuTrigger asChild disabled={disabled}>
+                <div
             className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-control border p-[0.65rem] ${
                 isReady ? "border-brand bg-ready-panel" : "border-line bg-subtle-panel"
             }`}
-            onContextMenu={(event) => {
-                event.preventDefault();
-                if (disabled) {
-                    return;
-                }
-                setMenuPoint({ left: event.clientX, top: event.clientY });
-                setMenuOpen(true);
-            }}
         >
             <QueuedPoster entry={entry} />
             <div className="grid min-w-0 gap-[0.55rem]">
@@ -95,7 +86,6 @@ export function QueuedEntryRow({
                         title="Double-click to rename · Right-click for actions"
                         onDoubleClick={() => {
                             if (!disabled) {
-                                setMenuOpen(false);
                                 setName(entry.name);
                                 setIsRenaming(true);
                             }
@@ -106,64 +96,30 @@ export function QueuedEntryRow({
                     </div>
                 )}
             </div>
-            <div className={CONTEXT_MENU_HOST_CLASS} data-context-menu-host="" ref={menuRef}>
-                {menuOpen ? (
-                    <div
-                        className={CONTEXT_MENU_PANEL_CLASS}
-                        ref={floatingMenu.panelRef}
-                        style={floatingMenu.style}
-                    >
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                void onStart(entry);
-                            }}
-                        >
-                            <MenuIconLabel icon="rank">
-                                Rank Now
-                            </MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                setName(entry.name);
-                                setIsRenaming(true);
-                            }}
-                        >
-                            <MenuIconLabel icon="edit">
-                                Rename
-                            </MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_BUTTON_CLASS}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                onPickImage(entry);
-                            }}
-                        >
-                            <MenuIconLabel icon="image">
-                                {hasStoredImage(entry.imageKey) ? `Change image` : `Pick image`}
-                            </MenuIconLabel>
-                        </button>
-                        <button
-                            className={MENU_DANGER_BUTTON_CLASS}
-                            type="button"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                void onDelete(entry);
-                            }}
-                        >
-                            <MenuIconLabel icon="delete">Remove</MenuIconLabel>
-                        </button>
-                    </div>
-                ) : null}
-            </div>
-        </div>
+                </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+                <ContextMenuItem onSelect={() => void onStart(entry)}>
+                    <MenuIconLabel icon="rank">Rank Now</MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem
+                    onSelect={() => {
+                        setName(entry.name);
+                        setIsRenaming(true);
+                    }}
+                >
+                    <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => onPickImage(entry)}>
+                    <MenuIconLabel icon="image">
+                        {hasStoredImage(entry.imageKey) ? `Change image` : `Pick image`}
+                    </MenuIconLabel>
+                </ContextMenuItem>
+                <ContextMenuItem variant="destructive" onSelect={() => void onDelete(entry)}>
+                    <MenuIconLabel icon="delete">Remove</MenuIconLabel>
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }
 
