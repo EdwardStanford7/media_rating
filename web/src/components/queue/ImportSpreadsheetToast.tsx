@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { IconButton } from "@/components/ui/Icon";
+import { TOAST_PANEL_CLASS } from "@/components/ui/ToastStack";
 
 export function ImportSpreadsheetToast({
     busy,
@@ -15,24 +16,27 @@ export function ImportSpreadsheetToast({
     onImport: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }) {
     return (
-        <form className="toast import-toast" onSubmit={(event) => void onImport(event)}>
-            <div className="toast-header-row">
+        <form
+            className={`grid grid-cols-[minmax(0,1fr)] items-stretch gap-[0.6rem] ${TOAST_PANEL_CLASS} border-l-accent`}
+            onSubmit={(event) => void onImport(event)}
+        >
+            <div className="flex items-center justify-between gap-3">
                 <strong>Import Spreadsheet</strong>
                 <IconButton
-                    className="toast-close-button"
                     disabled={busy}
                     icon="close"
                     label="Close import"
+                    size="sm"
                     type="button"
                     onClick={onClose}
                 />
             </div>
-            <label className="stack compact-stack">
-                <span className="muted">First consumed date</span>
+            <label className="grid min-w-0 content-start gap-[0.35rem]">
+                <span className="text-muted">First consumed date</span>
                 <input disabled={disabled} name="firstConsumedAt" type="date" />
             </label>
-            <label className="stack compact-stack">
-                <span className="muted">Workbook</span>
+            <label className="grid min-w-0 content-start gap-[0.35rem]">
+                <span className="text-muted">Workbook</span>
                 <input disabled={disabled} name="workbook" type="file" accept=".xlsx" />
             </label>
             <button disabled={disabled} type="submit">

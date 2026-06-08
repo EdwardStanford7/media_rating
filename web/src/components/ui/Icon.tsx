@@ -51,17 +51,21 @@ export function IconButton({
     className = "",
     icon,
     label,
+    size = "md",
     title,
     ...props
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
     icon: IconName;
     label: string;
+    size?: "md" | "sm";
 }) {
     return (
         <button
             {...props}
             aria-label={label}
-            className={`inline-grid size-[2.35rem] min-w-[2.35rem] place-items-center p-0 text-center text-[1.05rem] ${className}`.trim()}
+            className={`inline-grid place-items-center p-0 text-center text-[1.05rem] ${
+                size === "sm" ? "size-[1.9rem] min-w-[1.9rem]" : "size-[2.35rem] min-w-[2.35rem]"
+            } ${className}`.trim()}
             title={title ?? label}
         >
             <Icon name={icon} />

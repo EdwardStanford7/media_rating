@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { followButtonLabel, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
@@ -16,12 +17,6 @@ import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types"
 
 const TOAST_TIMEOUT_MS = 5_000;
 
-interface PublicProfileToast {
-    id: number;
-    message: string;
-    variant?: "default" | "success" | "danger";
-}
-
 export const Route = createFileRoute("/u/$profileSlug")({
     loader: async ({ params }) => {
         return loadPublicProfile({ data: { profileSlug: params.profileSlug } });
@@ -33,7 +28,7 @@ function PublicProfileRoute() {
     const loaderData = Route.useLoaderData();
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
     const [followSaving, setFollowSaving] = useState(false);
-    const [toasts, setToasts] = useState<PublicProfileToast[]>([]);
+    const [toasts, setToasts] = useState<AppToast[]>([]);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
         loaderData?.categories[0]?.id ?? null
     );
@@ -62,7 +57,7 @@ function PublicProfileRoute() {
         setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
     }
 
-    function pushToast(toast: Omit<PublicProfileToast, "id">) {
+    function pushToast(toast: Omit<AppToast, "id">) {
         const id = toastIdRef.current + 1;
         toastIdRef.current = id;
         setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
@@ -147,7 +142,7 @@ function PublicProfileRoute() {
 
     return (
         <main className="public-profile-page">
-            <PublicProfileToastStack toasts={toasts} onDismiss={dismissToast} />
+            <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <PublicProfileTopbar signedIn={viewer.isSignedIn} />
 
             <section className="public-profile-header">
@@ -340,35 +335,5 @@ function PublicProfileAvatar({
         <span className="profile-avatar public-profile-avatar" aria-hidden="true">
             {src ? <img alt="" decoding="async" src={src} onError={() => setFailed(true)} /> : null}
         </span>
-    );
-}
-
-function PublicProfileToastStack({
-    onDismiss,
-    toasts
-}: {
-    onDismiss: (toastId: number) => void;
-    toasts: PublicProfileToast[];
-}) {
-    if (toasts.length === 0) {
-        return null;
-    }
-
-    return (
-        <div aria-live="polite" className="toast-stack">
-            {toasts.map((toast) => (
-                <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
-                    <span>{toast.message}</span>
-                    <button
-                        aria-label="Dismiss notification"
-                        className="toast-close-button"
-                        type="button"
-                        onClick={() => onDismiss(toast.id)}
-                    >
-                        x
-                    </button>
-                </div>
-            ))}
-        </div>
     );
 }

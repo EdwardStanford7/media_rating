@@ -20,7 +20,7 @@ export function ConfirmDialog({
 
     return (
         <div
-            className="modal-backdrop"
+            className="fixed inset-0 z-60 grid place-items-center bg-modal-backdrop p-4"
             onPointerDown={(event) => {
                 if (event.target === event.currentTarget) {
                     onCancel();
@@ -30,14 +30,14 @@ export function ConfirmDialog({
             <section
                 aria-labelledby="confirm-dialog-title"
                 aria-modal="true"
-                className="confirm-modal"
+                className="grid w-[min(420px,100%)] max-w-[calc(100vw-2rem)] gap-4 rounded-panel border border-line bg-panel p-4 shadow-panel [&_h2]:m-0 [&_p]:m-0"
                 role="dialog"
             >
                 <div>
                     <h2 id="confirm-dialog-title">{title}</h2>
-                    <div className="muted">{children}</div>
+                    <div className="text-muted">{children}</div>
                 </div>
-                <div className="confirm-actions">
+                <div className="grid grid-cols-2 gap-[0.6rem]">
                     <button type="button" onClick={onCancel}>Cancel</button>
                     <button
                         className={variant === "danger" ? "danger" : "primary"}

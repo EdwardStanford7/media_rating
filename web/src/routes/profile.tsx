@@ -15,6 +15,7 @@ import {
 } from "@/server/profiles";
 import { getSession } from "@/server/session";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { canViewProfile, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage } from "@/lib/images";
@@ -24,12 +25,6 @@ const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const TOAST_TIMEOUT_MS = 5_000;
 const FOLLOW_SEARCH_DELAY_MS = 250;
-
-interface ProfileToast {
-    id: number;
-    message: string;
-    variant?: "default" | "success" | "danger";
-}
 
 export const Route = createFileRoute("/profile")({
     loader: async () => {
@@ -59,7 +54,7 @@ function ProfileRoute() {
     const [savingProfileImage, setSavingProfileImage] = useState(false);
     const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
     const [savingFollowId, setSavingFollowId] = useState<string | null>(null);
-    const [toasts, setToasts] = useState<ProfileToast[]>([]);
+    const [toasts, setToasts] = useState<AppToast[]>([]);
     const toastIdRef = useRef(0);
     const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
 
@@ -123,7 +118,7 @@ function ProfileRoute() {
         setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
     }
 
-    function pushToast(toast: Omit<ProfileToast, "id">) {
+    function pushToast(toast: Omit<AppToast, "id">) {
         const id = toastIdRef.current + 1;
         toastIdRef.current = id;
         setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
@@ -433,7 +428,7 @@ function ProfileRoute() {
 
     return (
         <main className="profile-page">
-            <ProfileToastStack toasts={toasts} onDismiss={dismissToast} />
+            <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <header className="profile-page-header">
                 <Link className="brand-link" to="/">
                     <img alt="" src="/favicon.svg" />
@@ -732,36 +727,6 @@ function ProfileAvatar({
         <span className="profile-avatar" aria-hidden="true">
             {src ? <img alt="" decoding="async" src={src} /> : null}
         </span>
-    );
-}
-
-function ProfileToastStack({
-    onDismiss,
-    toasts
-}: {
-    onDismiss: (toastId: number) => void;
-    toasts: ProfileToast[];
-}) {
-    if (toasts.length === 0) {
-        return null;
-    }
-
-    return (
-        <div aria-live="polite" className="toast-stack">
-            {toasts.map((toast) => (
-                <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
-                    <span>{toast.message}</span>
-                    <button
-                        aria-label="Dismiss notification"
-                        className="toast-close-button"
-                        type="button"
-                        onClick={() => onDismiss(toast.id)}
-                    >
-                        x
-                    </button>
-                </div>
-            ))}
-        </div>
     );
 }
 

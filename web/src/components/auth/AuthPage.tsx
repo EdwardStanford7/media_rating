@@ -4,6 +4,13 @@ import { signIn, signUp } from "@/lib/auth-client";
 
 type AuthMode = "signin" | "signup" | "reset-request";
 
+const STATUS_CLASS = "rounded-control border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line";
+const FORM_CLASS = "grid gap-[0.95rem]";
+const FIELD_CLASS = "grid gap-[0.4rem] text-[0.92rem] font-bold text-muted";
+const FIELD_INPUT_CLASS = "min-h-12 font-medium text-ink";
+const SUBMIT_CLASS = "primary mt-1 min-h-[3.15rem] font-extrabold";
+const LINK_BUTTON_CLASS = "border-0 bg-transparent p-0 font-extrabold text-accent enabled:hover:text-accent-strong enabled:hover:underline";
+
 export function AuthPage({
     authOptions
 }: {
@@ -123,16 +130,22 @@ export function AuthPage({
     }
 
     return (
-        <main className="auth-page">
-            <div className="auth-shell">
-                <section className="auth-hero" aria-label="Goldshelf">
-                    <h1>Goldshelf</h1>
-                    <p>Rank your taste, one choice at a time.</p>
+        <main className="grid min-h-screen w-full max-w-full min-w-0 place-items-center bg-app bg-[image:radial-gradient(circle_at_18%_12%,color-mix(in_srgb,var(--accent)_22%,transparent),transparent_34rem)] p-[clamp(1rem,4vw,2rem)] max-[820px]:items-stretch max-[820px]:p-0">
+            <div className="grid w-[min(1060px,100%)] min-h-[min(720px,calc(100vh-2rem))] grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] overflow-hidden rounded-[24px] border border-line bg-panel shadow-floating max-[820px]:min-h-screen max-[820px]:grid-cols-1 max-[820px]:rounded-none max-[820px]:border-0">
+                <section
+                    aria-label="Goldshelf"
+                    className="relative isolate grid min-h-[42rem] content-between overflow-hidden bg-[image:linear-gradient(180deg,rgba(19,12,42,0.04),rgba(19,12,42,0.58)),url(/auth-hero.svg)] bg-cover bg-center bg-no-repeat p-[clamp(1.5rem,4vw,3rem)] text-white after:absolute after:inset-0 after:-z-10 after:bg-[image:linear-gradient(135deg,rgba(87,72,191,0.1),rgba(14,8,30,0.68))] after:content-[''] max-[820px]:min-h-[22rem]"
+                >
+                    <h1 className="m-0 self-start text-[clamp(3.25rem,8vw,6.8rem)] leading-[0.9] tracking-normal text-[#f3c65f] [text-shadow:0_10px_30px_rgba(0,0,0,0.28)]">Goldshelf</h1>
+                    <p className="m-0 max-w-[28rem] self-end text-[clamp(1.45rem,3vw,2.1rem)] leading-[1.14] font-bold text-[rgba(255,255,255,0.88)]">Rank your taste, one choice at a time.</p>
                 </section>
 
-                <section className="auth-panel" aria-labelledby="auth-heading">
-                    <div className="auth-copy">
-                        <p className="auth-kicker">
+                <section
+                    aria-labelledby="auth-heading"
+                    className="grid max-w-full min-w-0 content-center gap-[1.3rem] bg-panel p-[clamp(1.5rem,4vw,3rem)]"
+                >
+                    <div className="grid gap-2">
+                        <p className="m-0 text-[0.82rem] font-extrabold tracking-normal uppercase text-gold">
                             {resetToken
                                 ? "Account Recovery"
                                 : authMode === "signin"
@@ -141,7 +154,7 @@ export function AuthPage({
                                         ? "Account Recovery"
                                         : "Welcome to Goldshelf"}
                         </p>
-                        <h2 id="auth-heading">
+                        <h2 className="m-0 text-[clamp(2.25rem,5vw,3.7rem)] leading-[0.98] tracking-normal" id="auth-heading">
                             {resetToken
                                 ? "Reset password"
                                 : authMode === "signin"
@@ -150,7 +163,7 @@ export function AuthPage({
                                         ? "Reset password"
                                         : "Create account"}
                         </h2>
-                        <p className="muted">
+                        <p className="m-0 text-muted">
                             {resetToken
                                 ? "Choose a new password to get back to your lists."
                                 : authMode === "signin"
@@ -161,11 +174,11 @@ export function AuthPage({
                         </p>
                     </div>
 
-                    {error ? <div className="status">{error}</div> : null}
-                    {statusMessage ? <div className="status">{statusMessage}</div> : null}
+                    {error ? <div className={STATUS_CLASS}>{error}</div> : null}
+                    {statusMessage ? <div className={STATUS_CLASS}>{statusMessage}</div> : null}
 
                     {resetToken ? (
-                        <form className="auth-form" onSubmit={handleResetPassword}>
+                        <form className={FORM_CLASS} onSubmit={handleResetPassword}>
                             <PasswordField
                                 label="New password"
                                 name="newPassword"
@@ -178,31 +191,31 @@ export function AuthPage({
                                 placeholder="Confirm new password"
                                 autoComplete="new-password"
                             />
-                            <button className="primary auth-submit" disabled={submitting} type="submit">
+                            <button className={SUBMIT_CLASS} disabled={submitting} type="submit">
                                 {submitting ? "Updating..." : "Update password"}
                             </button>
                         </form>
                     ) : authMode === "reset-request" ? (
-                        <form className="auth-form" onSubmit={handleRequestPasswordReset}>
-                            <label className="auth-field">
+                        <form className={FORM_CLASS} onSubmit={handleRequestPasswordReset}>
+                            <label className={FIELD_CLASS}>
                                 <span>Email</span>
-                                <input name="email" type="email" placeholder="you@example.com" autoComplete="email" required />
+                                <input className={FIELD_INPUT_CLASS} name="email" type="email" placeholder="you@example.com" autoComplete="email" required />
                             </label>
-                            <button className="primary auth-submit" disabled={submitting} type="submit">
+                            <button className={SUBMIT_CLASS} disabled={submitting} type="submit">
                                 {submitting ? "Sending..." : "Send reset link"}
                             </button>
                         </form>
                     ) : (
-                        <form className="auth-form" onSubmit={(event) => handleEmailAuth(event, authMode)}>
+                        <form className={FORM_CLASS} onSubmit={(event) => handleEmailAuth(event, authMode)}>
                             {authMode === "signup" ? (
-                                <label className="auth-field">
+                                <label className={FIELD_CLASS}>
                                     <span>Name</span>
-                                    <input name="name" placeholder="Jane Doe" autoComplete="name" required />
+                                    <input className={FIELD_INPUT_CLASS} name="name" placeholder="Jane Doe" autoComplete="name" required />
                                 </label>
                             ) : null}
-                            <label className="auth-field">
+                            <label className={FIELD_CLASS}>
                                 <span>Email</span>
-                                <input name="email" type="email" placeholder="you@example.com" autoComplete="email" required />
+                                <input className={FIELD_INPUT_CLASS} name="email" type="email" placeholder="you@example.com" autoComplete="email" required />
                             </label>
                             <PasswordField
                                 label="Password"
@@ -210,7 +223,7 @@ export function AuthPage({
                                 placeholder={authMode === "signin" ? "Password" : "At least 12 characters"}
                                 autoComplete={authMode === "signin" ? "current-password" : "new-password"}
                             />
-                            <button className="primary auth-submit" disabled={submitting} type="submit">
+                            <button className={SUBMIT_CLASS} disabled={submitting} type="submit">
                                 {submitting
                                     ? authMode === "signin" ? "Signing in..." : "Creating account..."
                                     : authMode === "signin" ? "Sign in" : "Create account"}
@@ -219,10 +232,11 @@ export function AuthPage({
                     )}
 
                     {!resetToken ? (
-                        <p className="auth-switch muted">
+                        <p className="m-0 text-center text-muted">
                             {authMode === "signin" ? (
                                 <>
                                     <button
+                                        className={LINK_BUTTON_CLASS}
                                         type="button"
                                         onClick={() => {
                                             setError(null);
@@ -236,6 +250,7 @@ export function AuthPage({
                                 </>
                             ) : authMode === "reset-request" ? "Remembered it?" : "Already have an account?"}{" "}
                             <button
+                                className={LINK_BUTTON_CLASS}
                                 type="button"
                                 onClick={() => {
                                     setError(null);
@@ -267,10 +282,11 @@ function PasswordField({
     const [visible, setVisible] = useState(false);
 
     return (
-        <label className="auth-field">
+        <label className={FIELD_CLASS}>
             <span>{label}</span>
-            <span className="password-field">
+            <span className="relative block">
                 <input
+                    className={`${FIELD_INPUT_CLASS} pr-12`}
                     name={name}
                     type={visible ? "text" : "password"}
                     placeholder={placeholder}
@@ -279,6 +295,7 @@ function PasswordField({
                 />
                 <button
                     aria-label={visible ? "Hide password" : "Show password"}
+                    className="absolute top-1/2 right-[0.35rem] grid size-9 -translate-y-1/2 place-items-center border-0 bg-transparent p-0 text-muted enabled:hover:text-accent"
                     type="button"
                     onClick={() => setVisible((isVisible) => !isVisible)}
                 >
