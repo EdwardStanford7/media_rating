@@ -6,10 +6,10 @@ import { signIn, signUp } from "@/lib/auth-client";
 type AuthMode = "signin" | "signup" | "reset-request";
 
 const FORM_CLASS = "grid gap-[0.95rem]";
-const FIELD_CLASS = "grid gap-[0.4rem] text-[0.92rem] font-bold text-muted";
+const FIELD_CLASS = "grid gap-[0.4rem] text-[0.92rem] font-bold text-muted-foreground";
 const FIELD_INPUT_CLASS = "min-h-12 font-medium text-ink";
 const SUBMIT_CLASS = `${PRIMARY_BUTTON_CLASS} mt-1 min-h-[3.15rem] font-extrabold`;
-const LINK_BUTTON_CLASS = "border-0 bg-transparent p-0 font-extrabold text-accent enabled:hover:text-accent-strong enabled:hover:underline";
+const LINK_BUTTON_CLASS = "border-0 bg-transparent p-0 font-extrabold text-brand enabled:hover:text-accent-strong enabled:hover:underline";
 
 export function AuthPage({
     authOptions
@@ -130,7 +130,7 @@ export function AuthPage({
     }
 
     return (
-        <main className="grid min-h-screen w-full max-w-full min-w-0 place-items-center bg-app bg-[image:radial-gradient(circle_at_18%_12%,color-mix(in_srgb,var(--accent)_22%,transparent),transparent_34rem)] p-[clamp(1rem,4vw,2rem)] max-[820px]:items-stretch max-[820px]:p-0">
+        <main className="grid min-h-screen w-full max-w-full min-w-0 place-items-center bg-app bg-[image:radial-gradient(circle_at_18%_12%,color-mix(in_srgb,var(--brand)_22%,transparent),transparent_34rem)] p-[clamp(1rem,4vw,2rem)] max-[820px]:items-stretch max-[820px]:p-0">
             <div className="grid w-[min(1060px,100%)] min-h-[min(720px,calc(100vh-2rem))] grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] overflow-hidden rounded-[24px] border border-line bg-panel shadow-floating max-[820px]:min-h-screen max-[820px]:grid-cols-1 max-[820px]:rounded-none max-[820px]:border-0">
                 <section
                     aria-label="Goldshelf"
@@ -163,7 +163,7 @@ export function AuthPage({
                                         ? "Reset password"
                                         : "Create account"}
                         </h2>
-                        <p className="m-0 text-muted">
+                        <p className="m-0 text-muted-foreground">
                             {resetToken
                                 ? "Choose a new password to get back to your lists."
                                 : authMode === "signin"
@@ -232,7 +232,7 @@ export function AuthPage({
                     )}
 
                     {!resetToken ? (
-                        <p className="m-0 text-center text-muted">
+                        <p className="m-0 text-center text-muted-foreground">
                             {authMode === "signin" ? (
                                 <>
                                     <button
@@ -295,7 +295,7 @@ function PasswordField({
                 />
                 <button
                     aria-label={visible ? "Hide password" : "Show password"}
-                    className="absolute top-1/2 right-[0.35rem] grid size-9 -translate-y-1/2 place-items-center border-0 bg-transparent p-0 text-muted enabled:hover:text-accent"
+                    className="absolute top-1/2 right-[0.35rem] grid size-9 -translate-y-1/2 place-items-center border-0 bg-transparent p-0 text-muted-foreground enabled:hover:text-brand"
                     type="button"
                     onClick={() => setVisible((isVisible) => !isVisible)}
                 >

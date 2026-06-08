@@ -35,9 +35,8 @@ export function applyThemeMode(themeMode: ThemeMode) {
 
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
-        document.documentElement.dataset.theme = themeMode === "system"
-            ? mediaQuery.matches ? "dark" : "light"
-            : themeMode;
+        const isDark = themeMode === "system" ? mediaQuery.matches : themeMode === "dark";
+        document.documentElement.classList.toggle("dark", isDark);
     };
 
     apply();

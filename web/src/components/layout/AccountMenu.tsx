@@ -190,7 +190,7 @@ export function AccountMenu({
                         />
                         <div>
                             <strong className="block min-w-0 truncate">{userName}</strong>
-                            <span className="mt-[0.1rem] block text-[0.82rem] text-muted">Account</span>
+                            <span className="mt-[0.1rem] block text-[0.82rem] text-muted-foreground">Account</span>
                         </div>
                     </Link>
                     <Link
@@ -284,7 +284,7 @@ export function AccountMenu({
                             <span>Queue entries</span>
                         </label>
                         <label className="grid min-w-0 content-start gap-[0.35rem]">
-                            <span className="text-muted">Delay days</span>
+                            <span className="text-muted-foreground">Delay days</span>
                             <input
                                 disabled={busy || quickSaving}
                                 min={0}

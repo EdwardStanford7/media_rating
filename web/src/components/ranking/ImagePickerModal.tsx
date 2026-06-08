@@ -241,7 +241,7 @@ export function ImagePickerModal({
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0">
                     <div>
                         <h2>Pick Image</h2>
-                        <p className="text-muted">{target.item.name} - {target.category.name}</p>
+                        <p className="text-muted-foreground">{target.item.name} - {target.category.name}</p>
                     </div>
                     <button type="button" onClick={onClose}>Close</button>
                 </div>
@@ -331,7 +331,7 @@ export function ImagePickerModal({
                 </div>
 
                 {!loading && candidates.length === 0 ? (
-                    <div className="text-muted">No image candidates loaded.</div>
+                    <div className="text-muted-foreground">No image candidates loaded.</div>
                 ) : null}
             </section>
         </div>

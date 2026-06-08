@@ -11,7 +11,7 @@ import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import type { CategoryWithEntries, Entry } from "@/lib/types";
 
 const ENTRY_CARD_DRAGGING_CLASS =
-    "cursor-grabbing border-dashed border-accent bg-selected-panel shadow-none [&>*]:opacity-0";
+    "cursor-grabbing border-dashed border-brand bg-selected-panel shadow-none [&>*]:opacity-0";
 
 export function EntryCard({
     entry,
@@ -118,7 +118,7 @@ export function EntryCard({
             className={`relative max-w-full min-w-0 rounded-panel border border-line bg-panel shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${
                 isDragging
                     ? ENTRY_CARD_DRAGGING_CLASS
-                    : "motion-safe:hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--line))] motion-safe:hover:shadow-floating"
+                    : "motion-safe:hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--line))] motion-safe:hover:shadow-floating"
             } ${isEntryDraggable && !isDragging ? "cursor-grab" : ""}`.trim()}
             data-entry-id={entry.id}
             draggable={isEntryDraggable}
@@ -176,7 +176,7 @@ export function EntryCard({
             <div className="grid min-w-0 gap-[0.7rem] p-[0.9rem]">
                 {isRenaming ? (
                     <form className="grid gap-[0.45rem]" onSubmit={handleRenameSubmit}>
-                        <span className="text-muted">#{entry.rankPosition + 1}</span>
+                        <span className="text-muted-foreground">#{entry.rankPosition + 1}</span>
                         <input
                             autoFocus
                             aria-label={`Rename ${entry.name}`}
@@ -349,7 +349,7 @@ function EntryPoster({
             ) : (
                 <div className={`${POSTER_CLASS} grid content-center place-items-center gap-[0.35rem] p-4 [grid-area:1/1]`}>
                     <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
-                    <small className="text-[0.95rem] leading-[1.25] text-muted">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+                    <small className="text-[0.95rem] leading-[1.25] text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
                 </div>
             )}
         </div>

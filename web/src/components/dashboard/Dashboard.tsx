@@ -1347,7 +1347,7 @@ export function Dashboard({
                 <div className="sticky top-0 z-35 -mt-1 mb-[0.35rem] flex flex-nowrap items-center gap-[0.7rem] border-b border-line bg-app pt-1 pb-[0.95rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0">
                     <div className="grid max-w-[min(34rem,42vw)] min-w-0 flex-[0_1_auto] gap-[0.15rem]">
                         <h1 className="m-0 truncate">{selectedCategory?.name ?? "Categories"}</h1>
-                        <p className="m-0 text-muted">
+                        <p className="m-0 text-muted-foreground">
                             {selectedCategory
                                 ? `${displayedEntries.length}${entrySearch.trim() ? ` of ${selectedCategory.entries.length}` : ""} entries`
                                 : "Create a category to start ranking."}

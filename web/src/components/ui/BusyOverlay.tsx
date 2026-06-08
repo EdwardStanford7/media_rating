@@ -8,11 +8,11 @@ export function BusyOverlay({ label }: { label: string }) {
             <div className="grid w-[min(360px,100%)] max-w-[calc(100vw-2rem)] grid-cols-[auto_minmax(0,1fr)] items-center gap-[0.85rem] rounded-panel border border-line bg-panel p-4 shadow-panel">
                 <div
                     aria-hidden="true"
-                    className="size-[1.7rem] animate-spin rounded-full border-[3px] border-line border-t-accent [animation-duration:0.8s]"
+                    className="size-[1.7rem] animate-spin rounded-full border-[3px] border-line border-t-brand [animation-duration:0.8s]"
                 />
                 <div>
                     <strong>{label}</strong>
-                    <p className="m-0 mt-[0.2rem] text-muted">Keep this tab open.</p>
+                    <p className="m-0 mt-[0.2rem] text-muted-foreground">Keep this tab open.</p>
                 </div>
             </div>
         </div>

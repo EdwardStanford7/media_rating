@@ -5,7 +5,7 @@
 
 /** Pill-shaped stat badge (was `.metric`). */
 export const METRIC_CLASS =
-    "max-w-full min-w-0 whitespace-nowrap rounded-full border border-line px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted";
+    "max-w-full min-w-0 whitespace-nowrap rounded-full border border-line px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground";
 
 /** Gold-accented inline status/notice box (was `.status`). */
 export const STATUS_CLASS =
@@ -13,11 +13,11 @@ export const STATUS_CLASS =
 
 /** Gradient poster base shared by entry cards and rank match choices (was `.entry-poster`/`.match-poster`). */
 export const POSTER_CLASS =
-    "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted";
+    "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
 
 /** Accent-filled call-to-action button (was `button.primary`). */
 export const PRIMARY_BUTTON_CLASS =
-    "border-accent bg-accent text-on-accent enabled:hover:border-accent-strong enabled:hover:bg-accent-strong";
+    "border-brand bg-brand text-on-accent enabled:hover:border-accent-strong enabled:hover:bg-accent-strong";
 
 /** Destructive outline button (was `button.danger`). */
 export const DANGER_BUTTON_CLASS = "border-danger-line text-danger";
@@ -44,7 +44,7 @@ export const SMALL_BUTTON_CLASS = "px-[0.6rem] py-[0.35rem] text-[0.85rem]";
 
 /** Anchor styled like a small button (was `a.small-button` + `.link-button`). */
 export const LINK_BUTTON_CLASS =
-    `${SMALL_BUTTON_CLASS} inline-flex items-center justify-center gap-[0.4rem] rounded-control border border-line bg-panel text-ink no-underline hover:border-accent hover:bg-selected-panel`;
+    `${SMALL_BUTTON_CLASS} inline-flex items-center justify-center gap-[0.4rem] rounded-control border border-line bg-panel text-ink no-underline hover:border-brand hover:bg-selected-panel`;
 
 /** Profile avatar circle with the two-dot silhouette gradient (was `.account-avatar`/`.profile-avatar`). Add a size-* class. */
 export const AVATAR_CLASS =

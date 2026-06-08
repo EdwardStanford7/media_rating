@@ -54,7 +54,7 @@ export function QueuedEntryRow({
     return (
         <div
             className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-control border p-[0.65rem] ${
-                isReady ? "border-accent bg-ready-panel" : "border-line bg-subtle-panel"
+                isReady ? "border-brand bg-ready-panel" : "border-line bg-subtle-panel"
             }`}
             onContextMenu={(event) => {
                 event.preventDefault();
@@ -102,7 +102,7 @@ export function QueuedEntryRow({
                         }}
                     >
                         <strong>{entry.name}</strong>
-                        <p className="m-0 mt-[0.2rem] text-muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt, hydrated ? undefined : "UTC")}</p>
+                        <p className="m-0 mt-[0.2rem] text-muted-foreground">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt, hydrated ? undefined : "UTC")}</p>
                     </div>
                 )}
             </div>
@@ -188,9 +188,9 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     }
 
     return (
-        <div className="grid aspect-[4/5] w-[54px] content-center place-items-center gap-[0.35rem] overflow-hidden rounded-[5px] border border-line bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-[0.8rem] text-muted">
+        <div className="grid aspect-[4/5] w-[54px] content-center place-items-center gap-[0.35rem] overflow-hidden rounded-[5px] border border-line bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-[0.8rem] text-muted-foreground">
             <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
-            {isNoImageKey(entry.imageKey) ? <small className="text-[0.78rem] leading-[1.25] text-muted">No image</small> : null}
+            {isNoImageKey(entry.imageKey) ? <small className="text-[0.78rem] leading-[1.25] text-muted-foreground">No image</small> : null}
         </div>
     );
 }

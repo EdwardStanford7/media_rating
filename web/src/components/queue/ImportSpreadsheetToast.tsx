@@ -17,7 +17,7 @@ export function ImportSpreadsheetToast({
 }) {
     return (
         <form
-            className={`grid grid-cols-[minmax(0,1fr)] items-stretch gap-[0.6rem] ${TOAST_PANEL_CLASS} border-l-accent`}
+            className={`grid grid-cols-[minmax(0,1fr)] items-stretch gap-[0.6rem] ${TOAST_PANEL_CLASS} border-l-brand`}
             onSubmit={(event) => void onImport(event)}
         >
             <div className="flex items-center justify-between gap-3">
@@ -32,11 +32,11 @@ export function ImportSpreadsheetToast({
                 />
             </div>
             <label className="grid min-w-0 content-start gap-[0.35rem]">
-                <span className="text-muted">First consumed date</span>
+                <span className="text-muted-foreground">First consumed date</span>
                 <input disabled={disabled} name="firstConsumedAt" type="date" />
             </label>
             <label className="grid min-w-0 content-start gap-[0.35rem]">
-                <span className="text-muted">Workbook</span>
+                <span className="text-muted-foreground">Workbook</span>
                 <input disabled={disabled} name="workbook" type="file" accept=".xlsx" />
             </label>
             <button disabled={disabled} type="submit">

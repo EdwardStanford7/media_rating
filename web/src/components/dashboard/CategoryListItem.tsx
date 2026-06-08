@@ -9,7 +9,7 @@ import type { DropPlacement } from "@/lib/dragReorder";
 import type { CategoryWithEntries } from "@/lib/types";
 
 const CATEGORY_BUTTON_DRAGGING_CLASS =
-    "cursor-grabbing border-dashed border-accent bg-selected-panel shadow-none [&>*]:opacity-0";
+    "cursor-grabbing border-dashed border-brand bg-selected-panel shadow-none [&>*]:opacity-0";
 
 export function CategoryListItem({
     category,
@@ -200,7 +200,7 @@ export function CategoryListItem({
                 }}
             >
                 <strong>{category.name}</strong>
-                <span className="text-muted"> · {category.entries.length}</span>
+                <span className="text-muted-foreground"> · {category.entries.length}</span>
             </button>
             <div className={CONTEXT_MENU_HOST_CLASS} data-context-menu-host="" ref={menuRef}>
                 {menuOpen ? (

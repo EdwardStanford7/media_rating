@@ -136,7 +136,7 @@ export function BinaryRankPanel({
                             ? "Local Repair"
                             : "Binary Rank"} · {session.categoryName}
                     </strong>
-                    <p className="m-0 mt-[0.2rem] text-muted">
+                    <p className="m-0 mt-[0.2rem] text-muted-foreground">
                         Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} comparisons
                     </p>
                 </div>
@@ -199,7 +199,7 @@ function MatchPoster({ entry }: { entry: Entry }) {
     return (
         <div className={`${POSTER_CLASS} grid content-center place-items-center gap-[0.35rem] p-4`}>
             <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
-            <small className="text-[0.95rem] leading-[1.25] text-muted">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+            <small className="text-[0.95rem] leading-[1.25] text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
         </div>
     );
 }

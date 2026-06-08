@@ -15,7 +15,7 @@ export const TOAST_PANEL_CLASS =
     "pointer-events-auto rounded-panel border border-line border-l-4 bg-panel p-[0.65rem] shadow-floating";
 
 const TOAST_VARIANT_CLASS: Record<NonNullable<AppToast["variant"]>, string> = {
-    default: "border-l-accent",
+    default: "border-l-brand",
     success: "border-l-success",
     danger: "border-l-danger"
 };

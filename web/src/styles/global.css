@@ -1,20 +1,137 @@
 /*
  * Tailwind v4, without preflight: the base reset would fight this file's
- * existing element-level styles. Theme variables + utilities only.
+ * existing element-level styles during the shadcn migration. Theme variables
+ * + utilities only. shadcn/tailwind.css supplies the data-state variants and
+ * keyframes its components expect; tw-animate-css supplies animate-in/out.
  */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn tokens — default structure, colors swapped to the Goldshelf palette. */
+:root {
+    --radius: 0.625rem;
+    --background: oklch(0.9726 0.0149 298.57);
+    --foreground: oklch(0.2493 0.0698 294.1);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.2493 0.0698 294.1);
+    --popover: oklch(0.9903 0.0084 325.64);
+    --popover-foreground: oklch(0.2493 0.0698 294.1);
+    --primary: oklch(0.5354 0.1985 286.38);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.9425 0.0314 297.72);
+    --secondary-foreground: oklch(0.2493 0.0698 294.1);
+    --muted: oklch(0.9853 0.0082 301.36);
+    --muted-foreground: oklch(0.5243 0.07 299.64);
+    --accent: oklch(0.9325 0.037 297.54);
+    --accent-foreground: oklch(0.2493 0.0698 294.1);
+    --destructive: oklch(0.5372 0.1612 357.07);
+    --border: oklch(0.8858 0.0487 298.46);
+    --input: oklch(0.8858 0.0487 298.46);
+    --ring: oklch(0.5354 0.1985 286.38);
+    --chart-1: oklch(0.5354 0.1985 286.38);
+    --chart-2: oklch(0.6391 0.1307 70.67);
+    --chart-3: oklch(0.542 0.0862 164.36);
+    --chart-4: oklch(0.5372 0.1612 357.07);
+    --chart-5: oklch(0.5243 0.07 299.64);
+    --sidebar: oklch(0.9498 0.0272 297.32);
+    --sidebar-foreground: oklch(0.2493 0.0698 294.1);
+    --sidebar-primary: oklch(0.5354 0.1985 286.38);
+    --sidebar-primary-foreground: oklch(1 0 0);
+    --sidebar-accent: oklch(0.9325 0.037 297.54);
+    --sidebar-accent-foreground: oklch(0.2493 0.0698 294.1);
+    --sidebar-border: oklch(0.8858 0.0487 298.46);
+    --sidebar-ring: oklch(0.5354 0.1985 286.38);
+}
+
+.dark {
+    --background: oklch(0.1767 0.0386 294.21);
+    --foreground: oklch(0.9707 0.0164 301.22);
+    --card: oklch(0.2175 0.0537 294.69);
+    --card-foreground: oklch(0.9707 0.0164 301.22);
+    --popover: oklch(0.2325 0.0536 298.64);
+    --popover-foreground: oklch(0.9707 0.0164 301.22);
+    --primary: oklch(0.6929 0.1728 289.05);
+    --primary-foreground: oklch(0.1932 0.0403 298.71);
+    --secondary: oklch(0.2668 0.0723 293.58);
+    --secondary-foreground: oklch(0.9707 0.0164 301.22);
+    --muted: oklch(0.2484 0.0614 295.57);
+    --muted-foreground: oklch(0.8013 0.059 300.67);
+    --accent: oklch(0.3222 0.0975 294.9);
+    --accent-foreground: oklch(0.9707 0.0164 301.22);
+    --destructive: oklch(0.7872 0.1392 355.68);
+    --border: oklch(0.3356 0.0825 292.93);
+    --input: oklch(0.3356 0.0825 292.93);
+    --ring: oklch(0.6929 0.1728 289.05);
+    --chart-1: oklch(0.6929 0.1728 289.05);
+    --chart-2: oklch(0.8265 0.1227 79.91);
+    --chart-3: oklch(0.8244 0.0885 162.89);
+    --chart-4: oklch(0.7872 0.1392 355.68);
+    --chart-5: oklch(0.8013 0.059 300.67);
+    --sidebar: oklch(0.1932 0.0403 298.71);
+    --sidebar-foreground: oklch(0.9707 0.0164 301.22);
+    --sidebar-primary: oklch(0.6929 0.1728 289.05);
+    --sidebar-primary-foreground: oklch(0.1932 0.0403 298.71);
+    --sidebar-accent: oklch(0.3222 0.0975 294.9);
+    --sidebar-accent-foreground: oklch(0.9707 0.0164 301.22);
+    --sidebar-border: oklch(0.3356 0.0825 292.93);
+    --sidebar-ring: oklch(0.6929 0.1728 289.05);
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+}
+
+/*
+ * Goldshelf-specific tokens with no shadcn equivalent (gold accents, poster
+ * gradients, floating menus, avatars, overlays). These drive the app's own
+ * utilities (bg-app, text-gold, bg-menu, …) until those screens are migrated.
+ */
 :root {
     color-scheme: light;
     --bg: #f7f4ff;
     --ink: #24193f;
-    --muted: #70618d;
     --line: #ddd3f6;
     --panel: #ffffff;
     --panel-alt: #eee8ff;
-    --sidebar-bg: #f0ebff;
     --subtle-panel: #fbf9ff;
     --selected-panel: #ebe4ff;
     --ready-panel: #f3ebff;
@@ -23,7 +140,7 @@
     --poster-end: #ded4ff;
     --menu-bg: #fffaff;
     --menu-line: #b78325;
-    --accent: #6a50d8;
+    --brand: #6a50d8;
     --accent-strong: #4d35b2;
     --on-accent: #ffffff;
     --danger: #b23b6f;
@@ -46,15 +163,13 @@
     --floating-shadow: 0 24px 64px rgba(58, 38, 113, 0.28);
 }
 
-:root[data-theme="dark"] {
+.dark {
     color-scheme: dark;
     --bg: #120d20;
     --ink: #f7f3ff;
-    --muted: #c4b6df;
     --line: #392d5d;
     --panel: #1c1430;
     --panel-alt: #281d45;
-    --sidebar-bg: #171024;
     --subtle-panel: #241a3b;
     --selected-panel: #38265f;
     --ready-panel: #2f2451;
@@ -63,7 +178,7 @@
     --poster-end: #4a3480;
     --menu-bg: #211733;
     --menu-line: #f0bd63;
-    --accent: #9b86ff;
+    --brand: #9b86ff;
     --accent-strong: #c4b6ff;
     --on-accent: #171024;
     --danger: #ff92bd;
@@ -86,28 +201,20 @@
     --floating-shadow: 0 22px 64px rgba(0, 0, 0, 0.52);
 }
 
-/*
- * Tailwind token names for the theme variables above. `inline` makes
- * utilities emit var(--ink) etc. directly, so data-theme flips keep working.
- */
 @theme inline {
-    --color-*: initial;
     --color-app: var(--bg);
     --color-ink: var(--ink);
-    --color-muted: var(--muted);
     --color-line: var(--line);
     --color-panel: var(--panel);
     --color-panel-alt: var(--panel-alt);
-    --color-sidebar: var(--sidebar-bg);
     --color-subtle-panel: var(--subtle-panel);
     --color-selected-panel: var(--selected-panel);
     --color-ready-panel: var(--ready-panel);
-    --color-input: var(--input-bg);
     --color-poster-start: var(--poster-start);
     --color-poster-end: var(--poster-end);
     --color-menu: var(--menu-bg);
     --color-menu-line: var(--menu-line);
-    --color-accent: var(--accent);
+    --color-brand: var(--brand);
     --color-accent-strong: var(--accent-strong);
     --color-on-accent: var(--on-accent);
     --color-danger: var(--danger);
@@ -133,11 +240,14 @@
     --shadow-floating: var(--floating-shadow);
     --radius-control: 6px;
     --radius-panel: 8px;
+    --font-sans:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
 }
 
 /*
  * Element-level defaults live in @layer base so per-component utilities
- * (@layer utilities) can override them. Class rules below stay unlayered.
+ * (@layer utilities) can override them.
  */
 @layer base {
     * {
@@ -152,9 +262,7 @@
         margin: 0;
         background: var(--bg);
         color: var(--ink);
-        font-family:
-            Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-            sans-serif;
+        font-family: var(--font-sans);
     }
 
     button,
@@ -201,7 +309,7 @@
     select:focus,
     textarea:focus,
     button:focus-visible {
-        outline: 3px solid color-mix(in srgb, var(--accent) 26%, transparent);
+        outline: 3px solid color-mix(in srgb, var(--brand) 26%, transparent);
         outline-offset: 2px;
     }
 

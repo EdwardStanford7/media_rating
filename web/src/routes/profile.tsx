@@ -398,7 +398,7 @@ function ProfileRoute() {
 
     function renderFollowerAction(profile: FollowProfileSummary) {
         if (profile.relationState === "mutual") {
-            return <span className="inline-flex min-h-[2.35rem] items-center rounded-full border border-line px-3 text-muted">Mutual</span>;
+            return <span className="inline-flex min-h-[2.35rem] items-center rounded-full border border-line px-3 text-muted-foreground">Mutual</span>;
         }
 
         return (
@@ -418,8 +418,8 @@ function ProfileRoute() {
                 <section className={STANDALONE_PANEL_CLASS}>
                     <BrandLink />
                     <h1>Profile</h1>
-                    <p className="text-muted">Sign in to edit your profile.</p>
-                    <Link className="inline-flex items-center justify-center gap-[0.4rem] rounded-control border border-accent bg-accent text-on-accent no-underline" to="/">Sign In</Link>
+                    <p className="text-muted-foreground">Sign in to edit your profile.</p>
+                    <Link className="inline-flex items-center justify-center gap-[0.4rem] rounded-control border border-brand bg-brand text-on-accent no-underline" to="/">Sign In</Link>
                 </section>
             </main>
         );
@@ -443,7 +443,7 @@ function ProfileRoute() {
                             <ProfileAvatar currentUser imageKey={settings.user.imageKey} userId={settings.user.id} />
                             <div>
                                 <h1>{settings.user.name}</h1>
-                                <p className="text-muted">@{settings.user.slug}</p>
+                                <p className="text-muted-foreground">@{settings.user.slug}</p>
                                 <div className="mt-[0.65rem] flex flex-wrap gap-2">
                                     <label className={`w-fit rounded-control border border-line bg-panel px-[0.8rem] py-[0.55rem] text-ink ${savingProfileImage ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
                                         <span>{savingProfileImage ? "Uploading..." : "Upload Photo"}</span>
@@ -485,7 +485,7 @@ function ProfileRoute() {
                                     onChange={(event) => setProfileSlug(event.target.value)}
                                 />
                             </label>
-                            <label className="inline-flex items-center justify-start gap-[0.4rem] text-[0.86rem] text-muted">
+                            <label className="inline-flex items-center justify-start gap-[0.4rem] text-[0.86rem] text-muted-foreground">
                                 <input
                                     checked={profileIsPublic}
                                     className="w-auto"
@@ -510,7 +510,7 @@ function ProfileRoute() {
                     <section className={PROFILE_PANEL_CLASS}>
                         <div className={SECTION_HEADING_CLASS}>
                             <h2>Find Profiles</h2>
-                            <span className="text-muted">{followSearchLoading ? "Searching..." : "Public search"}</span>
+                            <span className="text-muted-foreground">{followSearchLoading ? "Searching..." : "Public search"}</span>
                         </div>
                         <form className="mb-[0.8rem] grid grid-cols-[minmax(0,1fr)_auto] gap-[0.8rem]" onSubmit={handleRequestFollow}>
                             <input
@@ -529,9 +529,9 @@ function ProfileRoute() {
                                 renderActions={renderSearchAction}
                             />
                         ) : followInput.trim().length >= 2 && !followSearchLoading ? (
-                            <p className="m-0 text-muted">No public profiles match that search.</p>
+                            <p className="m-0 text-muted-foreground">No public profiles match that search.</p>
                         ) : (
-                            <p className="m-0 text-muted">
+                            <p className="m-0 text-muted-foreground">
                                 Public profiles appear as you type. Exact private handles can still receive follow requests.
                             </p>
                         )}
@@ -540,7 +540,7 @@ function ProfileRoute() {
                     <section className={PROFILE_PANEL_CLASS}>
                         <div className={SECTION_HEADING_CLASS}>
                             <h2>Following</h2>
-                            <span className="text-muted">{settings.following.length}</span>
+                            <span className="text-muted-foreground">{settings.following.length}</span>
                         </div>
                         {settings.following.length > 0 ? (
                             <FollowProfileList
@@ -565,7 +565,7 @@ function ProfileRoute() {
                     <section className={PROFILE_PANEL_CLASS}>
                         <div className={SECTION_HEADING_CLASS}>
                             <h2>Followers</h2>
-                            <span className="text-muted">{settings.followers.length}</span>
+                            <span className="text-muted-foreground">{settings.followers.length}</span>
                         </div>
                         {settings.followers.length > 0 ? (
                             <FollowProfileList
@@ -582,7 +582,7 @@ function ProfileRoute() {
                     <section className={PROFILE_PANEL_CLASS}>
                         <div className={SECTION_HEADING_CLASS}>
                             <h2>Follow Requests</h2>
-                            <span className="text-muted">{settings.incomingFollowRequests.length}</span>
+                            <span className="text-muted-foreground">{settings.incomingFollowRequests.length}</span>
                         </div>
                         {settings.incomingFollowRequests.length > 0 ? (
                             <FollowProfileList
@@ -616,7 +616,7 @@ function ProfileRoute() {
                     <section className={PROFILE_PANEL_CLASS}>
                         <div className={SECTION_HEADING_CLASS}>
                             <h2>Sent Requests</h2>
-                            <span className="text-muted">{settings.outgoingFollowRequests.length}</span>
+                            <span className="text-muted-foreground">{settings.outgoingFollowRequests.length}</span>
                         </div>
                         {settings.outgoingFollowRequests.length > 0 ? (
                             <FollowProfileList
@@ -643,7 +643,7 @@ function ProfileRoute() {
                     <section className={PROFILE_PANEL_CLASS}>
                         <div className={SECTION_HEADING_CLASS}>
                             <h2>Public Rankings</h2>
-                            <span className="text-muted">{settings.categories.filter((category) => category.isPublic).length}</span>
+                            <span className="text-muted-foreground">{settings.categories.filter((category) => category.isPublic).length}</span>
                         </div>
                         {settings.categories.length > 0 ? (
                             <div className="grid gap-[0.65rem]">
@@ -651,7 +651,7 @@ function ProfileRoute() {
                                     <label className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-panel border border-line bg-subtle-panel p-3" key={category.id}>
                                         <span>
                                             <strong>{category.name}</strong>
-                                            <small className="m-0 mt-[0.15rem] block text-muted">{category.entryCount} entries</small>
+                                            <small className="m-0 mt-[0.15rem] block text-muted-foreground">{category.entryCount} entries</small>
                                         </span>
                                         <input
                                             checked={category.isPublic}
@@ -699,7 +699,7 @@ function FollowProfileList<TProfile extends FollowProfileSummary>({
                         ) : (
                             <strong className="font-bold text-ink no-underline">{profile.name}</strong>
                         )}
-                        <p className="m-0 mt-[0.15rem] text-muted">
+                        <p className="m-0 mt-[0.15rem] text-muted-foreground">
                             @{profile.slug} · {profile.publicCategoryCount} public rankings ·{" "}
                             {followRelationLabel(profile.relationState)}
                         </p>

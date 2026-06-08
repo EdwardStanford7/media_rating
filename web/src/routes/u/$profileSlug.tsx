@@ -134,7 +134,7 @@ function PublicProfileRoute() {
                 <PublicProfileTopbar signedIn={false} />
                 <section className={STANDALONE_PANEL_CLASS}>
                     <h1>Profile Not Found</h1>
-                    <p className="text-muted">This profile is private or does not exist.</p>
+                    <p className="text-muted-foreground">This profile is private or does not exist.</p>
                 </section>
             </main>
         );
@@ -155,7 +155,7 @@ function PublicProfileRoute() {
                 />
                 <div>
                     <h1>{profile.name}</h1>
-                    <p className="text-muted">
+                    <p className="text-muted-foreground">
                         @{profile.slug}
                         {!viewer.isSelf && viewer.isSignedIn
                             ? ` · ${followRelationLabel(viewer.relationState)}`
@@ -188,7 +188,7 @@ function PublicProfileRoute() {
                                 <button
                                     className={`w-full rounded-control border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-line enabled:hover:bg-panel-alt max-[820px]:w-auto max-[820px]:flex-none ${
                                         isActive
-                                            ? "border-accent bg-selected-panel font-bold text-accent-strong"
+                                            ? "border-brand bg-selected-panel font-bold text-accent-strong"
                                             : "border-transparent bg-transparent"
                                     }`}
                                     key={category.id}
@@ -256,7 +256,7 @@ function PublicCategory({
         <section className="grid gap-[0.8rem]">
             <div className={SECTION_HEADING_CLASS}>
                 <h2>{category.name}</h2>
-                <span className="text-muted">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
+                <span className="text-muted-foreground">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
             </div>
             <div className="grid gap-[0.65rem]">
                 {entries.map((entry) => (
@@ -280,7 +280,7 @@ function PublicEntryRow({
 }) {
     return (
         <article className="grid grid-cols-[3.2rem_5rem_minmax(0,1fr)] items-center gap-[0.65rem] rounded-panel border border-line bg-subtle-panel px-[0.55rem] py-[0.65rem]">
-            <span className="font-extrabold text-muted">#{entry.rankPosition + 1}</span>
+            <span className="font-extrabold text-muted-foreground">#{entry.rankPosition + 1}</span>
             <PublicEntryPoster entry={entry} usePrivateImages={usePrivateImages} />
             <div>
                 <strong>{entry.name}</strong>
@@ -306,7 +306,7 @@ function PublicEntryPoster({
     if (!src) {
         return (
             <span className={`${POSTER_CLASS} grid w-20 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-control border border-line p-1`}>
-                <small className="text-[0.95rem] leading-[1.25] text-muted">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+                <small className="text-[0.95rem] leading-[1.25] text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
             </span>
         );
     }

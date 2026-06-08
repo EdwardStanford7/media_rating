@@ -21,7 +21,7 @@ export function EmptyState({
             } ${className}`.trim()}
         >
             <div
-                className={`grid place-items-center rounded-full border border-line bg-panel text-accent ${
+                className={`grid place-items-center rounded-full border border-line bg-panel text-brand ${
                     compact ? "size-[1.9rem]" : "size-9"
                 }`}
             >
@@ -29,7 +29,7 @@ export function EmptyState({
             </div>
             <div>
                 <strong>{title}</strong>
-                <p className="m-0 mt-[0.2rem] text-muted">{children}</p>
+                <p className="m-0 mt-[0.2rem] text-muted-foreground">{children}</p>
             </div>
         </section>
     );

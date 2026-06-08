@@ -36,7 +36,7 @@ export function ConfirmDialog({
             >
                 <div>
                     <h2 id="confirm-dialog-title">{title}</h2>
-                    <div className="text-muted">{children}</div>
+                    <div className="text-muted-foreground">{children}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-[0.6rem]">
                     <button type="button" onClick={onCancel}>Cancel</button>
