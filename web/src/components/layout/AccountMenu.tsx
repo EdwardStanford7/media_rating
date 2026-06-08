@@ -207,7 +207,7 @@ function AccountAvatar({
         : null;
 
     return (
-        <Avatar aria-hidden="true" className={large ? "size-[2.2rem]" : "size-[1.45rem]"}>
+        <Avatar aria-hidden="true" className={large ? "size-[2.2rem]" : "size-[2.1rem]"}>
             {src ? <AvatarImage alt="" decoding="async" src={src} /> : null}
             <AvatarFallback className="border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)]" />
         </Avatar>

@@ -178,7 +178,7 @@ export function CategoryListItem({
                     isDragging
                         ? CATEGORY_BUTTON_DRAGGING_CLASS
                         : isActive
-                            ? "border-gold bg-selected-panel shadow-[inset_3px_0_0_var(--gold)]"
+                            ? "border-gold bg-selected-panel"
                             : "border-line bg-panel hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--line))]"
                 } ${isCategoryDraggable && !isDragging ? "cursor-grab" : ""}`.trim()}
                 disabled={busy}

@@ -18,7 +18,7 @@ export function ImportSpreadsheetToast({
 }) {
     return (
         <form
-            className="fixed right-4 bottom-4 z-50 grid w-[min(26rem,calc(100vw-2rem))] grid-cols-[minmax(0,1fr)] items-stretch gap-[0.6rem] rounded-panel border border-line border-l-4 border-l-brand bg-panel p-[0.65rem] shadow-floating"
+            className="fixed right-4 bottom-4 z-50 grid w-[min(26rem,calc(100vw-2rem))] grid-cols-[minmax(0,1fr)] items-stretch gap-[0.6rem] rounded-panel border border-line bg-panel p-[0.65rem] shadow-floating"
             onSubmit={(event) => void onImport(event)}
         >
             <div className="flex items-center justify-between gap-3">
