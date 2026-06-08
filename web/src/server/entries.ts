@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { orderEntries } from "@/lib/ranking";
 import { env } from "cloudflare:workers";
 import { NO_IMAGE_KEY, hasStoredImage } from "@/lib/images";
-import { assertOwned, first, getDb, newId, now } from "@/server/lib/db";
+import { assertOwned, first, getDb, now } from "@/server/lib/db";
 import { authMiddleware } from "@/server/middleware/auth";
 import { getOwnedCategory } from "./stores/categoryStore";
 import {
@@ -13,12 +13,9 @@ import {
     listActiveEntries,
     rewriteCategoryOrderStatements
 } from "./stores/entryStore";
-import { markQueuedEntryStarted, queuedEntryStartedStatement } from "./stores/queueStore";
 import {
     assertNoActiveBinarySession,
-    getActiveSessionRow,
-    prepareBinarySession,
-    repairInterruptedRankingState
+    prepareBinarySession
 } from "./engine/rankingSessions";
 import { assertEntryNameAvailable, createEntryWithBinaryRankingForUser } from "./engine/entryCreation";
 
@@ -348,4 +345,3 @@ export const switchEntryCategory = createServerFn({ method: "POST" })
 
         return { kind: "session" as const, entryId: entry.id, sessionId: session.sessionId };
     });
-

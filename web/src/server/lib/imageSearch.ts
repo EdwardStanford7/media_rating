@@ -239,7 +239,7 @@ async function fetchText(
 }
 
 function isBlockedHost(hostname: string) {
-    const host = hostname.toLowerCase();
+    const host = normalizeHostname(hostname);
     if (
         host === "localhost" ||
         host.endsWith(".localhost") ||
@@ -248,10 +248,36 @@ function isBlockedHost(hostname: string) {
         return true;
     }
 
-    if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) {
+    if (host.includes(":") && isBlockedIpv6(host)) {
         return true;
     }
 
+    return isBlockedIpv4(host);
+}
+
+function normalizeHostname(hostname: string) {
+    return hostname
+        .trim()
+        .toLowerCase()
+        .replace(/^\[(.*)]$/, "$1")
+        .replace(/\.$/, "");
+}
+
+function isBlockedIpv6(host: string) {
+    return (
+        host.startsWith("::ffff:") ||
+        host === "::" ||
+        host === "::1" ||
+        host.startsWith("fc") ||
+        host.startsWith("fd") ||
+        host.startsWith("fe8") ||
+        host.startsWith("fe9") ||
+        host.startsWith("fea") ||
+        host.startsWith("feb")
+    );
+}
+
+function isBlockedIpv4(host: string) {
     const ipv4 = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
     if (!ipv4) {
         return false;

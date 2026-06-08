@@ -64,8 +64,9 @@ function findUserByEmail(targetEmail) {
 
 function executeSql(command) {
     const output = execFileSync(
-        "npx",
+        "pnpm",
         [
+            "exec",
             "wrangler",
             "d1",
             "execute",

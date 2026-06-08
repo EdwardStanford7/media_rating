@@ -5,6 +5,7 @@ export interface RankingOperationStateEnvelope {
     kind: "ranking_operation_state";
     comparisons: RankingComparison[];
     bubbleRepair: BubbleRepairState | null;
+    queuedEntryId: string | null;
 }
 
 export function normalizeOperationKind(_value: string | null | undefined): RankingOperationKind {
@@ -22,7 +23,8 @@ export function parseRankingOperationState(value: string | null | undefined): Ra
             return {
                 kind: "ranking_operation_state",
                 comparisons: normalizeComparisonCache(parsed.comparisons),
-                bubbleRepair: normalizeBubbleRepairState(parsed.bubbleRepair)
+                bubbleRepair: normalizeBubbleRepairState(parsed.bubbleRepair),
+                queuedEntryId: normalizeQueuedEntryId(parsed.queuedEntryId)
             };
         }
     } catch {
@@ -36,7 +38,8 @@ export function serializeRankingOperationState(state: RankingOperationStateEnvel
     return JSON.stringify({
         kind: "ranking_operation_state",
         comparisons: state.comparisons,
-        bubbleRepair: state.bubbleRepair
+        bubbleRepair: state.bubbleRepair,
+        queuedEntryId: state.queuedEntryId
     });
 }
 
@@ -44,7 +47,8 @@ export function emptyRankingOperationState(): RankingOperationStateEnvelope {
     return {
         kind: "ranking_operation_state",
         comparisons: [],
-        bubbleRepair: null
+        bubbleRepair: null,
+        queuedEntryId: null
     };
 }
 
@@ -127,6 +131,10 @@ function normalizeBubbleRepairState(value: unknown): BubbleRepairState | null {
         eId: "eId" in value && typeof value.eId === "string" ? value.eId : null,
         currentComparison
     };
+}
+
+function normalizeQueuedEntryId(value: unknown) {
+    return typeof value === "string" && value.trim() ? value : null;
 }
 
 export function clampInsertionIndex(index: number, length: number) {

@@ -24,7 +24,6 @@ import {
     rewriteCategoryOrderStatements
 } from "./stores/entryStore";
 import {
-    getStartedQueuedEntryForRanking,
     restoreStartedQueuedEntryStatement
 } from "./stores/queueStore";
 import {
@@ -170,12 +169,8 @@ export const cancelBinarySession = createServerFn({ method: "POST" })
             return;
         }
 
-        const startedQueuedEntry = await getStartedQueuedEntryForRanking(
-            db,
-            userId,
-            session.category_id,
-            entry.name
-        );
+        const operationState = parseRankingOperationState(session.operation_state);
+        const queuedEntryId = operationState.queuedEntryId;
         statements.push(
             db
                 .prepare(
@@ -186,12 +181,12 @@ export const cancelBinarySession = createServerFn({ method: "POST" })
                 .bind(updatedAt, session.subject_entry_id, userId)
         );
 
-        if (startedQueuedEntry) {
+        if (queuedEntryId) {
             statements.push(
                 restoreStartedQueuedEntryStatement(
                     db,
                     userId,
-                    startedQueuedEntry.id,
+                    queuedEntryId,
                     session.category_id,
                     entry.name,
                     updatedAt
@@ -200,7 +195,7 @@ export const cancelBinarySession = createServerFn({ method: "POST" })
         }
 
         await db.batch(statements);
-        if (!startedQueuedEntry && hasStoredImage(entry.imageKey)) {
+        if (!queuedEntryId && hasStoredImage(entry.imageKey)) {
             await env.IMAGES.delete(entry.imageKey);
         }
     });

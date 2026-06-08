@@ -22,6 +22,7 @@ import {
     rewriteCategoryOrderStatements
 } from "../stores/entryStore";
 import {
+    consumeQueuedEntryStatement,
     getStartedQueuedEntryForRanking,
     restoreStartedQueuedEntryStatement
 } from "../stores/queueStore";
@@ -274,6 +275,7 @@ async function completeBubbleRepairSession(
     operationState.bubbleRepair = null;
     await db.batch([
         ...rewriteCategoryOrderStatements(db, userId, session.category_id, workingOrderIds, updatedAt),
+        ...consumeQueuedEntryOnCompletionStatements(db, userId, session, operationState),
         db
             .prepare(
                 `UPDATE ranking_sessions
@@ -450,6 +452,7 @@ async function completeRankingSession(
             finalRankPosition,
             updatedAt
         ),
+        ...consumeQueuedEntryOnCompletionStatements(db, userId, session),
         db
             .prepare(
                 `UPDATE ranking_sessions
@@ -463,6 +466,19 @@ async function completeRankingSession(
     ]);
 
     return { kind: "completed" as const, sessionId: session.id, finalRankPosition };
+}
+
+function consumeQueuedEntryOnCompletionStatements(
+    db: D1Database,
+    userId: string,
+    session: SessionRow,
+    operationState = parseRankingOperationState(session.operation_state)
+) {
+    if (session.source !== "new_entry" || !operationState.queuedEntryId) {
+        return [];
+    }
+
+    return [consumeQueuedEntryStatement(db, userId, operationState.queuedEntryId)];
 }
 
 export async function getActiveBinarySession(userId: string): Promise<ActiveBinarySession | null> {

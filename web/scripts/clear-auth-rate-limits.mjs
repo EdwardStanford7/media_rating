@@ -17,8 +17,9 @@ console.log(`Cleared ${useLocal ? "local" : "remote"} auth rate limits.`);
 
 function executeSql(command) {
     execFileSync(
-        "npx",
+        "pnpm",
         [
+            "exec",
             "wrangler",
             "d1",
             "execute",

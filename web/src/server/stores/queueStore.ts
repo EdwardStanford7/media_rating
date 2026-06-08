@@ -112,6 +112,19 @@ export async function markQueuedEntryStarted(userId: string, queuedEntryId: stri
     await queuedEntryStartedStatement(getDb(), userId, queuedEntryId, updatedAt).run();
 }
 
+export function consumeQueuedEntryStatement(
+    db: D1Database,
+    userId: string,
+    queuedEntryId: string
+) {
+    return db
+        .prepare(
+            `DELETE FROM entry_queue
+       WHERE id = ? AND user_id = ? AND status IN ('queued', 'started')`
+        )
+        .bind(queuedEntryId, userId);
+}
+
 export async function getStartedQueuedEntryForRanking(
     db: D1Database,
     userId: string,

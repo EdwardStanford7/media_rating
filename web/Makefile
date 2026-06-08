@@ -2,7 +2,7 @@ APP_NAME = goldshelf
 D1_NAME = media-rating
 R2_BUCKET = media-rating-images
 
-.PHONY: help install check test typecheck build dev preview audit password-reset-link password-reset-link-local \
+.PHONY: help install check test e2e typecheck build dev preview audit password-reset-link password-reset-link-local \
 	auth-clear-rate-limits auth-clear-rate-limits-local \
 	cf-login cf-whoami cf-create-d1 cf-create-r2 cf-secret-auth \
 	cf-secret-password-reset \
@@ -13,8 +13,9 @@ help:
 	@echo "Web commands"
 	@echo ""
 	@echo "Local:"
-	@echo "  make install              Install npm dependencies"
-	@echo "  make check                Run tests, typecheck, audit, and build"
+	@echo "  make install              Install pnpm dependencies"
+	@echo "  make check                Run unit tests, typecheck, e2e tests, audit, and build"
+	@echo "  make e2e                  Run Playwright browser tests"
 	@echo "  make dev                  Start local dev server"
 	@echo "  make cf-migrate-local     Apply D1 migrations to local Wrangler D1"
 	@echo "  make password-reset-link EMAIL=user@example.com Generate a one-hour remote reset link"
@@ -35,27 +36,35 @@ help:
 	@echo "  make deploy-first         Run the first-time Cloudflare setup sequence"
 
 install:
-	npm install
+	pnpm install --frozen-lockfile
 
 test:
-	npm run test
+	pnpm test
+
+e2e:
+	pnpm test:e2e
 
 typecheck:
-	npm run typecheck
+	pnpm typecheck
 
 build:
-	npm run build
+	pnpm build
 
 audit:
-	npm audit --omit=dev
+	pnpm audit --prod
 
-check: test typecheck audit build
+check:
+	$(MAKE) test
+	$(MAKE) typecheck
+	$(MAKE) e2e
+	$(MAKE) audit
+	$(MAKE) build
 
 dev:
-	npm run dev
+	pnpm dev
 
 preview:
-	npm run preview
+	pnpm preview
 
 password-reset-link:
 	@test -n "$(EMAIL)" || (echo "Usage: make password-reset-link EMAIL=user@example.com"; exit 1)
@@ -72,10 +81,10 @@ auth-clear-rate-limits-local:
 	node scripts/clear-auth-rate-limits.mjs --local
 
 cf-login:
-	npx wrangler login
+	pnpm exec wrangler login
 
 cf-whoami:
-	npx wrangler whoami
+	pnpm exec wrangler whoami
 
 cf-create-d1:
 	node scripts/create-d1-if-needed.mjs $(D1_NAME)
@@ -85,25 +94,25 @@ cf-create-r2:
 	node scripts/create-r2-if-needed.mjs $(R2_BUCKET)
 
 cf-secret-auth:
-	openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET
+	openssl rand -base64 32 | pnpm exec wrangler secret put BETTER_AUTH_SECRET
 
 cf-secret-password-reset:
 	@echo "Set these after creating a Resend API key and verifying send.goldshelf.net."
 	@echo "Use PASSWORD_RESET_FROM_EMAIL value: goldshelf <reset@send.goldshelf.net>"
-	npx wrangler secret put RESEND_API_KEY
-	npx wrangler secret put PASSWORD_RESET_FROM_EMAIL
+	pnpm exec wrangler secret put RESEND_API_KEY
+	pnpm exec wrangler secret put PASSWORD_RESET_FROM_EMAIL
 
 cf-migrate-local:
-	npm run db:migrate:local
+	pnpm db:migrate:local
 
 cf-migrate-remote:
-	npm run db:migrate:remote
+	pnpm db:migrate:remote
 
 verify-deploy-config:
 	node scripts/verify-deploy-config.mjs
 
 deploy: verify-deploy-config check
-	npm run deploy
+	pnpm run deploy
 	$(MAKE) cf-migrate-remote
 
 deploy-first: install cf-login cf-create-d1 cf-create-r2 cf-secret-auth

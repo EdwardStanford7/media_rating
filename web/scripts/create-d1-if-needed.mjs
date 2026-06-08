@@ -13,7 +13,7 @@ if (existing?.database_id && existing.database_id !== placeholder) {
 }
 
 console.log(`Creating D1 database '${databaseName}'...`);
-const output = execFileSync("npx", ["wrangler", "d1", "create", databaseName], {
+const output = execFileSync("pnpm", ["exec", "wrangler", "d1", "create", databaseName], {
   encoding: "utf8",
   stdio: ["inherit", "pipe", "inherit"]
 });

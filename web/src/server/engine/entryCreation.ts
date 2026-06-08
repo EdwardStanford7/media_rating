@@ -1,12 +1,20 @@
 import { assertOwned, first, getDb, newId, now } from "@/server/lib/db";
 import { getOwnedCategory } from "../stores/categoryStore";
 import { getActiveEntryCount, getOwnedEntry } from "../stores/entryStore";
-import { markQueuedEntryStarted, queuedEntryStartedStatement } from "../stores/queueStore";
+import {
+    consumeQueuedEntryStatement,
+    queuedEntryStartedStatement
+} from "../stores/queueStore";
 import {
     getActiveSessionRow,
     prepareBinarySession,
     repairInterruptedRankingState
 } from "./rankingSessions";
+import {
+    emptyRankingOperationState,
+    parseRankingOperationState,
+    serializeRankingOperationState
+} from "./rankingState";
 
 export async function createEntryWithBinaryRankingForUser(
     userId: string,
@@ -39,11 +47,25 @@ export async function createEntryWithBinaryRankingForUser(
             activeSubject?.name === cleanName
         ) {
             if (input.queuedEntryId) {
-                await markQueuedEntryStarted(
-                    userId,
-                    input.queuedEntryId,
-                    input.queueStartedAt ?? now()
-                );
+                const operationState = parseRankingOperationState(activeSession.operation_state);
+                if (!operationState.queuedEntryId || operationState.queuedEntryId === input.queuedEntryId) {
+                    operationState.queuedEntryId = input.queuedEntryId;
+                    await db.batch([
+                        queuedEntryStartedStatement(
+                            db,
+                            userId,
+                            input.queuedEntryId,
+                            input.queueStartedAt ?? now()
+                        ),
+                        db
+                            .prepare(
+                                `UPDATE ranking_sessions
+                 SET operation_state = ?
+                 WHERE id = ? AND user_id = ? AND status = 'active'`
+                            )
+                            .bind(serializeRankingOperationState(operationState), activeSession.id, userId)
+                    ]);
+                }
             }
 
             return {
@@ -87,12 +109,15 @@ export async function createEntryWithBinaryRankingForUser(
 
     let sessionId: string | null = null;
     if (activeCount > 0) {
+        const operationState = emptyRankingOperationState();
+        operationState.queuedEntryId = input.queuedEntryId ?? null;
         const session = await prepareBinarySession(db, {
             userId,
             categoryId: input.categoryId,
             subjectEntryId: entryId,
             source: "new_entry",
             opponentCount: activeCount,
+            operationState: serializeRankingOperationState(operationState),
             createdAt
         });
         sessionId = session.sessionId;
@@ -101,12 +126,14 @@ export async function createEntryWithBinaryRankingForUser(
 
     if (input.queuedEntryId) {
         statements.push(
-            queuedEntryStartedStatement(
-                db,
-                userId,
-                input.queuedEntryId,
-                input.queueStartedAt ?? createdAt
-            )
+            activeCount === 0
+                ? consumeQueuedEntryStatement(db, userId, input.queuedEntryId)
+                : queuedEntryStartedStatement(
+                    db,
+                    userId,
+                    input.queuedEntryId,
+                    input.queueStartedAt ?? createdAt
+                )
         );
     }
 

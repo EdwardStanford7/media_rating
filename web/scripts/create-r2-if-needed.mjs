@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 const bucketName = process.argv[2] ?? "media-rating-images";
 
 function runWrangler(args) {
-  return execFileSync("npx", ["wrangler", ...args], {
+  return execFileSync("pnpm", ["exec", "wrangler", ...args], {
     encoding: "utf8",
     stdio: ["inherit", "pipe", "pipe"]
   });

@@ -17,7 +17,7 @@ TanStack Start + Cloudflare Workers port of the Rust media ranking app.
 
 ## Local Setup
 
-This folder expects Node.js and npm or pnpm.
+This folder expects Node.js and pnpm.
 
 ```sh
 cd web
@@ -92,9 +92,10 @@ Before deploying, make sure there is no conflicting DNS record for the apex `gol
 ## Verification
 
 ```sh
-npm run typecheck
-npm run test
-npm run build
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm build
 ```
 
 ## Make Targets
@@ -103,6 +104,7 @@ The `Makefile` wraps the common local and deploy commands:
 
 ```sh
 make check
+make e2e
 make cf-migrate-local
 make deploy-first
 make deploy
