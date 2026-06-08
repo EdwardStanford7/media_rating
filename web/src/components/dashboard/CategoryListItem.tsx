@@ -15,10 +15,10 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { CategoryWithEntries } from "@/lib/types";
 
 function categoryButtonClass(isActive: boolean) {
-    return `block w-full min-w-0 cursor-pointer rounded-control border px-[0.8rem] py-[0.55rem] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
+    return `block w-full min-w-0 cursor-pointer rounded-sm border px-[0.8rem] py-[0.55rem] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
         isActive
-            ? "border-gold bg-selected-panel"
-            : "border-line bg-panel hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--line))]"
+            ? "border-gold bg-accent"
+            : "border-border bg-card hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--border))]"
     }`;
 }
 
@@ -69,7 +69,7 @@ export function CategoryListItem({
 
     if (isRenaming) {
         return (
-            <form className="grid gap-[0.45rem] rounded-control border border-line bg-subtle-panel p-[0.55rem]" onSubmit={handleSubmit}>
+            <form className="grid gap-[0.45rem] rounded-sm border border-border bg-muted p-[0.55rem]" onSubmit={handleSubmit}>
                 <Input
                     autoFocus
                     aria-label={`Rename ${category.name}`}

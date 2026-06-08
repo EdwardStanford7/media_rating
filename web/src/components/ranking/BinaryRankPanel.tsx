@@ -7,9 +7,9 @@ import { getBinarySession, submitBinaryWinner } from "@/server/rankingSessions";
 import type { BinarySessionView, CategoryWithEntries, Entry } from "@/lib/types";
 
 const RANK_PANEL_CLASS =
-    "max-w-full min-w-0 rounded-panel border border-line bg-panel p-4 shadow-panel";
+    "max-w-full min-w-0 rounded-md border border-border bg-card p-4 shadow-panel";
 const STATUS_CLASS =
-    "rounded-control border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line";
+    "rounded-sm border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line";
 const POSTER_CLASS =
     "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
 
@@ -160,7 +160,7 @@ export function BinaryRankPanel({
             </div>
             <div className="grid min-w-0 grid-cols-2 gap-4 max-[820px]:grid-cols-1">
                 <button
-                    className="cursor-pointer overflow-hidden rounded-panel border border-line bg-panel text-left transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-55"
+                    className="cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-55"
                     disabled={submitting}
                     type="button"
                     onClick={() => void chooseWinner(session.subject.id)}
@@ -169,7 +169,7 @@ export function BinaryRankPanel({
                     <strong className="block p-[0.7rem]">{session.subject.name}</strong>
                 </button>
                 <button
-                    className="cursor-pointer overflow-hidden rounded-panel border border-line bg-panel text-left transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-55"
+                    className="cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-55"
                     disabled={submitting}
                     type="button"
                     onClick={() => void chooseWinner(session.opponent.id)}

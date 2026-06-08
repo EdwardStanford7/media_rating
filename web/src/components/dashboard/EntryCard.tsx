@@ -27,7 +27,7 @@ import type { CategoryWithEntries, Entry } from "@/lib/types";
 const POSTER_CLASS =
     "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
 const ENTRY_CARD_DRAGGING_CLASS =
-    "border-dashed border-brand bg-selected-panel shadow-none [&>*]:opacity-0";
+    "border-dashed border-primary bg-accent shadow-none [&>*]:opacity-0";
 
 export function EntryCard({
     entry,
@@ -87,12 +87,12 @@ export function EntryCard({
             <ContextMenuTrigger asChild disabled={listLocked}>
                 <article
                     ref={setNodeRef}
-                    className={`relative max-w-full min-w-0 rounded-panel border border-line bg-panel shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${
+                    className={`relative max-w-full min-w-0 rounded-md border border-border bg-card shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${
                         canDragReorder ? "cursor-grab" : ""
                     } ${
                         isDragging
                             ? ENTRY_CARD_DRAGGING_CLASS
-                            : "motion-safe:hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--line))] motion-safe:hover:shadow-floating"
+                            : "motion-safe:hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--border))] motion-safe:hover:shadow-floating"
                     }`.trim()}
                     data-entry-id={entry.id}
                     style={{ transform: CSS.Transform.toString(transform), transition }}
@@ -101,7 +101,7 @@ export function EntryCard({
                     {showDragHandle ? (
                         <span
                             aria-hidden="true"
-                            className="pointer-events-none absolute top-2 right-2 z-10 flex items-center justify-center rounded-control border border-overlay-button-line bg-overlay-button p-1 text-overlay-button-ink"
+                            className="pointer-events-none absolute top-2 right-2 z-10 flex items-center justify-center rounded-sm border border-overlay-button-line bg-overlay-button p-1 text-overlay-button-ink"
                         >
                             <GripVertical className="size-4" />
                         </span>
@@ -149,11 +149,11 @@ export function EntryCard({
                         )}
                         {entry.firstConsumedAt ? (
                             <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
-                                <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-line px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
+                                <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
                             </div>
                         ) : null}
                         {moveControlsOpen ? (
-                            <div className="grid gap-[0.55rem] rounded-control border border-line bg-subtle-panel p-[0.65rem]">
+                            <div className="grid gap-[0.55rem] rounded-sm border border-border bg-muted p-[0.65rem]">
                                 <strong>Change Category</strong>
                                 <div className="grid min-w-0 grid-cols-1 gap-[0.45rem]">
                                     <Select value={targetCategoryId} onValueChange={setTargetCategoryId}>
@@ -225,8 +225,8 @@ export function EntryCard({
 
 export function EntryDragOverlay({ entry }: { entry: Entry }) {
     return (
-        <article className="relative max-w-full min-w-0 rotate-[0.5deg] cursor-grabbing rounded-panel border border-line bg-panel shadow-floating">
-            <span className="absolute top-2 right-2 z-10 flex items-center justify-center rounded-control border border-overlay-button-line bg-overlay-button p-1 text-overlay-button-ink">
+        <article className="relative max-w-full min-w-0 rotate-[0.5deg] cursor-grabbing rounded-md border border-border bg-card shadow-floating">
+            <span className="absolute top-2 right-2 z-10 flex items-center justify-center rounded-sm border border-overlay-button-line bg-overlay-button p-1 text-overlay-button-ink">
                 <GripVertical className="size-4" />
             </span>
             <EntryPoster entry={entry} />

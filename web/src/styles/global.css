@@ -121,32 +121,12 @@
     --radius-xl: calc(var(--radius) + 4px);
 }
 
-/*
- * Goldshelf-specific tokens with no shadcn equivalent (gold accents, poster
- * gradients, floating menus, avatars, overlays). These drive the app's own
- * utilities (bg-app, text-gold, bg-menu, …) until those screens are migrated.
- */
 :root {
     color-scheme: light;
-    --bg: #f7f4ff;
-    --ink: #24193f;
-    --line: #ddd3f6;
-    --panel: #ffffff;
-    --panel-alt: #eee8ff;
-    --subtle-panel: #fbf9ff;
-    --selected-panel: #ebe4ff;
     --ready-panel: #f3ebff;
-    --input-bg: #ffffff;
     --poster-start: #f2ebff;
     --poster-end: #ded4ff;
-    --menu-bg: #fffaff;
-    --menu-line: #b78325;
-    --brand: #6a50d8;
     --accent-strong: #4d35b2;
-    --on-accent: #ffffff;
-    --danger: #b23b6f;
-    --danger-line: #efbfd5;
-    --success: #377f62;
     --gold: #bd7c19;
     --gold-strong: #825000;
     --gold-soft: #fff3d8;
@@ -166,25 +146,10 @@
 
 .dark {
     color-scheme: dark;
-    --bg: #120d20;
-    --ink: #f7f3ff;
-    --line: #392d5d;
-    --panel: #1c1430;
-    --panel-alt: #281d45;
-    --subtle-panel: #241a3b;
-    --selected-panel: #38265f;
     --ready-panel: #2f2451;
-    --input-bg: #130d22;
     --poster-start: #2d214c;
     --poster-end: #4a3480;
-    --menu-bg: #211733;
-    --menu-line: #f0bd63;
-    --brand: #9b86ff;
     --accent-strong: #c4b6ff;
-    --on-accent: #171024;
-    --danger: #ff92bd;
-    --danger-line: #74425b;
-    --success: #8fd8b5;
     --gold: #f0bd63;
     --gold-strong: #ffe0a0;
     --gold-soft: rgba(240, 189, 99, 0.16);
@@ -203,24 +168,10 @@
 }
 
 @theme inline {
-    --color-app: var(--bg);
-    --color-ink: var(--ink);
-    --color-line: var(--line);
-    --color-panel: var(--panel);
-    --color-panel-alt: var(--panel-alt);
-    --color-subtle-panel: var(--subtle-panel);
-    --color-selected-panel: var(--selected-panel);
     --color-ready-panel: var(--ready-panel);
     --color-poster-start: var(--poster-start);
     --color-poster-end: var(--poster-end);
-    --color-menu: var(--menu-bg);
-    --color-menu-line: var(--menu-line);
-    --color-brand: var(--brand);
     --color-accent-strong: var(--accent-strong);
-    --color-on-accent: var(--on-accent);
-    --color-danger: var(--danger);
-    --color-danger-line: var(--danger-line);
-    --color-success: var(--success);
     --color-gold: var(--gold);
     --color-gold-strong: var(--gold-strong);
     --color-gold-soft: var(--gold-soft);
@@ -239,8 +190,6 @@
     --color-transparent: transparent;
     --shadow-panel: var(--shadow);
     --shadow-floating: var(--floating-shadow);
-    --radius-control: 6px;
-    --radius-panel: 8px;
     --font-sans:
         Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
         sans-serif;
@@ -256,8 +205,8 @@
     }
 
     body {
-        background: var(--bg);
-        color: var(--ink);
+        background: var(--background);
+        color: var(--foreground);
         font-family: var(--font-sans);
     }
 }

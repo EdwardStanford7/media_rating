@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 export function BrandLink() {
     return (
         <Link
-            className="group inline-flex min-w-0 items-center gap-[0.55rem] rounded-control px-[0.35rem] py-[0.25rem] text-[1.35rem] leading-[1.1] font-extrabold text-ink no-underline transition-[background-color,color,transform] duration-150 ease-[ease] hover:bg-selected-panel hover:text-gold-strong motion-safe:hover:-translate-y-px"
+            className="group inline-flex min-w-0 items-center gap-[0.55rem] rounded-sm px-[0.35rem] py-[0.25rem] text-[1.35rem] leading-[1.1] font-extrabold text-foreground no-underline transition-[background-color,color,transform] duration-150 ease-[ease] hover:bg-accent hover:text-gold-strong motion-safe:hover:-translate-y-px"
             to="/"
         >
             <img

@@ -22,7 +22,7 @@ const FEATURES = [
 
 export function MarketingLanding() {
     return (
-        <main className="grid min-h-screen content-start gap-16 bg-app px-[clamp(1rem,4vw,3rem)] py-6 text-ink">
+        <main className="grid min-h-screen content-start gap-16 bg-background px-[clamp(1rem,4vw,3rem)] py-6 text-foreground">
             <header className="flex items-center justify-between gap-4">
                 <span className="inline-flex items-center gap-[0.55rem] text-[1.35rem] font-extrabold text-gold">
                     <img
@@ -61,7 +61,7 @@ export function MarketingLanding() {
             <section className="mx-auto grid w-full max-w-5xl gap-4 sm:grid-cols-3">
                 {FEATURES.map((feature) => (
                     <div
-                        className="grid content-start gap-2 rounded-panel border border-line bg-subtle-panel p-5"
+                        className="grid content-start gap-2 rounded-md border border-border bg-muted p-5"
                         key={feature.title}
                     >
                         <feature.icon className="size-6 text-gold" aria-hidden="true" />

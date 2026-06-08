@@ -6,7 +6,7 @@ import { QueuedEntryRow } from "@/components/queue/QueuedEntryRow";
 import type { QueuedEntry } from "@/lib/types";
 
 const METRIC_CLASS =
-    "max-w-full min-w-0 whitespace-nowrap rounded-full border border-line px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground";
+    "max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground";
 
 export function QueuePanel({
     activeSessionId,
@@ -42,7 +42,7 @@ export function QueuePanel({
     const pendingEntries = queuedEntries.filter((entry) => entry.availableAt > currentTime);
 
     return (
-        <section className="grid min-h-0 min-w-0 max-w-full content-start gap-[0.9rem] rounded-panel border border-line bg-panel p-4 shadow-panel">
+        <section className="grid min-h-0 min-w-0 max-w-full content-start gap-[0.9rem] rounded-md border border-border bg-card p-4 shadow-panel">
             <div className="flex flex-wrap items-center justify-between gap-[0.7rem]">
                 <strong className="min-w-0 max-w-full">Queue</strong>
                 <div className="flex min-w-0 max-w-full flex-wrap justify-end gap-[0.4rem]">

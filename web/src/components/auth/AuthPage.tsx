@@ -11,7 +11,7 @@ const FORM_CLASS = 'grid gap-[0.95rem]';
 const FIELD_CLASS = 'grid gap-[0.4rem] text-[0.92rem] font-bold text-muted-foreground';
 const FIELD_INPUT_CLASS = 'min-h-12 font-medium';
 const SUBMIT_CLASS = 'mt-1 min-h-[3.15rem] w-full text-base font-extrabold';
-const STATUS_CLASS = 'rounded-control border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line';
+const STATUS_CLASS = 'rounded-sm border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line';
 
 export function AuthPage({
   authOptions,
@@ -132,8 +132,8 @@ export function AuthPage({
   }
 
   return (
-    <main className="grid min-h-screen w-full max-w-full min-w-0 place-items-center bg-app bg-[radial-gradient(circle_at_18%_12%,color-mix(in_srgb,var(--brand)_22%,transparent),transparent_34rem)] p-[clamp(1rem,4vw,2rem)] max-[820px]:items-stretch max-[820px]:p-0">
-      <div className="grid w-[min(1060px,100%)] min-h-[min(720px,calc(100vh-2rem))] grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] overflow-hidden rounded-[3xl border border-line bg-panel shadow-floating max-[820px]:min-h-screen max-[820px]:grid-cols-1 max-[820px]:rounded-none max-[820px]:border-0">
+    <main className="grid min-h-screen w-full max-w-full min-w-0 place-items-center bg-background bg-[radial-gradient(circle_at_18%_12%,color-mix(in_srgb,var(--primary)_22%,transparent),transparent_34rem)] p-[clamp(1rem,4vw,2rem)] max-[820px]:items-stretch max-[820px]:p-0">
+      <div className="grid w-[min(1060px,100%)] min-h-[min(720px,calc(100vh-2rem))] grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] overflow-hidden rounded-[3xl border border-border bg-card shadow-floating max-[820px]:min-h-screen max-[820px]:grid-cols-1 max-[820px]:rounded-none max-[820px]:border-0">
         <section
           aria-label="Goldshelf"
           className="relative isolate grid min-h-168 content-between overflow-hidden bg-[linear-gradient(180deg,rgba(19,12,42,0.04),rgba(19,12,42,0.58)),url(/auth-hero.svg)] bg-cover bg-center bg-no-repeat p-[clamp(1.5rem,4vw,3rem)] text-white after:absolute after:inset-0 after:-z-10 after:bg-[linear-gradient(135deg,rgba(87,72,191,0.1),rgba(14,8,30,0.68))] after:content-[''] max-[820px]:min-h-88"
@@ -148,7 +148,7 @@ export function AuthPage({
 
         <section
           aria-labelledby="auth-heading"
-          className="grid max-w-full min-w-0 content-center gap-[1.3rem] bg-panel p-[clamp(1.5rem,4vw,3rem)]"
+          className="grid max-w-full min-w-0 content-center gap-[1.3rem] bg-card p-[clamp(1.5rem,4vw,3rem)]"
         >
           <div className="grid gap-2">
             <p className="m-0 text-[0.82rem] font-extrabold tracking-normal uppercase text-gold">

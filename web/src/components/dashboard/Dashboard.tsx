@@ -1199,7 +1199,7 @@ export function Dashboard({
                     {" "}and stored images for this category.
                 </ConfirmDialog>
             ) : null}
-            <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-line bg-sidebar p-4 max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:overflow-y-visible">
+            <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-border bg-sidebar p-4 max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:overflow-y-visible">
                 <div className="relative flex items-center justify-between gap-3">
                     <BrandLink />
                 </div>
@@ -1347,7 +1347,7 @@ export function Dashboard({
                 className="grid min-h-0 min-w-0 content-start gap-[0.9rem] overflow-x-hidden overflow-y-auto px-[clamp(1rem,3vw,2.25rem)] py-5 max-[820px]:overflow-y-visible"
                 ref={mainRef}
             >
-                <div className="sticky top-0 z-35 -mt-1 mb-[0.35rem] flex flex-nowrap items-center gap-[0.7rem] border-b border-line bg-app pt-1 pb-[0.95rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
+                <div className="sticky top-0 z-35 -mt-1 mb-[0.35rem] flex flex-nowrap items-center gap-[0.7rem] border-b border-border bg-background pt-1 pb-[0.95rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
                     <div className="grid max-w-[min(34rem,42vw)] min-w-0 flex-[0_1_auto] gap-[0.15rem]">
                         <h1 className="m-0 truncate text-2xl font-bold">{selectedCategory?.name ?? "Categories"}</h1>
                         <p className="m-0 text-muted-foreground">

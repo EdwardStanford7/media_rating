@@ -24,7 +24,7 @@ export function DefaultErrorComponent({ error }: { error: Error }) {
 
 function RouteFallbackShell({ title, body }: { title: string; body: string }) {
     return (
-        <main className="grid min-h-screen place-items-center bg-app p-8 text-ink">
+        <main className="grid min-h-screen place-items-center bg-background p-8 text-foreground">
             <Card className="grid w-[min(100%,32rem)] gap-4 px-4 text-center shadow-panel">
                 <h1 className="text-2xl font-bold">{title}</h1>
                 <p className="text-muted-foreground">{body}</p>

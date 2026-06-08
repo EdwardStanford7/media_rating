@@ -17,7 +17,7 @@ import { markImageUnavailable } from "@/server/entries";
 
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 const STATUS_CLASS =
-    "rounded-control border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line";
+    "rounded-sm border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line";
 
 export function ImagePickerModal({
     target,
@@ -240,7 +240,7 @@ export function ImagePickerModal({
                 }
             }}
         >
-            <section className="grid max-h-[min(760px,calc(100vh-2rem))] w-[min(920px,100%)] max-w-[calc(100vw-2rem)] gap-[0.9rem] overflow-x-hidden overflow-y-auto rounded-panel border border-line bg-panel p-4 shadow-panel [&_h2]:m-0 [&_p]:m-0">
+            <section className="grid max-h-[min(760px,calc(100vh-2rem))] w-[min(920px,100%)] max-w-[calc(100vw-2rem)] gap-[0.9rem] overflow-x-hidden overflow-y-auto rounded-md border border-border bg-card p-4 shadow-panel [&_h2]:m-0 [&_p]:m-0">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
                     <div>
                         <h2 className="text-lg font-semibold">Pick Image</h2>
@@ -282,7 +282,7 @@ export function ImagePickerModal({
                 </form>
 
                 <div className="flex flex-wrap items-center gap-[0.65rem]">
-                    <label className="w-fit cursor-pointer rounded-control border border-line bg-panel px-[0.8rem] py-[0.55rem] text-ink">
+                    <label className="w-fit cursor-pointer rounded-sm border border-border bg-card px-[0.8rem] py-[0.55rem] text-foreground">
                         <span>Upload File</span>
                         <input
                             accept="image/*"
@@ -313,7 +313,7 @@ export function ImagePickerModal({
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-[0.7rem]">
                     {candidates.map((candidate) => (
                         <button
-                            className="relative block aspect-4/5 cursor-pointer overflow-hidden rounded-control border border-line bg-panel-alt transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-55"
+                            className="relative block aspect-4/5 cursor-pointer overflow-hidden rounded-sm border border-border bg-secondary transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-55"
                             disabled={Boolean(savingCandidateId)}
                             key={candidate.id}
                             type="button"

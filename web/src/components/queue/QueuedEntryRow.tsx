@@ -54,8 +54,8 @@ export function QueuedEntryRow({
         <ContextMenu>
             <ContextMenuTrigger asChild disabled={disabled}>
                 <div
-            className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-control border p-[0.65rem] ${
-                isReady ? "border-brand bg-ready-panel" : "border-line bg-subtle-panel"
+            className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-sm border p-[0.65rem] ${
+                isReady ? "border-primary bg-ready-panel" : "border-border bg-muted"
             }`}
         >
             <QueuedPoster entry={entry} />
@@ -136,7 +136,7 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     if (hasStoredImage(entry.imageKey) && !imageFailed) {
         return (
             <img
-                className="block aspect-4/5 h-auto w-13.5 overflow-hidden rounded-[5px] border border-line object-cover"
+                className="block aspect-4/5 h-auto w-13.5 overflow-hidden rounded-[5px] border border-border object-cover"
                 src={`/api/queued-images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                 alt=""
                 loading="lazy"
@@ -147,7 +147,7 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     }
 
     return (
-        <div className="grid aspect-4/5 w-13.5 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-[5px] border border-line bg-[linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-[0.8rem] text-muted-foreground">
+        <div className="grid aspect-4/5 w-13.5 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-[5px] border border-border bg-[linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-[0.8rem] text-muted-foreground">
             <span className="text-[1rem] leading-tight">{entry.name}</span>
             {isNoImageKey(entry.imageKey) ? <small className="text-[0.78rem] leading-tight text-muted-foreground">No image</small> : null}
         </div>

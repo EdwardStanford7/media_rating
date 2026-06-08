@@ -38,7 +38,7 @@ export const Route = createFileRoute("/u/$profileSlug")({
 
 function ProfileNotFound() {
     return (
-        <main className="grid min-h-screen content-start gap-4 bg-app px-[clamp(1rem,3vw,2.25rem)] py-5 text-ink">
+        <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
             <PublicProfileTopbar signedIn={false} />
             <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
                 <h1 className="text-2xl font-bold">Profile Not Found</h1>
@@ -118,7 +118,7 @@ function PublicProfileRoute() {
 
     if (!profileData) {
         return (
-            <main className="grid min-h-screen content-start gap-4 bg-app px-[clamp(1rem,3vw,2.25rem)] py-5 text-ink">
+            <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
                 <PublicProfileTopbar signedIn={false} />
                 <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
                     <h1 className="text-2xl font-bold">Profile Not Found</h1>
@@ -131,7 +131,7 @@ function PublicProfileRoute() {
     const { profile, viewer } = profileData;
 
     return (
-        <main className="grid min-h-screen content-start gap-4 bg-app px-[clamp(1rem,3vw,2.25rem)] py-5 text-ink">
+        <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
             <PublicProfileTopbar signedIn={viewer.isSignedIn} />
 
             <Card className="min-w-0 flex-row items-center justify-end gap-[0.8rem] px-4 shadow-panel">
@@ -171,15 +171,15 @@ function PublicProfileRoute() {
             </Card>
 
             {profileData.categories.length > 0 ? (
-                <div className="m-0 grid w-full grid-cols-[220px_minmax(0,1fr)] items-start overflow-hidden rounded-panel border border-line bg-panel shadow-panel max-[820px]:grid-cols-1">
-                    <nav className="sticky top-0 grid max-h-screen content-start gap-0.5 overflow-y-auto border-r border-line bg-sidebar p-[0.65rem] max-[820px]:static max-[820px]:flex max-[820px]:max-h-none max-[820px]:flex-row max-[820px]:flex-nowrap max-[820px]:gap-1 max-[820px]:overflow-x-auto max-[820px]:overflow-y-hidden max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:p-2" aria-label="Categories">
+                <div className="m-0 grid w-full grid-cols-[220px_minmax(0,1fr)] items-start overflow-hidden rounded-md border border-border bg-card shadow-panel max-[820px]:grid-cols-1">
+                    <nav className="sticky top-0 grid max-h-screen content-start gap-0.5 overflow-y-auto border-r border-border bg-sidebar p-[0.65rem] max-[820px]:static max-[820px]:flex max-[820px]:max-h-none max-[820px]:flex-row max-[820px]:flex-nowrap max-[820px]:gap-1 max-[820px]:overflow-x-auto max-[820px]:overflow-y-hidden max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:p-2" aria-label="Categories">
                         {profileData.categories.map((category) => {
                             const isActive = category.id === selectedCategoryId;
                             return (
                                 <button
-                                    className={`w-full rounded-control border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-line enabled:hover:bg-panel-alt max-[820px]:w-auto max-[820px]:flex-none ${
+                                    className={`w-full rounded-sm border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-border enabled:hover:bg-secondary max-[820px]:w-auto max-[820px]:flex-none ${
                                         isActive
-                                            ? "border-brand bg-selected-panel font-bold text-accent-strong"
+                                            ? "border-primary bg-accent font-bold text-accent-strong"
                                             : "border-transparent bg-transparent"
                                     }`}
                                     key={category.id}
@@ -223,11 +223,11 @@ function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
             <nav className="flex items-center gap-[0.8rem]" aria-label="Public profile navigation">
                 {signedIn ? (
                     <>
-                        <Link className="text-ink no-underline hover:text-accent-strong" to="/">Rankings</Link>
-                        <Link className="text-ink no-underline hover:text-accent-strong" to="/profile">Profile</Link>
+                        <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
+                        <Link className="text-foreground no-underline hover:text-accent-strong" to="/profile">Profile</Link>
                     </>
                 ) : (
-                    <Link className="text-ink no-underline hover:text-accent-strong" to="/">Sign In</Link>
+                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Sign In</Link>
                 )}
             </nav>
         </header>
@@ -270,7 +270,7 @@ function PublicEntryRow({
     usePrivateImages: boolean;
 }) {
     return (
-        <article className="grid grid-cols-[3.2rem_5rem_minmax(0,1fr)] items-center gap-[0.65rem] rounded-panel border border-line bg-subtle-panel px-[0.55rem] py-[0.65rem]">
+        <article className="grid grid-cols-[3.2rem_5rem_minmax(0,1fr)] items-center gap-[0.65rem] rounded-md border border-border bg-muted px-[0.55rem] py-[0.65rem]">
             <span className="font-extrabold text-muted-foreground">#{entry.rankPosition + 1}</span>
             <PublicEntryPoster entry={entry} usePrivateImages={usePrivateImages} />
             <div>
@@ -296,14 +296,14 @@ function PublicEntryPoster({
 
     if (!src) {
         return (
-            <span className={`${POSTER_CLASS} grid w-20 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-control border border-line p-1`}>
+            <span className={`${POSTER_CLASS} grid w-20 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-sm border border-border p-1`}>
                 <small className="text-[0.95rem] leading-tight text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
             </span>
         );
     }
 
     return (
-        <span className={`${POSTER_CLASS} block w-20 overflow-hidden rounded-control border border-line`}>
+        <span className={`${POSTER_CLASS} block w-20 overflow-hidden rounded-sm border border-border`}>
             <img className="block h-full w-full object-cover" alt="" decoding="async" loading="lazy" src={src} onError={() => setFailed(true)} />
         </span>
     );

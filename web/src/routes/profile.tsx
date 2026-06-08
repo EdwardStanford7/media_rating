@@ -371,7 +371,7 @@ function ProfileRoute() {
 
     function renderFollowerAction(profile: FollowProfileSummary) {
         if (profile.relationState === "mutual") {
-            return <span className="inline-flex min-h-[2.35rem] items-center rounded-full border border-line px-3 text-muted-foreground">Mutual</span>;
+            return <span className="inline-flex min-h-[2.35rem] items-center rounded-full border border-border px-3 text-muted-foreground">Mutual</span>;
         }
 
         return (
@@ -388,7 +388,7 @@ function ProfileRoute() {
 
     if (!loaderData.session?.user || !settings) {
         return (
-            <main className="grid min-h-screen place-items-center bg-app p-8 text-ink">
+            <main className="grid min-h-screen place-items-center bg-background p-8 text-foreground">
                 <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
                     <BrandLink />
                     <h1 className="text-2xl font-bold">Profile</h1>
@@ -402,12 +402,12 @@ function ProfileRoute() {
     }
 
     return (
-        <main className="grid min-h-screen content-start gap-4 bg-app px-[clamp(1rem,3vw,2.25rem)] py-5 text-ink">
+        <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
             <header className="m-0 flex w-full items-center justify-between gap-4">
                 <BrandLink />
                 <nav className="flex items-center gap-[0.8rem]" aria-label="Profile navigation">
-                    <Link className="text-ink no-underline hover:text-accent-strong" to="/">Rankings</Link>
-                    <Link className="text-ink no-underline hover:text-accent-strong" to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>
+                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
+                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>
                 </nav>
             </header>
 
@@ -420,7 +420,7 @@ function ProfileRoute() {
                                 <h1 className="text-2xl font-bold">{settings.user.name}</h1>
                                 <p className="text-muted-foreground">@{settings.user.slug}</p>
                                 <div className="mt-[0.65rem] flex flex-wrap gap-2">
-                                    <label className={`w-fit rounded-control border border-line bg-panel px-[0.8rem] py-[0.55rem] text-ink ${savingProfileImage ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
+                                    <label className={`w-fit rounded-sm border border-border bg-card px-[0.8rem] py-[0.55rem] text-foreground ${savingProfileImage ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
                                         <span>{savingProfileImage ? "Uploading..." : "Upload Photo"}</span>
                                         <input
                                             accept="image/*"
@@ -631,7 +631,7 @@ function ProfileRoute() {
                         {settings.categories.length > 0 ? (
                             <div className="grid gap-[0.65rem]">
                                 {settings.categories.map((category) => (
-                                    <label className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-panel border border-line bg-subtle-panel p-3" key={category.id}>
+                                    <label className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-md border border-border bg-muted p-3" key={category.id}>
                                         <span>
                                             <strong>{category.name}</strong>
                                             <small className="m-0 mt-[0.15rem] block text-muted-foreground">{category.entryCount} entries</small>
@@ -668,19 +668,19 @@ function FollowProfileList<TProfile extends FollowProfileSummary>({
     return (
         <div className="grid gap-[0.65rem]">
             {profiles.map((profile) => (
-                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-panel border border-line bg-subtle-panel p-[0.65rem]" key={profile.userId}>
+                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-md border border-border bg-muted p-[0.65rem]" key={profile.userId}>
                     <ProfileAvatar imageKey={profile.imageKey} userId={profile.userId} />
                     <div>
                         {canViewProfile(profile.isPublic, false, profile.relationState) ? (
                             <Link
-                                className="font-bold text-ink no-underline hover:text-accent-strong"
+                                className="font-bold text-foreground no-underline hover:text-accent-strong"
                                 to="/u/$profileSlug"
                                 params={{ profileSlug: profile.slug }}
                             >
                                 {profile.name}
                             </Link>
                         ) : (
-                            <strong className="font-bold text-ink no-underline">{profile.name}</strong>
+                            <strong className="font-bold text-foreground no-underline">{profile.name}</strong>
                         )}
                         <p className="m-0 mt-[0.15rem] text-muted-foreground">
                             @{profile.slug} · {profile.publicCategoryCount} public rankings ·{" "}
