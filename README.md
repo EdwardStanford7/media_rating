@@ -30,11 +30,12 @@ Common commands:
 
 ```sh
 cd web
-npm install
-npm run dev
-npm run test
-npm run typecheck
-npm run build
+npm i -g pnpm
+pnpm install
+pnpm dev
+pnpm test
+pnpm typecheck
+pnpm build
 make deploy
 ```
 
