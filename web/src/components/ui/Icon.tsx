@@ -41,7 +41,7 @@ const ICONS: Record<IconName, string> = {
 
 export function Icon({ name }: { name: IconName }) {
     return (
-        <span aria-hidden="true" className="button-icon">
+        <span aria-hidden="true" className="inline-grid size-[1em] flex-none place-items-center leading-none">
             {ICONS[name]}
         </span>
     );
@@ -61,7 +61,7 @@ export function IconButton({
         <button
             {...props}
             aria-label={label}
-            className={`icon-button ${className}`.trim()}
+            className={`inline-grid size-[2.35rem] min-w-[2.35rem] place-items-center p-0 text-center text-[1.05rem] ${className}`.trim()}
             title={title ?? label}
         >
             <Icon name={icon} />
@@ -77,9 +77,9 @@ export function MenuIconLabel({
     icon: IconName;
 }) {
     return (
-        <span className="menu-icon-label">
+        <span className="inline-flex min-w-0 items-center gap-2">
             <Icon name={icon} />
-            <span>{children}</span>
+            <span className="min-w-0 truncate">{children}</span>
         </span>
     );
 }

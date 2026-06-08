@@ -1,0 +1,160 @@
+import { assertOwned, first, getDb, newId, now } from "@/server/lib/db";
+import { getOwnedCategory } from "../stores/categoryStore";
+import { getActiveEntryCount, getOwnedEntry } from "../stores/entryStore";
+import { markQueuedEntryStarted, queuedEntryStartedStatement } from "../stores/queueStore";
+import {
+    getActiveSessionRow,
+    prepareBinarySession,
+    repairInterruptedRankingState
+} from "./rankingSessions";
+
+export async function createEntryWithBinaryRankingForUser(
+    userId: string,
+    input: {
+        categoryId: string;
+        name: string;
+        firstConsumedAt: number | null;
+        ignoredQueuedEntryId?: string;
+        imageKey?: string | null;
+        queuedEntryId?: string;
+        queueStartedAt?: number;
+    }
+) {
+    const db = getDb();
+    const category = await getOwnedCategory(userId, input.categoryId);
+    assertOwned(category, "Category");
+
+    const cleanName = input.name.trim();
+    if (!cleanName) {
+        throw new Error("Entry name is required");
+    }
+
+    await repairInterruptedRankingState(userId);
+    const activeSession = await getActiveSessionRow(userId);
+    if (activeSession) {
+        const activeSubject = await getOwnedEntry(userId, activeSession.subject_entry_id);
+        if (
+            activeSession.source === "new_entry" &&
+            activeSession.category_id === input.categoryId &&
+            activeSubject?.name === cleanName
+        ) {
+            if (input.queuedEntryId) {
+                await markQueuedEntryStarted(
+                    userId,
+                    input.queuedEntryId,
+                    input.queueStartedAt ?? now()
+                );
+            }
+
+            return {
+                kind: "session" as const,
+                entryId: activeSession.subject_entry_id,
+                sessionId: activeSession.id
+            };
+        }
+
+        throw new Error("Finish or cancel the active ranking before starting another one");
+    }
+
+    await assertEntryNameAvailable(userId, input.categoryId, cleanName, input.ignoredQueuedEntryId);
+
+    const activeCount = await getActiveEntryCount(userId, input.categoryId);
+    const createdAt = now();
+    const entryId = newId("entry");
+    const status = activeCount === 0 ? "active" : "ranking";
+    const statements = [
+        db
+            .prepare(
+                `INSERT INTO entries (
+           id, user_id, category_id, name, rank_position, status, image_key,
+           created_at, first_consumed_at, updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(
+                entryId,
+                userId,
+                input.categoryId,
+                cleanName,
+                activeCount,
+                status,
+                input.imageKey ?? null,
+                createdAt,
+                input.firstConsumedAt,
+                createdAt
+            )
+    ];
+
+    let sessionId: string | null = null;
+    if (activeCount > 0) {
+        const session = await prepareBinarySession(db, {
+            userId,
+            categoryId: input.categoryId,
+            subjectEntryId: entryId,
+            source: "new_entry",
+            opponentCount: activeCount,
+            createdAt
+        });
+        sessionId = session.sessionId;
+        statements.push(session.statement);
+    }
+
+    if (input.queuedEntryId) {
+        statements.push(
+            queuedEntryStartedStatement(
+                db,
+                userId,
+                input.queuedEntryId,
+                input.queueStartedAt ?? createdAt
+            )
+        );
+    }
+
+    await db.batch(statements);
+
+    if (activeCount === 0) {
+        return { kind: "completed" as const, entryId, sessionId: null };
+    }
+
+    if (!sessionId) {
+        throw new Error("Ranking session was not created");
+    }
+
+    return { kind: "session" as const, entryId, sessionId };
+}
+
+export async function assertEntryNameAvailable(
+    userId: string,
+    categoryId: string,
+    name: string,
+    ignoredQueuedEntryId?: string
+) {
+    await repairInterruptedRankingState(userId);
+
+    const existingEntry = await first<{ id: string }>(
+        getDb()
+            .prepare(
+                `SELECT id
+         FROM entries
+         WHERE user_id = ? AND category_id = ? AND name = ? AND status != 'deleted'`
+            )
+            .bind(userId, categoryId, name)
+    );
+    if (existingEntry) {
+        throw new Error("That entry already exists in this category");
+    }
+
+    const existingQueuedEntry = await first<{ id: string }>(
+        getDb()
+            .prepare(
+                `SELECT id
+         FROM entry_queue
+         WHERE user_id = ? AND category_id = ? AND name = ? AND status = 'queued'
+           AND (? IS NULL OR id != ?)`
+            )
+            .bind(userId, categoryId, name, ignoredQueuedEntryId ?? null, ignoredQueuedEntryId ?? null)
+    );
+    if (existingQueuedEntry) {
+        throw new Error("That entry is already queued in this category");
+    }
+}

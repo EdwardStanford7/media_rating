@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { redirectIfUnauthorized } from "@/lib/errors";
 import { errorMessage } from "@/lib/format";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
-import { getBinarySession, submitBinaryWinner } from "@/server/functions/actions";
+import { getBinarySession, submitBinaryWinner } from "@/server/rankingSessions";
 import type { BinarySessionView, CategoryWithEntries, Entry } from "@/lib/types";
 
 export function BinaryRankPanel({
@@ -41,7 +42,7 @@ export function BinaryRankPanel({
                 setSession(nextSession);
             })
             .catch((loadError) => {
-                if (isCurrent) {
+                if (isCurrent && !redirectIfUnauthorized(loadError)) {
                     setError(errorMessage(loadError));
                 }
             });
@@ -88,7 +89,9 @@ export function BinaryRankPanel({
 
             setSession(nextSession);
         } catch (submitError) {
-            setError(errorMessage(submitError));
+            if (!redirectIfUnauthorized(submitError)) {
+                setError(errorMessage(submitError));
+            }
         } finally {
             setSubmitting(false);
         }
@@ -104,7 +107,9 @@ export function BinaryRankPanel({
         try {
             await onCancel(session);
         } catch (cancelError) {
-            setError(errorMessage(cancelError));
+            if (!redirectIfUnauthorized(cancelError)) {
+                setError(errorMessage(cancelError));
+            }
         } finally {
             setSubmitting(false);
         }

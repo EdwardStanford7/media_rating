@@ -86,6 +86,55 @@
     --floating-shadow: 0 22px 64px rgba(0, 0, 0, 0.52);
 }
 
+/*
+ * Tailwind token names for the theme variables above. `inline` makes
+ * utilities emit var(--ink) etc. directly, so data-theme flips keep working.
+ */
+@theme inline {
+    --color-*: initial;
+    --color-app: var(--bg);
+    --color-ink: var(--ink);
+    --color-muted: var(--muted);
+    --color-line: var(--line);
+    --color-panel: var(--panel);
+    --color-panel-alt: var(--panel-alt);
+    --color-sidebar: var(--sidebar-bg);
+    --color-subtle-panel: var(--subtle-panel);
+    --color-selected-panel: var(--selected-panel);
+    --color-ready-panel: var(--ready-panel);
+    --color-input: var(--input-bg);
+    --color-poster-start: var(--poster-start);
+    --color-poster-end: var(--poster-end);
+    --color-menu: var(--menu-bg);
+    --color-menu-line: var(--menu-line);
+    --color-accent: var(--accent);
+    --color-accent-strong: var(--accent-strong);
+    --color-on-accent: var(--on-accent);
+    --color-danger: var(--danger);
+    --color-danger-line: var(--danger-line);
+    --color-success: var(--success);
+    --color-gold: var(--gold);
+    --color-gold-strong: var(--gold-strong);
+    --color-gold-soft: var(--gold-soft);
+    --color-status: var(--status-bg);
+    --color-avatar: var(--avatar-bg);
+    --color-avatar-ink: var(--avatar-ink);
+    --color-avatar-line: var(--avatar-line);
+    --color-modal-backdrop: var(--modal-backdrop);
+    --color-busy-backdrop: var(--busy-backdrop);
+    --color-overlay-button: var(--overlay-button-bg);
+    --color-overlay-button-line: var(--overlay-button-line);
+    --color-overlay-button-ink: var(--overlay-button-ink);
+    --color-overlay-strip: var(--overlay-strip-bg);
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-transparent: transparent;
+    --shadow-panel: var(--shadow);
+    --shadow-floating: var(--floating-shadow);
+    --radius-control: 6px;
+    --radius-panel: 8px;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -146,43 +195,6 @@ button.danger {
 button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
-}
-
-.button-icon {
-    display: inline-grid;
-    place-items: center;
-    flex: 0 0 auto;
-    width: 1em;
-    height: 1em;
-    line-height: 1;
-}
-
-.icon-button {
-    width: 2.35rem;
-    min-width: 2.35rem;
-    height: 2.35rem;
-    display: inline-grid;
-    place-items: center;
-    padding: 0;
-    text-align: center;
-}
-
-.icon-button .button-icon {
-    font-size: 1.05rem;
-}
-
-.menu-icon-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-}
-
-.menu-icon-label span:last-child {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 input,
@@ -400,43 +412,6 @@ textarea {
 .rank-panel,
 .auth-panel {
     padding: 1rem;
-}
-
-.empty-state {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 0.8rem;
-    max-width: 42rem;
-    border: 1px dashed var(--line);
-    border-radius: 8px;
-    background: var(--subtle-panel);
-    padding: 1rem;
-}
-
-.empty-state.compact {
-    gap: 0.6rem;
-    padding: 0.7rem;
-}
-
-.empty-state-icon {
-    width: 2.25rem;
-    height: 2.25rem;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--panel);
-    color: var(--accent);
-}
-
-.empty-state.compact .empty-state-icon {
-    width: 1.9rem;
-    height: 1.9rem;
-}
-
-.empty-state p {
-    margin: 0.2rem 0 0;
 }
 
 .auth-page {
@@ -1137,11 +1112,6 @@ a.small-button:hover,
 }
 
 .public-profile-header,
-.public-empty-state {
-    width: 100%;
-    margin: 0;
-}
-
 .public-profile-actions {
     display: flex;
     justify-content: flex-end;
@@ -1419,26 +1389,6 @@ img.queue-poster {
     display: block;
     height: auto;
     object-fit: cover;
-}
-
-.queue-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-}
-
-.queue-actions button:not(.icon-button) {
-    min-width: 0;
-    padding-inline: 0.55rem;
-    white-space: normal;
-}
-
-.queue-actions>button:not(.icon-button) {
-    flex: 1 1 7rem;
-}
-
-.queue-actions .icon-button {
-    flex: 0 0 2.35rem;
 }
 
 .queue-overflow-panel {
@@ -1849,49 +1799,6 @@ img.match-poster {
     background: var(--overlay-strip-bg);
     color: var(--overlay-button-ink);
     text-align: center;
-}
-
-.busy-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    display: grid;
-    place-items: center;
-    padding: 1rem;
-    background: var(--busy-backdrop);
-}
-
-.busy-card {
-    width: min(360px, 100%);
-    max-width: calc(100vw - 2rem);
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 0.85rem;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    box-shadow: var(--shadow);
-    padding: 1rem;
-}
-
-.busy-card p {
-    margin: 0.2rem 0 0;
-}
-
-.spinner {
-    width: 1.7rem;
-    height: 1.7rem;
-    border: 3px solid var(--line);
-    border-top-color: var(--accent);
-    border-radius: 999px;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
 }
 
 @media (max-width: 820px) {

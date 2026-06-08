@@ -1,5 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { redirectIfUnauthorized } from "@/lib/errors";
 import { followButtonLabel, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import { orderEntries } from "@/lib/ranking";
@@ -9,7 +11,7 @@ import {
     followProfile,
     loadPublicProfile,
     removeFollow
-} from "@/server/functions/actions";
+} from "@/server/profiles";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
 
 const TOAST_TIMEOUT_MS = 5_000;
@@ -116,6 +118,10 @@ function PublicProfileRoute() {
                 variant: "success"
             });
         } catch (followError) {
+            if (redirectIfUnauthorized(followError)) {
+                return;
+            }
+
             pushToast({
                 message: followError instanceof Error ? followError.message : String(followError),
                 variant: "danger"
@@ -210,13 +216,9 @@ function PublicProfileRoute() {
                     </div>
                 </div>
             ) : (
-                <section className="empty-state public-empty-state">
-                    <div className="empty-state-icon">◎</div>
-                    <div>
-                        <strong>No Public Rankings</strong>
-                        <p className="muted">Public lists will appear here.</p>
-                    </div>
-                </section>
+                <EmptyState className="m-0 w-full" glyph="◎" title="No Public Rankings">
+                    Public lists will appear here.
+                </EmptyState>
             )}
         </main>
     );

@@ -1,3 +1,4 @@
+import { createServerFn } from "@tanstack/react-start";
 import { canViewProfile, deriveFollowRelationState } from "@/lib/follows";
 import { orderEntries } from "@/lib/ranking";
 import type {
@@ -12,30 +13,21 @@ import type {
     PublicProfileData
 } from "@/lib/types";
 import { all, assertOwned, first, getDb, now } from "@/server/lib/db";
+import { authMiddleware, optionalAuthMiddleware } from "@/server/middleware/auth";
 import type { CategoryRow } from "./stores/categoryStore";
+import {
+    MIN_PROFILE_SLUG_LENGTH,
+    ensureUserProfile,
+    getProfileByUserId,
+    getProfileBySlug,
+    mapCurrentUserProfile,
+    slugifyProfileInput
+} from "./stores/profileStore";
 import { type EntryRow, mapEntry } from "./stores/entryStore";
 
 const MAX_USER_NAME_LENGTH = 80;
-const MIN_PROFILE_SLUG_LENGTH = 3;
-const MAX_PROFILE_SLUG_LENGTH = 40;
 
-export interface ProfileRow {
-    user_id: string;
-    name: string;
-    image: string | null;
-    slug: string;
-    is_public: number;
-    created_at: number;
-    updated_at: number;
-}
 
-interface UserIdentityRow {
-    id: string;
-    name: string;
-    image: string | null;
-    createdAt: number;
-    updatedAt: number;
-}
 
 interface ProfileSettingsCategoryRow {
     id: string;
@@ -72,160 +64,179 @@ interface FollowSearchRow {
     incoming_accepted_at: number | null;
 }
 
-export async function updateUserProfile(
-    userId: string,
-    input: { name: string; slug?: string; isPublic?: boolean }
-) {
-    const profile = await ensureUserProfile(userId);
-    const cleanName = input.name.trim();
-    if (!cleanName) {
-        throw new Error("Username is required");
-    }
+export const updateUserProfile = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { name: string; slug?: string; isPublic?: boolean }) => data)
+    .handler(async ({ context, data: input }) => {
+        const userId = context.user.id;
+        const profile = await ensureUserProfile(userId);
+        const cleanName = input.name.trim();
+        if (!cleanName) {
+            throw new Error("Username is required");
+        }
 
-    if (cleanName.length > MAX_USER_NAME_LENGTH) {
-        throw new Error(`Username must be ${MAX_USER_NAME_LENGTH} characters or fewer`);
-    }
+        if (cleanName.length > MAX_USER_NAME_LENGTH) {
+            throw new Error(`Username must be ${MAX_USER_NAME_LENGTH} characters or fewer`);
+        }
 
-    const nextSlug = input.slug === undefined
-        ? profile.slug
-        : normalizeProfileSlug(input.slug);
-    if (nextSlug !== profile.slug) {
-        await assertProfileSlugAvailable(userId, nextSlug);
-    }
+        const nextSlug = input.slug === undefined
+            ? profile.slug
+            : normalizeProfileSlug(input.slug);
+        if (nextSlug !== profile.slug) {
+            await assertProfileSlugAvailable(userId, nextSlug);
+        }
 
-    const nextIsPublic = input.isPublic === undefined ? Boolean(profile.is_public) : input.isPublic;
-    const updatedAt = now();
-    const db = getDb();
-    await db.batch([
-        db
-            .prepare(
-                `UPDATE "user"
-       SET name = ?, updatedAt = ?
-       WHERE id = ?`
-            )
-            .bind(cleanName, updatedAt, userId),
-        db
-            .prepare(
-                `UPDATE user_profiles
-       SET slug = ?, is_public = ?, updated_at = ?
-       WHERE user_id = ?`
-            )
-            .bind(nextSlug, nextIsPublic ? 1 : 0, updatedAt, userId)
-    ]);
+        const nextIsPublic = input.isPublic === undefined ? Boolean(profile.is_public) : input.isPublic;
+        const updatedAt = now();
+        const db = getDb();
+        await db.batch([
+            db
+                .prepare(
+                    `UPDATE "user"
+           SET name = ?, updatedAt = ?
+           WHERE id = ?`
+                )
+                .bind(cleanName, updatedAt, userId),
+            db
+                .prepare(
+                    `UPDATE user_profiles
+           SET slug = ?, is_public = ?, updated_at = ?
+           WHERE user_id = ?`
+                )
+                .bind(nextSlug, nextIsPublic ? 1 : 0, updatedAt, userId)
+        ]);
 
-    return {
-        name: cleanName,
-        profileSlug: nextSlug,
-        profileIsPublic: nextIsPublic
-    };
-}
+        return {
+            name: cleanName,
+            profileSlug: nextSlug,
+            profileIsPublic: nextIsPublic
+        };
+    });
 
-export async function loadProfileSettings(userId: string): Promise<ProfileSettingsData> {
-    const profile = await ensureUserProfile(userId);
-    const categories = await all<ProfileSettingsCategoryRow>(
-        getDb()
-            .prepare(
-                `SELECT categories.id, categories.name, categories.sort_order,
-                categories.is_public, COUNT(entries.id) AS entry_count
-         FROM categories
-         LEFT JOIN entries ON entries.category_id = categories.id
-           AND entries.user_id = categories.user_id
-           AND entries.status = 'active'
-         WHERE categories.user_id = ?
-         GROUP BY categories.id, categories.name, categories.sort_order, categories.is_public
-         ORDER BY categories.sort_order ASC, categories.name ASC`
-            )
-            .bind(userId)
-    );
+export const loadProfileSettings = createServerFn({ method: "GET" })
+    .middleware([authMiddleware])
+    .handler(async ({ context }) => {
+        const userId = context.user.id;
+        const profile = await ensureUserProfile(userId);
+        const categories = await all<ProfileSettingsCategoryRow>(
+            getDb()
+                .prepare(
+                    `SELECT categories.id, categories.name, categories.sort_order,
+                    categories.is_public, COUNT(entries.id) AS entry_count
+             FROM categories
+             LEFT JOIN entries ON entries.category_id = categories.id
+               AND entries.user_id = categories.user_id
+               AND entries.status = 'active'
+             WHERE categories.user_id = ?
+             GROUP BY categories.id, categories.name, categories.sort_order, categories.is_public
+             ORDER BY categories.sort_order ASC, categories.name ASC`
+                )
+                .bind(userId)
+        );
 
-    return {
-        user: {
-            id: profile.user_id,
-            name: profile.name,
-            imageKey: profile.image,
-            slug: profile.slug,
-            isPublic: Boolean(profile.is_public)
-        },
-        categories: categories.map((category) => ({
-            id: category.id,
-            name: category.name,
-            sortOrder: category.sort_order,
-            entryCount: category.entry_count,
-            isPublic: Boolean(category.is_public)
-        })),
-        following: await listFollowProfiles(userId, "following"),
-        followers: await listFollowProfiles(userId, "followers"),
-        incomingFollowRequests: await listFollowProfiles(userId, "incoming_requests"),
-        outgoingFollowRequests: await listFollowProfiles(userId, "outgoing_requests")
-    };
-}
+        return {
+            user: {
+                id: profile.user_id,
+                name: profile.name,
+                imageKey: profile.image,
+                slug: profile.slug,
+                isPublic: Boolean(profile.is_public)
+            },
+            categories: categories.map((category) => ({
+                id: category.id,
+                name: category.name,
+                sortOrder: category.sort_order,
+                entryCount: category.entry_count,
+                isPublic: Boolean(category.is_public)
+            })),
+            following: await listFollowProfiles(userId, "following"),
+            followers: await listFollowProfiles(userId, "followers"),
+            incomingFollowRequests: await listFollowProfiles(userId, "incoming_requests"),
+            outgoingFollowRequests: await listFollowProfiles(userId, "outgoing_requests")
+        };
+    });
 
-export async function searchPublicProfiles(userId: string, query: string): Promise<FollowSearchResult[]> {
-    const cleanQuery = query.trim().toLowerCase();
-    if (cleanQuery.length < 2) {
-        return [];
-    }
+export const searchPublicProfiles = createServerFn({ method: "GET" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { query: string }) => data)
+    .handler(async ({ context, data }) => {
+        const userId = context.user.id;
+        const { query } = data;
+        const cleanQuery = query.trim().toLowerCase();
+        if (cleanQuery.length < 2) {
+            return [];
+        }
 
-    const searchPattern = `%${cleanQuery.replace(/[%_]/g, "")}%`;
-    const rows = await all<FollowSearchRow>(
-        getDb()
-            .prepare(
-                `SELECT "user".id AS user_id, "user".name, "user".image,
-                user_profiles.slug, user_profiles.is_public,
-                COUNT(categories.id) AS public_category_count,
-                outgoing.status AS outgoing_status,
-                outgoing.created_at AS outgoing_created_at,
-                outgoing.accepted_at AS outgoing_accepted_at,
-                incoming.status AS incoming_status,
-                incoming.created_at AS incoming_created_at,
-                incoming.accepted_at AS incoming_accepted_at
-         FROM user_profiles
-         INNER JOIN "user" ON "user".id = user_profiles.user_id
-         LEFT JOIN categories ON categories.user_id = user_profiles.user_id
-           AND categories.is_public = 1
-         LEFT JOIN user_follows outgoing
-           ON outgoing.follower_user_id = ?
-          AND outgoing.followed_user_id = user_profiles.user_id
-         LEFT JOIN user_follows incoming
-           ON incoming.follower_user_id = user_profiles.user_id
-          AND incoming.followed_user_id = ?
-         WHERE user_profiles.is_public = 1
-           AND user_profiles.user_id != ?
-           AND (lower(user_profiles.slug) LIKE ? OR lower("user".name) LIKE ?)
-         GROUP BY "user".id, "user".name, "user".image, user_profiles.slug,
-           user_profiles.is_public, outgoing.status, outgoing.created_at,
-           outgoing.accepted_at, incoming.status, incoming.created_at,
-           incoming.accepted_at
-         ORDER BY
-           CASE
-             WHEN lower(user_profiles.slug) = ? THEN 0
-             WHEN lower(user_profiles.slug) LIKE ? THEN 1
-             ELSE 2
-           END,
-           lower("user".name) ASC,
-           user_profiles.slug ASC
-         LIMIT 12`
-            )
-            .bind(userId, userId, userId, searchPattern, searchPattern, cleanQuery, `${cleanQuery}%`)
-    );
+        const searchPattern = `%${cleanQuery.replace(/[%_]/g, "")}%`;
+        const rows = await all<FollowSearchRow>(
+            getDb()
+                .prepare(
+                    `SELECT "user".id AS user_id, "user".name, "user".image,
+                    user_profiles.slug, user_profiles.is_public,
+                    COUNT(categories.id) AS public_category_count,
+                    outgoing.status AS outgoing_status,
+                    outgoing.created_at AS outgoing_created_at,
+                    outgoing.accepted_at AS outgoing_accepted_at,
+                    incoming.status AS incoming_status,
+                    incoming.created_at AS incoming_created_at,
+                    incoming.accepted_at AS incoming_accepted_at
+             FROM user_profiles
+             INNER JOIN "user" ON "user".id = user_profiles.user_id
+             LEFT JOIN categories ON categories.user_id = user_profiles.user_id
+               AND categories.is_public = 1
+             LEFT JOIN user_follows outgoing
+               ON outgoing.follower_user_id = ?
+              AND outgoing.followed_user_id = user_profiles.user_id
+             LEFT JOIN user_follows incoming
+               ON incoming.follower_user_id = user_profiles.user_id
+              AND incoming.followed_user_id = ?
+             WHERE user_profiles.is_public = 1
+               AND user_profiles.user_id != ?
+               AND (lower(user_profiles.slug) LIKE ? OR lower("user".name) LIKE ?)
+             GROUP BY "user".id, "user".name, "user".image, user_profiles.slug,
+               user_profiles.is_public, outgoing.status, outgoing.created_at,
+               outgoing.accepted_at, incoming.status, incoming.created_at,
+               incoming.accepted_at
+             ORDER BY
+               CASE
+                 WHEN lower(user_profiles.slug) = ? THEN 0
+                 WHEN lower(user_profiles.slug) LIKE ? THEN 1
+                 ELSE 2
+               END,
+               lower("user".name) ASC,
+               user_profiles.slug ASC
+             LIMIT 12`
+                )
+                .bind(userId, userId, userId, searchPattern, searchPattern, cleanQuery, `${cleanQuery}%`)
+        );
 
-    return rows.map((row) => ({
-        ...mapFollowSearchRow(row),
-        matchKind: "public_profile"
-    }));
-}
+        return rows.map((row): FollowSearchResult => ({
+            ...mapFollowSearchRow(row),
+            matchKind: "public_profile"
+        }));
+    });
 
-export async function requestFollowByProfileSlug(userId: string, profileSlugOrUrl: string) {
-    const slug = parseProfileSlugInput(profileSlugOrUrl);
-    const profile = await getProfileBySlug(slug);
-    if (!profile) {
-        throw new Error("Profile not found");
-    }
+export const requestFollowByProfileSlug = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { profileSlugOrUrl: string }) => data)
+    .handler(async ({ context, data }) => {
+        const userId = context.user.id;
+        const { profileSlugOrUrl } = data;
+        const slug = parseProfileSlugInput(profileSlugOrUrl);
+        const profile = await getProfileBySlug(slug);
+        if (!profile) {
+            throw new Error("Profile not found");
+        }
 
-    return followProfile(userId, profile.user_id);
-}
+        return followProfileForUser(userId, profile.user_id);
+    });
 
-export async function followProfile(userId: string, profileUserId: string) {
+export const followProfile = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { profileUserId: string }) => data)
+    .handler(async ({ context, data }) => followProfileForUser(context.user.id, data.profileUserId));
+
+async function followProfileForUser(userId: string, profileUserId: string) {
     if (userId === profileUserId) {
         throw new Error("You cannot follow yourself");
     }
@@ -282,206 +293,138 @@ export async function followProfile(userId: string, profileUserId: string) {
     return { profileUserId, relationState: nextRelation };
 }
 
-export async function approveFollowRequest(userId: string, followerUserId: string) {
-    if (userId === followerUserId) {
-        throw new Error("You cannot follow yourself");
-    }
+export const approveFollowRequest = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { followerUserId: string }) => data)
+    .handler(async ({ context, data }) => {
+        const userId = context.user.id;
+        const { followerUserId } = data;
+        if (userId === followerUserId) {
+            throw new Error("You cannot follow yourself");
+        }
 
-    const request = await first<{ follower_user_id: string }>(
-        getDb()
+        const request = await first<{ follower_user_id: string }>(
+            getDb()
+                .prepare(
+                    `SELECT follower_user_id
+             FROM user_follows
+             WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
+                )
+                .bind(followerUserId, userId)
+        );
+        if (!request) {
+            throw new Error("Follow request not found");
+        }
+
+        const acceptedAt = now();
+        await getDb()
             .prepare(
-                `SELECT follower_user_id
-         FROM user_follows
-         WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
+                `UPDATE user_follows
+           SET status = 'accepted', accepted_at = ?
+           WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
+            )
+            .bind(acceptedAt, followerUserId, userId)
+            .run();
+
+        const nextRelation = await getFollowRelationState(userId, followerUserId);
+        return { followerUserId, relationState: nextRelation };
+    });
+
+export const declineFollowRequest = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { followerUserId: string }) => data)
+    .handler(async ({ context, data }) => {
+        const userId = context.user.id;
+        const { followerUserId } = data;
+        await getDb()
+            .prepare(
+                `DELETE FROM user_follows
+           WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
             )
             .bind(followerUserId, userId)
-    );
-    if (!request) {
-        throw new Error("Follow request not found");
-    }
+            .run();
 
-    const acceptedAt = now();
-    await getDb()
-        .prepare(
-            `UPDATE user_follows
-       SET status = 'accepted', accepted_at = ?
-       WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
-        )
-        .bind(acceptedAt, followerUserId, userId)
-        .run();
+        return { followerUserId };
+    });
 
-    const nextRelation = await getFollowRelationState(userId, followerUserId);
-    return { followerUserId, relationState: nextRelation };
-}
-
-export async function declineFollowRequest(userId: string, followerUserId: string) {
-    await getDb()
-        .prepare(
-            `DELETE FROM user_follows
-       WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
-        )
-        .bind(followerUserId, userId)
-        .run();
-
-    return { followerUserId };
-}
-
-export async function cancelFollowRequest(userId: string, followedUserId: string) {
-    await getDb()
-        .prepare(
-            `DELETE FROM user_follows
-       WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
-        )
-        .bind(userId, followedUserId)
-        .run();
-
-    return { followedUserId };
-}
-
-export async function removeFollow(userId: string, followedUserId: string) {
-    await getDb()
-        .prepare(
-            `DELETE FROM user_follows
-       WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'accepted'`
-        )
-        .bind(userId, followedUserId)
-        .run();
-
-    return { followedUserId };
-}
-
-export async function loadPublicProfile(
-    profileSlug: string,
-    viewerUserId: string | null
-): Promise<PublicProfileData | null> {
-    const slug = parseProfileSlugInput(profileSlug);
-    const profile = await getProfileBySlug(slug);
-    if (!profile) {
-        return null;
-    }
-
-    const isSelf = viewerUserId === profile.user_id;
-    const relationState = viewerUserId
-        ? await getFollowRelationState(viewerUserId, profile.user_id)
-        : "none";
-    if (!canViewProfile(Boolean(profile.is_public), isSelf, relationState)) {
-        return null;
-    }
-
-    const categories = await loadPublicCategories(profile.user_id);
-
-    return {
-        profile: {
-            userId: profile.user_id,
-            name: profile.name,
-            imageKey: profile.image,
-            slug: profile.slug,
-            isPublic: Boolean(profile.is_public),
-            isSelf,
-            relationState
-        },
-        categories,
-        viewer: {
-            isSignedIn: Boolean(viewerUserId),
-            isSelf,
-            relationState
-        }
-    };
-}
-
-export async function ensureUserProfile(userId: string): Promise<ProfileRow> {
-    const existingProfile = await getProfileByUserId(userId);
-    if (existingProfile) {
-        return existingProfile;
-    }
-
-    const user = await first<UserIdentityRow>(
-        getDb()
+export const cancelFollowRequest = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { followedUserId: string }) => data)
+    .handler(async ({ context, data }) => {
+        const userId = context.user.id;
+        const { followedUserId } = data;
+        await getDb()
             .prepare(
-                `SELECT id, name, image, createdAt, updatedAt
-         FROM "user"
-         WHERE id = ?`
+                `DELETE FROM user_follows
+           WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'pending'`
             )
-            .bind(userId)
-    );
-    assertOwned(user, "User");
+            .bind(userId, followedUserId)
+            .run();
 
-    const createdAt = now();
-    const slugBase = slugifyProfileName(user.name || "user");
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-        const slug = attempt === 0
-            ? slugBase
-            : `${slugBase.slice(0, Math.max(MIN_PROFILE_SLUG_LENGTH, MAX_PROFILE_SLUG_LENGTH - 9))}-${randomSlugSuffix()}`;
-        if (await profileSlugExists(slug)) {
-            continue;
+        return { followedUserId };
+    });
+
+export const removeFollow = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { followedUserId: string }) => data)
+    .handler(async ({ context, data }) => {
+        const userId = context.user.id;
+        const { followedUserId } = data;
+        await getDb()
+            .prepare(
+                `DELETE FROM user_follows
+           WHERE follower_user_id = ? AND followed_user_id = ? AND status = 'accepted'`
+            )
+            .bind(userId, followedUserId)
+            .run();
+
+        return { followedUserId };
+    });
+
+export const loadPublicProfile = createServerFn({ method: "GET" })
+    .middleware([optionalAuthMiddleware])
+    .inputValidator((data: { profileSlug: string }) => data)
+    .handler(async ({ context, data }) => {
+        const viewerUserId = context.user?.id ?? null;
+        const { profileSlug } = data;
+        const slug = parseProfileSlugInput(profileSlug);
+        const profile = await getProfileBySlug(slug);
+        if (!profile) {
+            return null;
         }
 
-        try {
-            await getDb()
-                .prepare(
-                    `INSERT INTO user_profiles (user_id, slug, is_public, created_at, updated_at)
-             VALUES (?, ?, 0, ?, ?)`
-                )
-                .bind(userId, slug, createdAt, createdAt)
-                .run();
-            return {
-                user_id: user.id,
-                name: user.name,
-                image: user.image,
-                slug,
-                is_public: 0,
-                created_at: createdAt,
-                updated_at: createdAt
-            };
-        } catch (error) {
-            if (attempt === 7) {
-                throw error;
+        const isSelf = viewerUserId === profile.user_id;
+        const relationState = viewerUserId
+            ? await getFollowRelationState(viewerUserId, profile.user_id)
+            : "none";
+        if (!canViewProfile(Boolean(profile.is_public), isSelf, relationState)) {
+            return null;
+        }
+
+        const categories = await loadPublicCategories(profile.user_id);
+
+        return {
+            profile: {
+                userId: profile.user_id,
+                name: profile.name,
+                imageKey: profile.image,
+                slug: profile.slug,
+                isPublic: Boolean(profile.is_public),
+                isSelf,
+                relationState
+            },
+            categories,
+            viewer: {
+                isSignedIn: Boolean(viewerUserId),
+                isSelf,
+                relationState
             }
-        }
-    }
+        };
+    });
 
-    throw new Error("Profile handle could not be created");
-}
 
-async function getProfileByUserId(userId: string) {
-    return first<ProfileRow>(
-        getDb()
-            .prepare(
-                `SELECT "user".id AS user_id, "user".name, "user".image,
-                user_profiles.slug, user_profiles.is_public,
-                user_profiles.created_at, user_profiles.updated_at
-         FROM user_profiles
-         INNER JOIN "user" ON "user".id = user_profiles.user_id
-         WHERE user_profiles.user_id = ?`
-            )
-            .bind(userId)
-    );
-}
 
-async function getProfileBySlug(profileSlug: string) {
-    return first<ProfileRow>(
-        getDb()
-            .prepare(
-                `SELECT "user".id AS user_id, "user".name, "user".image,
-                user_profiles.slug, user_profiles.is_public,
-                user_profiles.created_at, user_profiles.updated_at
-         FROM user_profiles
-         INNER JOIN "user" ON "user".id = user_profiles.user_id
-         WHERE user_profiles.slug = ?`
-            )
-            .bind(profileSlug)
-    );
-}
 
-async function profileSlugExists(profileSlug: string) {
-    const row = await first<{ slug: string }>(
-        getDb()
-            .prepare(`SELECT slug FROM user_profiles WHERE slug = ?`)
-            .bind(profileSlug)
-    );
-
-    return Boolean(row);
-}
 
 async function assertProfileSlugAvailable(userId: string, profileSlug: string) {
     const existing = await first<{ user_id: string }>(
@@ -494,13 +437,6 @@ async function assertProfileSlugAvailable(userId: string, profileSlug: string) {
     }
 }
 
-export function mapCurrentUserProfile(profile: ProfileRow): CurrentUserProfile {
-    return {
-        userId: profile.user_id,
-        slug: profile.slug,
-        isPublic: Boolean(profile.is_public)
-    };
-}
 
 async function loadPublicCategories(userId: string): Promise<CategoryWithEntries[]> {
     const categories = await all<CategoryRow>(
@@ -777,21 +713,5 @@ function parseProfileSlugInput(value: string) {
     }
 }
 
-function slugifyProfileName(value: string) {
-    const slug = slugifyProfileInput(value);
-    return slug.length >= MIN_PROFILE_SLUG_LENGTH ? slug : `user-${randomSlugSuffix()}`;
-}
 
-function slugifyProfileInput(value: string) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, MAX_PROFILE_SLUG_LENGTH)
-        .replace(/-+$/g, "");
-}
 
-function randomSlugSuffix() {
-    return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-}

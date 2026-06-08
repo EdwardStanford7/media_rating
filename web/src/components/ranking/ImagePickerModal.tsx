@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { redirectIfUnauthorized } from "@/lib/errors";
 import { errorMessage } from "@/lib/format";
 import {
     imageCandidateToPosterBlob,
@@ -10,7 +11,7 @@ import {
     type ImagePickerTarget,
     type ImageSearchCandidate
 } from "@/lib/posterImage";
-import { markImageUnavailable } from "@/server/functions/actions";
+import { markImageUnavailable } from "@/server/entries";
 
 const IMAGE_SEARCH_TIMEOUT_MS = 15_000;
 
@@ -218,7 +219,9 @@ export function ImagePickerModal({
             });
             await onSaved();
         } catch (saveError) {
-            setError(errorMessage(saveError));
+            if (!redirectIfUnauthorized(saveError)) {
+                setError(errorMessage(saveError));
+            }
         } finally {
             setSavingCandidateId(null);
         }

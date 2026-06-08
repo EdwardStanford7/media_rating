@@ -1,19 +1,21 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import { updateCategoryVisibility } from "@/server/categories";
 import {
     approveFollowRequest,
     cancelFollowRequest,
     declineFollowRequest,
     followProfile,
-    getSession,
     loadProfileSettings,
     removeFollow,
     requestFollowByProfileSlug,
     searchPublicProfiles,
-    updateCategoryVisibility,
     updateUserProfile
-} from "@/server/functions/actions";
+} from "@/server/profiles";
+import { getSession } from "@/server/session";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { redirectIfUnauthorized } from "@/lib/errors";
 import { canViewProfile, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage } from "@/lib/images";
 import type { FollowProfileSummary, FollowSearchResult, ProfileSettingsData } from "@/lib/types";
@@ -95,7 +97,7 @@ function ProfileRoute() {
                 .catch((searchError) => {
                     if (!canceled) {
                         setFollowSearchResults([]);
-                        setError(errorMessage(searchError));
+                        setActionError(searchError);
                     }
                 })
                 .finally(() => {
@@ -141,6 +143,14 @@ function ProfileRoute() {
         }
     }
 
+    function setActionError(error: unknown) {
+        if (redirectIfUnauthorized(error)) {
+            return;
+        }
+
+        setError(errorMessage(error));
+    }
+
     async function refreshSettings() {
         const nextSettings = await loadProfileSettings();
         setSettings(nextSettings);
@@ -167,7 +177,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile saved.");
         } catch (profileError) {
-            setError(errorMessage(profileError));
+            setActionError(profileError);
         } finally {
             setSavingProfile(false);
         }
@@ -201,7 +211,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile photo updated.");
         } catch (imageError) {
-            setError(errorMessage(imageError));
+            setActionError(imageError);
         } finally {
             setSavingProfileImage(false);
         }
@@ -224,7 +234,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile photo removed.");
         } catch (imageError) {
-            setError(errorMessage(imageError));
+            setActionError(imageError);
         } finally {
             setSavingProfileImage(false);
         }
@@ -240,7 +250,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Ranking visibility saved.");
         } catch (visibilityError) {
-            setError(errorMessage(visibilityError));
+            setActionError(visibilityError);
         } finally {
             setSavingCategoryId(null);
         }
@@ -259,7 +269,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus(result.relationState === "requested" ? "Follow request sent." : "Profile followed.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -275,7 +285,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile followed.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -291,7 +301,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Follow request accepted.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -307,7 +317,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Follow request declined.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -323,7 +333,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Follow request canceled.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -339,7 +349,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile unfollowed.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -553,11 +563,9 @@ function ProfileRoute() {
                                 )}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon="+"
-                                title="Not Following Anyone"
-                                text="Profiles you follow appear here."
-                            />
+                            <EmptyState compact glyph="+" title="Not Following Anyone">
+                                Profiles you follow appear here.
+                            </EmptyState>
                         )}
                     </section>
 
@@ -572,11 +580,9 @@ function ProfileRoute() {
                                 renderActions={renderFollowerAction}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon="◎"
-                                title="No Followers"
-                                text="Accepted followers appear here."
-                            />
+                            <EmptyState compact glyph="◎" title="No Followers">
+                                Accepted followers appear here.
+                            </EmptyState>
                         )}
                     </section>
 
@@ -608,11 +614,9 @@ function ProfileRoute() {
                                 )}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon="+"
-                                title="No Pending Requests"
-                                text="Requests to follow private profiles appear here."
-                            />
+                            <EmptyState compact glyph="+" title="No Pending Requests">
+                                Requests to follow private profiles appear here.
+                            </EmptyState>
                         )}
                     </section>
 
@@ -635,11 +639,9 @@ function ProfileRoute() {
                                 )}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon=">"
-                                title="No Sent Requests"
-                                text="Private-profile requests you send appear here."
-                            />
+                            <EmptyState compact glyph=">" title="No Sent Requests">
+                                Private-profile requests you send appear here.
+                            </EmptyState>
                         )}
                     </section>
                 </div>
@@ -668,13 +670,9 @@ function ProfileRoute() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="empty-state compact">
-                                <div className="empty-state-icon">◎</div>
-                                <div>
-                                    <strong>No Rankings</strong>
-                                    <p className="muted">Create a category before sharing rankings.</p>
-                                </div>
-                            </div>
+                            <EmptyState compact glyph="◎" title="No Rankings">
+                                Create a category before sharing rankings.
+                            </EmptyState>
                         )}
                     </section>
                 </div>
@@ -711,26 +709,6 @@ function FollowProfileList<TProfile extends FollowProfileSummary>({
                     {renderActions(profile)}
                 </div>
             ))}
-        </div>
-    );
-}
-
-function FollowEmptyState({
-    icon,
-    text,
-    title
-}: {
-    icon: string;
-    text: string;
-    title: string;
-}) {
-    return (
-        <div className="empty-state compact">
-            <div className="empty-state-icon">{icon}</div>
-            <div>
-                <strong>{title}</strong>
-                <p className="muted">{text}</p>
-            </div>
         </div>
     );
 }

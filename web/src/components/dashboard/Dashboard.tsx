@@ -21,33 +21,38 @@ import {
     type DropPlacement,
     type EntryDragPreview
 } from "@/lib/dragReorder";
+import { redirectIfUnauthorized } from "@/lib/errors";
 import { currentDateTimestamp, dateInputToTimestamp, errorMessage, formatDateTime } from "@/lib/format";
 import { shouldPromptForImage } from "@/lib/images";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type { ImagePickerTarget } from "@/lib/posterImage";
 import { orderEntries } from "@/lib/ranking";
 import {
-    cancelBinarySession,
     createCategory,
-    createEntryWithBinaryRanking,
-    createQueuedEntry,
     deleteCategory,
-    deleteEntry,
-    deleteQueuedEntry,
-    importLegacyEntries,
-    loadDashboard,
     moveCategoryRelativeToCategory,
+    renameCategory
+} from "@/server/categories";
+import { loadDashboard } from "@/server/dashboard";
+import {
+    createEntryWithBinaryRanking,
+    deleteEntry,
     moveEntryRelativeToEntry,
-    renameCategory,
     renameEntry,
-    renameQueuedEntry,
     restoreEntry,
-    restoreQueuedEntry,
     startRerankEntry,
+    switchEntryCategory
+} from "@/server/entries";
+import { importLegacyEntries } from "@/server/legacyImport";
+import {
+    createQueuedEntry,
+    deleteQueuedEntry,
+    renameQueuedEntry,
+    restoreQueuedEntry,
     startQueuedEntryRanking,
-    switchEntryCategory,
     updateQueueSettings
-} from "@/server/functions/actions";
+} from "@/server/queue";
+import { cancelBinarySession } from "@/server/rankingSessions";
 import { applyThemeMode, readInitialThemeMode, saveThemeMode, type ThemeMode } from "@/lib/theme";
 import type {
     BinarySessionView,
@@ -284,6 +289,10 @@ export function Dashboard({
     }
 
     function setErrorMessage(error: unknown) {
+        if (redirectIfUnauthorized(error)) {
+            return;
+        }
+
         setMessage(errorMessage(error), "danger");
     }
 
