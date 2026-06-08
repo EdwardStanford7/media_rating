@@ -4,6 +4,7 @@ import { MenuIconLabel } from "@/components/ui/Icon";
 import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useFloatingMenu } from "@/hooks/useFloatingMenu";
+import { useHydrated } from "@/hooks/useHydrated";
 import { formatDateTime } from "@/lib/format";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import type { QueuedEntry } from "@/lib/types";
@@ -30,6 +31,9 @@ export function QueuedEntryRow({
     const [menuPoint, setMenuPoint] = useState<{ left: number; top: number } | null>(null);
     const [name, setName] = useState(entry.name);
     const menuRef = useDismissibleMenu<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
+    // availableAt is a real instant; the server can't know the client's
+    // timezone, so render UTC until hydration and local time after mount.
+    const hydrated = useHydrated();
     const floatingMenu = useFloatingMenu(menuOpen, menuPoint);
     useEscapeKey(isRenaming, () => { setName(entry.name); setIsRenaming(false); });
 
@@ -94,7 +98,7 @@ export function QueuedEntryRow({
                         }}
                     >
                         <strong>{entry.name}</strong>
-                        <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt)}</p>
+                        <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt, hydrated ? undefined : "UTC")}</p>
                     </div>
                 )}
             </div>
