@@ -1,14 +1,14 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { SignInForm } from "@/components/auth/SignInForm";
+import { SignUpForm } from "@/components/auth/SignUpForm";
 import { getAuthOptions, getSession } from "@/server/session";
 
-export const Route = createFileRoute("/signin")({
+export const Route = createFileRoute("/signup")({
     head: () => ({
         meta: [
-            { title: "Sign in · Goldshelf" }
+            { title: "Sign up · Goldshelf" }
         ],
         links: [
-            { rel: "canonical", href: "https://goldshelf.net/signin" }
+            { rel: "canonical", href: "https://goldshelf.net/signup" }
         ]
     }),
     beforeLoad: async () => {
@@ -18,10 +18,10 @@ export const Route = createFileRoute("/signin")({
         }
     },
     loader: async () => ({ authOptions: await getAuthOptions() }),
-    component: SignInRoute
+    component: SignUpRoute
 });
 
-function SignInRoute() {
+function SignUpRoute() {
     const { authOptions } = Route.useLoaderData();
-    return <SignInForm authOptions={authOptions} />;
+    return <SignUpForm authOptions={authOptions} />;
 }
