@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Download, LogOut, Palette, Settings, Upload, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,6 +27,7 @@ export function AccountMenu({
     settings,
     onExport,
     onOpenImport,
+    onOpenProfile,
     onSaveSettings,
     onThemeChange,
     themeMode,
@@ -40,6 +40,7 @@ export function AccountMenu({
     settings: QueueSettings;
     onExport: () => Promise<void>;
     onOpenImport: () => void;
+    onOpenProfile: () => void;
     onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
@@ -105,7 +106,7 @@ export function AccountMenu({
             <DropdownMenuTrigger asChild>
                 <button
                     aria-label="Account menu"
-                    className="ml-auto flex h-[2.35rem] w-[2.35rem] flex-none items-center justify-center rounded-full p-0 max-[820px]:self-end"
+                    className="ml-auto flex h-[2.7rem] w-[2.7rem] flex-none items-center justify-center rounded-full p-0 max-[820px]:self-end"
                     type="button"
                 >
                     <AccountAvatar imageKey={userImage} imageVersion={userImageVersion} />
@@ -120,10 +121,8 @@ export function AccountMenu({
                     </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                    <Link to="/profile">
-                        <User />Profile
-                    </Link>
+                <DropdownMenuItem onSelect={onOpenProfile}>
+                    <User />Profile
                 </DropdownMenuItem>
                 <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
@@ -207,7 +206,7 @@ function AccountAvatar({
         : null;
 
     return (
-        <Avatar aria-hidden="true" className={large ? "size-[2.2rem]" : "size-[2.1rem]"}>
+        <Avatar aria-hidden="true" className={large ? "size-[2.55rem]" : "size-[2.4rem]"}>
             {src ? <AvatarImage alt="" decoding="async" src={src} /> : null}
             <AvatarFallback className="border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)]" />
         </Avatar>

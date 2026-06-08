@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./base";
-import { gotoApp, seedUsers, serverFnResponse, signInViaApi, winMatchups } from "./helpers";
+import { gotoApp, seedUsers, serverFnResponse, signInViaApi, TEST_PASSWORD, winMatchups } from "./helpers";
 
 const QUINN = {
     email: "quinn@e2e.test",
@@ -10,14 +10,31 @@ const QUINN = {
 
 /** Opens the account menu's Settings flyout (queue toggles + delay days). */
 async function openQueueSettings(page: Page) {
-    await page.getByRole("button", { name: "Account menu" }).click();
-    await page.getByRole("menuitem", { name: "Settings" }).click();
-    await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toBeVisible();
+    const queueToggle = page.getByRole("menuitemcheckbox", { name: "Queue entries" });
+    if (await queueToggle.isVisible().catch(() => false)) {
+        return;
+    }
+
+    const accountButton = page.getByRole("button", { name: "Account menu" });
+    const settingsItem = page.getByRole("menuitem", { name: "Settings" });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (!(await settingsItem.isVisible().catch(() => false))) {
+            await accountButton.click();
+        }
+        if (await settingsItem.isVisible().catch(() => false)) {
+            await settingsItem.click();
+            await expect(queueToggle).toBeVisible();
+            return;
+        }
+    }
+
+    await expect(settingsItem).toBeVisible();
 }
 
 /** Closes the account menu by clicking outside of it. */
 async function closeAccountMenu(page: Page) {
-    await page.getByRole("heading", { name: "Movies" }).click();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
     await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toBeHidden();
 }
 
@@ -46,6 +63,47 @@ function queueItem(page: Page, name: string) {
 }
 
 test.describe("Queue", () => {
+    test("new accounts default to a ready zero-day queue and settings apply before refresh", async ({
+        page
+    }) => {
+        await gotoApp(page, "/signin");
+        await page.getByRole("link", { name: "Create an account" }).click();
+        await page.getByLabel("Name").fill("Default Queue");
+        await page.getByLabel("Email").fill("queue-default@e2e.test");
+        await page.getByRole("textbox", { name: /^Password/ }).fill(TEST_PASSWORD);
+        await page.getByRole("button", { name: "Create account" }).click();
+        await expect(page.getByText("Create Your First Category")).toBeVisible({ timeout: 15_000 });
+
+        await openQueueSettings(page);
+        await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "true");
+        await expect(page.getByLabel("Delay days")).toHaveValue("0");
+        await closeAccountMenu(page);
+
+        await page.getByPlaceholder("New category").fill("Books");
+        await page.getByPlaceholder("New category").press("Enter");
+        await expect(page.getByRole("heading", { name: "Books" })).toBeVisible();
+
+        await page.getByPlaceholder("New entry").fill("Dune");
+        await page.getByPlaceholder("New entry").press("Enter");
+        await expect(page.getByText(/Queued Dune for ranking on/)).toBeVisible();
+        await expect(page.getByText("1 queued")).toBeVisible();
+        await expect(page.getByText("1 ready")).toBeVisible();
+        await page.getByRole("button", { name: "Close" }).click();
+
+        await queueItem(page, "Dune").click({ button: "right" });
+        await page.getByRole("menuitem", { name: "Rank Now" }).click();
+        await expect(page.getByText("#1 Dune")).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText("Queue Empty")).toBeVisible();
+
+        await openQueueSettings(page);
+        await page.getByRole("menuitemcheckbox", { name: "Queue entries" }).click();
+        await closeAccountMenu(page);
+
+        await page.getByPlaceholder("New entry").fill("Hyperion");
+        await page.getByPlaceholder("New entry").press("Enter");
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+    });
+
     test("full queue lifecycle: enable, delay, rename, rank now, undo delete, rank queue, disable", async ({
         page,
         context
@@ -60,6 +118,7 @@ test.describe("Queue", () => {
         // --- Enable the queue with the default delay (3 days). ---
         await openQueueSettings(page);
         await withSettingsSaved(page, () => page.getByRole("menuitemcheckbox", { name: "Queue entries" }).click());
+        await openQueueSettings(page);
         await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "true");
         await closeAccountMenu(page);
 
@@ -107,12 +166,6 @@ test.describe("Queue", () => {
         await page.getByPlaceholder("New entry").fill("Klute");
         await page.getByPlaceholder("New entry").press("Enter");
         await expect(page.getByText("2 queued")).toBeVisible();
-
-        // The queue panel snapshots the clock on mount and only re-checks
-        // readiness once a minute, so entries queued with a zero delay show
-        // as pending until then. Reload to remount with a fresh clock.
-        await gotoApp(page);
-        await expect(page.getByText("2 queued")).toBeVisible();
         await expect(page.getByText("2 ready")).toBeVisible();
         await expect(page.getByRole("button", { name: "Rank Queue" })).toBeEnabled();
 
@@ -144,6 +197,7 @@ test.describe("Queue", () => {
         // --- Disabling the queue routes new entries straight to ranking. ---
         await openQueueSettings(page);
         await withSettingsSaved(page, () => page.getByRole("menuitemcheckbox", { name: "Queue entries" }).click());
+        await openQueueSettings(page);
         await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "false");
         await closeAccountMenu(page);
 

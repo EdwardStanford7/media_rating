@@ -1,5 +1,14 @@
+import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { Image as ImageIcon, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger
+} from "@/components/ui/context-menu";
+import { Input } from "@/components/ui/input";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { errorMessage } from "@/lib/format";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
@@ -19,7 +28,9 @@ export function BinaryRankPanel({
     onCancel,
     onComplete,
     onUnavailable,
-    onNeedImage
+    onNeedImage,
+    onPickImage,
+    onRename
 }: {
     sessionId: string;
     imageRefreshVersion: number;
@@ -27,10 +38,14 @@ export function BinaryRankPanel({
     onComplete: (sessionId: string) => Promise<void>;
     onUnavailable: (sessionId: string) => Promise<void>;
     onNeedImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
+    onPickImage: (entry: Entry, category: Pick<CategoryWithEntries, "id" | "name">) => void;
+    onRename: (entry: Entry, name: string) => Promise<void>;
 }) {
     const [session, setSession] = useState<BinarySessionView | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const [renamingEntryId, setRenamingEntryId] = useState<string | null>(null);
+    const [renameValue, setRenameValue] = useState("");
 
     useEffect(() => {
         let isCurrent = true;
@@ -79,6 +94,17 @@ export function BinaryRankPanel({
         }
     }, [session, onNeedImage]);
 
+    useEffect(() => {
+        if (
+            session &&
+            renamingEntryId &&
+            renamingEntryId !== session.subject.id &&
+            renamingEntryId !== session.opponent.id
+        ) {
+            setRenamingEntryId(null);
+        }
+    }, [renamingEntryId, session]);
+
     async function chooseWinner(winnerId: string) {
         setError(null);
         setSubmitting(true);
@@ -123,6 +149,45 @@ export function BinaryRankPanel({
         }
     }
 
+    async function reloadCurrentSession() {
+        const nextSession = await getBinarySession({ data: { sessionId } });
+        if (!nextSession) {
+            await onUnavailable(sessionId);
+            return null;
+        }
+
+        setSession(nextSession);
+        return nextSession;
+    }
+
+    async function submitRename(entry: Entry) {
+        const cleanName = renameValue.trim();
+        if (!cleanName || cleanName === entry.name) {
+            setRenameValue(entry.name);
+            setRenamingEntryId(null);
+            return;
+        }
+
+        setError(null);
+        setSubmitting(true);
+        try {
+            await onRename(entry, cleanName);
+            await reloadCurrentSession();
+            setRenamingEntryId(null);
+        } catch (renameError) {
+            if (!redirectIfUnauthorized(renameError)) {
+                setError(errorMessage(renameError));
+            }
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    function startRename(entry: Entry) {
+        setRenameValue(entry.name);
+        setRenamingEntryId(entry.id);
+    }
+
     if (error) {
         return <div className={STATUS_CLASS}>{error}</div>;
     }
@@ -159,26 +224,112 @@ export function BinaryRankPanel({
                 ) : null}
             </div>
             <div className="grid min-w-0 grid-cols-2 gap-4 max-[820px]:grid-cols-1">
-                <button
-                    className="cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-55"
-                    disabled={submitting}
-                    type="button"
-                    onClick={() => void chooseWinner(session.subject.id)}
-                >
-                    <MatchPoster entry={session.subject} />
-                    <strong className="block p-[0.7rem]">{session.subject.name}</strong>
-                </button>
-                <button
-                    className="cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-55"
-                    disabled={submitting}
-                    type="button"
-                    onClick={() => void chooseWinner(session.opponent.id)}
-                >
-                    <MatchPoster entry={session.opponent} />
-                    <strong className="block p-[0.7rem]">{session.opponent.name}</strong>
-                </button>
+                {[session.subject, session.opponent].map((entry) => (
+                    <MatchCard
+                        disabled={submitting}
+                        entry={entry}
+                        isRenaming={renamingEntryId === entry.id}
+                        key={entry.id}
+                        renameValue={renameValue}
+                        onCancelRename={() => {
+                            setRenameValue(entry.name);
+                            setRenamingEntryId(null);
+                        }}
+                        onChoose={() => void chooseWinner(entry.id)}
+                        onPickImage={() => onPickImage(entry, {
+                            id: session.categoryId,
+                            name: session.categoryName
+                        })}
+                        onRenameValueChange={setRenameValue}
+                        onStartRename={() => startRename(entry)}
+                        onSubmitRename={() => void submitRename(entry)}
+                    />
+                ))}
             </div>
         </section>
+    );
+}
+
+function MatchCard({
+    disabled,
+    entry,
+    isRenaming,
+    renameValue,
+    onCancelRename,
+    onChoose,
+    onPickImage,
+    onRenameValueChange,
+    onStartRename,
+    onSubmitRename
+}: {
+    disabled: boolean;
+    entry: Entry;
+    isRenaming: boolean;
+    renameValue: string;
+    onCancelRename: () => void;
+    onChoose: () => void;
+    onPickImage: () => void;
+    onRenameValueChange: (value: string) => void;
+    onStartRename: () => void;
+    onSubmitRename: () => void;
+}) {
+    function handleRenameSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        onSubmitRename();
+    }
+
+    if (isRenaming) {
+        return (
+            <article className="overflow-hidden rounded-md border border-border bg-card text-left">
+                <MatchPoster entry={entry} />
+                <form className="grid gap-[0.6rem] p-[0.7rem]" onSubmit={handleRenameSubmit}>
+                    <Input
+                        autoFocus
+                        aria-label={`Rename ${entry.name}`}
+                        disabled={disabled}
+                        value={renameValue}
+                        onChange={(event) => onRenameValueChange(event.target.value)}
+                    />
+                    <div className="grid grid-cols-2 gap-[0.45rem]">
+                        <Button size="sm" disabled={disabled} type="submit">Save</Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={disabled}
+                            type="button"
+                            onClick={onCancelRename}
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                </form>
+            </article>
+        );
+    }
+
+    return (
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
+                <button
+                    className="cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-55"
+                    disabled={disabled}
+                    type="button"
+                    onClick={onChoose}
+                >
+                    <MatchPoster entry={entry} />
+                    <strong className="block p-[0.7rem]">{entry.name}</strong>
+                </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+                <ContextMenuItem disabled={disabled} onSelect={onStartRename}>
+                    <Pencil />Rename
+                </ContextMenuItem>
+                <ContextMenuItem disabled={disabled} onSelect={onPickImage}>
+                    <ImageIcon />
+                    {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }
 

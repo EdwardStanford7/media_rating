@@ -84,7 +84,7 @@ export function EntryCard({
 
     return (
         <ContextMenu onOpenChange={setMenuOpen}>
-            <ContextMenuTrigger asChild disabled={listLocked}>
+            <ContextMenuTrigger asChild>
                 <article
                     ref={setNodeRef}
                     className={`relative max-w-full min-w-0 rounded-md border border-border bg-card shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${
@@ -107,10 +107,10 @@ export function EntryCard({
                         </span>
                     ) : null}
                     <EntryPoster entry={entry} />
-                    <div className="grid min-w-0 gap-[0.7rem] p-[0.9rem]">
+                    <div className="grid min-w-0 gap-[0.55rem] p-[0.65rem]">
                         {isRenaming ? (
                             <form className="grid gap-[0.45rem]" onSubmit={handleRenameSubmit}>
-                                <span className="text-muted-foreground">#{entry.rankPosition + 1}</span>
+                                <span className="text-sm text-muted-foreground">#{entry.rankPosition + 1}</span>
                                 <Input
                                     autoFocus
                                     aria-label={`Rename ${entry.name}`}
@@ -134,14 +134,12 @@ export function EntryCard({
                             </form>
                         ) : (
                             <strong
-                                className="block truncate leading-tight wrap-normal"
+                                className="block truncate text-[0.95rem] leading-tight wrap-normal"
                                 title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
                                 onDoubleClick={() => {
-                                    if (!listLocked) {
-                                        setMoveControlsOpen(false);
-                                        setRenameValue(entry.name);
-                                        setIsRenaming(true);
-                                    }
+                                    setMoveControlsOpen(false);
+                                    setRenameValue(entry.name);
+                                    setIsRenaming(true);
                                 }}
                             >
                                 #{entry.rankPosition + 1} {entry.name}
@@ -149,7 +147,7 @@ export function EntryCard({
                         )}
                         {entry.firstConsumedAt ? (
                             <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
-                                <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
+                                <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.4rem] py-[0.12rem] text-[0.72rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
                             </div>
                         ) : null}
                         {moveControlsOpen ? (
@@ -196,7 +194,6 @@ export function EntryCard({
             </ContextMenuTrigger>
             <ContextMenuContent>
                 <ContextMenuItem
-                    disabled={listLocked}
                     onSelect={() => {
                         setMoveControlsOpen(false);
                         setRenameValue(entry.name);
@@ -230,8 +227,8 @@ export function EntryDragOverlay({ entry }: { entry: Entry }) {
                 <GripVertical className="size-4" />
             </span>
             <EntryPoster entry={entry} />
-            <div className="grid min-w-0 gap-[0.7rem] p-[0.9rem]">
-                <strong className="block truncate leading-tight wrap-normal">
+            <div className="grid min-w-0 gap-[0.55rem] p-[0.65rem]">
+                <strong className="block truncate text-[0.95rem] leading-tight wrap-normal">
                     #{entry.rankPosition + 1} {entry.name}
                 </strong>
             </div>

@@ -12,7 +12,7 @@ import { assertNoActiveBinarySession } from "./engine/rankingSessions";
 
 export const createCategory = createServerFn({ method: "POST" })
     .middleware([authMiddleware])
-    .inputValidator((data: { name: string }) => data)
+    .inputValidator((data: { name: string; isPublic?: boolean }) => data)
     .handler(async ({ context, data }) => {
         const userId = context.user.id;
         const cleanName = data.name.trim();
@@ -35,10 +35,10 @@ export const createCategory = createServerFn({ method: "POST" })
 
         await db
             .prepare(
-                `INSERT INTO categories (id, user_id, name, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+                `INSERT INTO categories (id, user_id, name, sort_order, created_at, updated_at, is_public)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
             )
-            .bind(id, userId, cleanName, (maxSort?.max_sort ?? -1) + 1, createdAt, createdAt)
+            .bind(id, userId, cleanName, (maxSort?.max_sort ?? -1) + 1, createdAt, createdAt, data.isPublic ? 1 : 0)
             .run();
 
         return id;

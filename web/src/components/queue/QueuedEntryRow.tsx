@@ -16,17 +16,19 @@ import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import type { QueuedEntry } from "@/lib/types";
 
 export function QueuedEntryRow({
-    disabled,
+    actionLocked,
     entry,
     isReady,
+    metadataDisabled,
     onDelete,
     onPickImage,
     onRename,
     onStart
 }: {
-    disabled: boolean;
+    actionLocked: boolean;
     entry: QueuedEntry;
     isReady: boolean;
+    metadataDisabled: boolean;
     onDelete: (entry: QueuedEntry) => Promise<void>;
     onPickImage: (entry: QueuedEntry) => void;
     onRename: (entry: QueuedEntry, name: string) => Promise<void>;
@@ -52,7 +54,7 @@ export function QueuedEntryRow({
 
     return (
         <ContextMenu>
-            <ContextMenuTrigger asChild disabled={disabled}>
+            <ContextMenuTrigger asChild disabled={metadataDisabled}>
                 <div
             className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-sm border p-[0.65rem] ${
                 isReady ? "border-primary bg-ready-panel" : "border-border bg-muted"
@@ -65,16 +67,16 @@ export function QueuedEntryRow({
                         <Input
                             autoFocus
                             aria-label={`Rename ${entry.name}`}
-                            disabled={disabled}
+                            disabled={metadataDisabled}
                             value={name}
                             onChange={(event) => setName(event.target.value)}
                         />
                         <div className="grid grid-cols-2 gap-[0.45rem]">
-                            <Button size="sm" disabled={disabled} type="submit">Save</Button>
+                            <Button size="sm" disabled={metadataDisabled} type="submit">Save</Button>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                disabled={disabled}
+                                disabled={metadataDisabled}
                                 type="button"
                                 onClick={() => {
                                     setName(entry.name);
@@ -89,7 +91,7 @@ export function QueuedEntryRow({
                     <div
                         title="Double-click to rename · Right-click for actions"
                         onDoubleClick={() => {
-                            if (!disabled) {
+                            if (!metadataDisabled) {
                                 setName(entry.name);
                                 setIsRenaming(true);
                             }
@@ -103,10 +105,11 @@ export function QueuedEntryRow({
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
-                <ContextMenuItem onSelect={() => void onStart(entry)}>
+                <ContextMenuItem disabled={actionLocked} onSelect={() => void onStart(entry)}>
                     <Swords />Rank Now
                 </ContextMenuItem>
                 <ContextMenuItem
+                    disabled={metadataDisabled}
                     onSelect={() => {
                         setName(entry.name);
                         setIsRenaming(true);
@@ -114,11 +117,11 @@ export function QueuedEntryRow({
                 >
                     <Pencil />Rename
                 </ContextMenuItem>
-                <ContextMenuItem onSelect={() => onPickImage(entry)}>
+                <ContextMenuItem disabled={metadataDisabled} onSelect={() => onPickImage(entry)}>
                     <ImageIcon />
                     {hasStoredImage(entry.imageKey) ? `Change image` : `Pick image`}
                 </ContextMenuItem>
-                <ContextMenuItem variant="destructive" onSelect={() => void onDelete(entry)}>
+                <ContextMenuItem variant="destructive" disabled={actionLocked} onSelect={() => void onDelete(entry)}>
                     <Trash2 />Remove
                 </ContextMenuItem>
             </ContextMenuContent>

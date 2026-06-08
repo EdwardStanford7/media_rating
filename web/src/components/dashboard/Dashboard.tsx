@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
     DndContext,
     DragOverlay,
@@ -97,6 +98,9 @@ interface ReversibleAction {
 }
 
 const UNDO_STACK_LIMIT = 20;
+const RESUME_REFRESH_AFTER_MS = 5 * 60 * 1000;
+const SIDEBAR_PANEL_CLASS =
+    "grid min-h-0 min-w-0 max-w-full content-start gap-[0.75rem] rounded-md border border-border bg-card p-4 shadow-panel";
 
 /**
  * Apply an optimistic drag ordering (a list of ids) on top of the canonical
@@ -125,11 +129,15 @@ export function Dashboard({
     userImage: string | null;
     userName: string;
 }) {
+    const navigate = useNavigate();
     const initialActiveSessionId = initialDashboard.activeBinarySession?.id ?? null;
     const [dashboard, setDashboard] = useState(initialDashboard);
     const [selectedCategoryId, setSelectedCategoryId] = useState(
         initialDashboard.activeBinarySession?.categoryId ?? initialDashboard.categories[0]?.id ?? ""
     );
+    const queueSettingsRef = useRef(initialDashboard.queueSettings);
+    const lastResumeRefreshAtRef = useRef(Date.now());
+    const resumeRefreshInFlightRef = useRef(false);
     const [entrySearch, setEntrySearch] = useState("");
     const [activeSessionId, setActiveSessionIdState] = useState<string | null>(initialActiveSessionId);
     const activeSessionIdRef = useRef<string | null>(initialActiveSessionId);
@@ -144,6 +152,7 @@ export function Dashboard({
     const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
     const [importToastOpen, setImportToastOpen] = useState(false);
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
+    const [profileNavigationPending, setProfileNavigationPending] = useState(false);
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialThemeMode());
@@ -160,7 +169,7 @@ export function Dashboard({
         useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
         useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } })
     );
-    const mainRef = useRef<HTMLElement | null>(null);
+    const mainRef = useRef<HTMLDivElement | null>(null);
     const reversibleActionIdRef = useRef(0);
     const undoStackRef = useRef<ReversibleAction[]>([]);
     const redoStackRef = useRef<ReversibleAction[]>([]);
@@ -198,7 +207,7 @@ export function Dashboard({
         !entrySearch.trim() &&
         selectedCategory.entries.length > 1
     );
-    const canDragReorderCategories = !busy && dashboard.categories.length > 1;
+    const canDragReorderCategories = !busy && !activeSessionId && dashboard.categories.length > 1;
     const canCreateCategory = categoryDraftName.trim().length > 0;
     const canCreateEntry = entryDraftName.trim().length > 0;
 
@@ -270,9 +279,57 @@ export function Dashboard({
 
     async function refresh() {
         const nextDashboard = await loadDashboard();
+        lastResumeRefreshAtRef.current = Date.now();
+        queueSettingsRef.current = nextDashboard.queueSettings;
         setDashboard(nextDashboard);
         return nextDashboard;
     }
+
+    useEffect(() => {
+        async function refreshAfterResume(force = false) {
+            if (
+                busyRef.current ||
+                resumeRefreshInFlightRef.current ||
+                (!force && Date.now() - lastResumeRefreshAtRef.current < RESUME_REFRESH_AFTER_MS)
+            ) {
+                return;
+            }
+
+            resumeRefreshInFlightRef.current = true;
+            try {
+                await refresh();
+            } catch (error) {
+                setErrorMessage(error);
+            } finally {
+                lastResumeRefreshAtRef.current = Date.now();
+                resumeRefreshInFlightRef.current = false;
+            }
+        }
+
+        function handleFocus() {
+            void refreshAfterResume();
+        }
+
+        function handleVisibilityChange() {
+            if (document.visibilityState === "visible") {
+                void refreshAfterResume();
+            }
+        }
+
+        function handlePageShow(event: PageTransitionEvent) {
+            void refreshAfterResume(event.persisted);
+        }
+
+        window.addEventListener("focus", handleFocus);
+        window.addEventListener("pageshow", handlePageShow);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener("focus", handleFocus);
+            window.removeEventListener("pageshow", handlePageShow);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, []);
 
     function setQueueRankingActive(isActive: boolean) {
         queueRankModeRef.current = isActive;
@@ -486,9 +543,15 @@ export function Dashboard({
         const form = new FormData(formElement);
 
         try {
-            await createCategory({ data: { name: String(form.get("name") ?? "") } });
+            const categoryId = await createCategory({
+                data: {
+                    name: String(form.get("name") ?? ""),
+                    isPublic: form.get("isPublic") === "on"
+                }
+            });
             formElement.reset();
             setCategoryDraftName("");
+            setSelectedCategoryId(categoryId);
             await refresh();
         } catch (error) {
             setErrorMessage(error);
@@ -651,9 +714,10 @@ export function Dashboard({
 
         startBusy("Adding entry...");
         const firstConsumedAt = currentDateTimestamp();
+        const queueSettings = queueSettingsRef.current;
 
         try {
-            if (dashboard.queueSettings.enabled) {
+            if (queueSettings.enabled) {
                 const result = await createQueuedEntry({
                     data: {
                         categoryId: targetCategory.id,
@@ -664,7 +728,7 @@ export function Dashboard({
                 formElement.reset();
                 setEntryDraftName("");
                 setMessage(`Queued ${cleanName} for ranking on ${formatDateTime(result.availableAt)}.`);
-                if (dashboard.queueSettings.promptForMissingImages) {
+                if (queueSettings.promptForMissingImages) {
                     setImagePickerTarget({
                         kind: "queue",
                         item: {
@@ -703,15 +767,31 @@ export function Dashboard({
     }
 
     async function handleQueueSettings(settings: QueueSettings, options: { quiet?: boolean } = {}) {
+        const previousSettings = queueSettingsRef.current;
+        queueSettingsRef.current = settings;
+        setDashboard((currentDashboard) => ({
+            ...currentDashboard,
+            queueSettings: settings
+        }));
         if (!options.quiet) {
             startBusy("Saving queue settings...");
         }
         setMessage(null);
 
         try {
-            await updateQueueSettings({ data: settings });
+            const savedSettings = await updateQueueSettings({ data: settings });
+            queueSettingsRef.current = savedSettings;
+            setDashboard((currentDashboard) => ({
+                ...currentDashboard,
+                queueSettings: savedSettings
+            }));
             await refresh();
         } catch (error) {
+            queueSettingsRef.current = previousSettings;
+            setDashboard((currentDashboard) => ({
+                ...currentDashboard,
+                queueSettings: previousSettings
+            }));
             setErrorMessage(error);
         } finally {
             if (!options.quiet) {
@@ -1047,6 +1127,41 @@ export function Dashboard({
         }
     }
 
+    function handleOpenProfile() {
+        if (!activeSessionIdRef.current) {
+            void navigate({ to: "/profile" });
+            return;
+        }
+
+        setProfileNavigationPending(true);
+    }
+
+    async function handleConfirmProfileNavigation() {
+        const sessionId = activeSessionIdRef.current;
+        setProfileNavigationPending(false);
+        setQueueRankingActive(false);
+
+        if (!sessionId) {
+            await navigate({ to: "/profile" });
+            return;
+        }
+
+        startBusy("Cancelling ranking...");
+        setMessage(null);
+
+        try {
+            await cancelBinarySession({ data: { sessionId } });
+            markBinarySessionClosed(sessionId);
+            setActiveBinarySessionId(null);
+            await refresh();
+            await navigate({ to: "/profile" });
+        } catch (error) {
+            setErrorMessage(error);
+        } finally {
+            finishBusy();
+        }
+    }
+
     async function handleMissingBinarySession(sessionId: string) {
         if (
             closedBinarySessionIdsRef.current.has(sessionId) ||
@@ -1160,7 +1275,7 @@ export function Dashboard({
 
     return (
         <main
-            className="grid h-dvh min-h-screen w-full max-w-full min-w-0 grid-cols-[clamp(340px,28vw,440px)_minmax(0,1fr)] overflow-hidden max-[820px]:h-auto max-[820px]:grid-cols-1 max-[820px]:overflow-visible"
+            className="grid h-dvh min-h-screen w-full max-w-full min-w-0 grid-cols-[clamp(300px,24vw,360px)_minmax(0,1fr)] overflow-hidden max-[820px]:h-auto max-[820px]:grid-cols-1 max-[820px]:overflow-visible"
             aria-busy={busy}
         >
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
@@ -1199,32 +1314,56 @@ export function Dashboard({
                     {" "}and stored images for this category.
                 </ConfirmDialog>
             ) : null}
+            {profileNavigationPending ? (
+                <ConfirmDialog
+                    confirmLabel="Cancel and Open Profile"
+                    title="Cancel active ranking?"
+                    variant="danger"
+                    onCancel={() => setProfileNavigationPending(false)}
+                    onConfirm={() => void handleConfirmProfileNavigation()}
+                >
+                    Opening Profile will cancel the active ranking session. The current item will return to its previous state.
+                </ConfirmDialog>
+            ) : null}
             <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-border bg-sidebar p-4 max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:overflow-y-visible">
                 <div className="relative flex items-center justify-between gap-3">
                     <BrandLink />
                 </div>
 
-                <form
-                    className="flex flex-wrap items-center gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0"
-                    onSubmit={handleCreateCategory}
-                >
-                    <Input
-                        className="flex-[1_1_12rem]"
-                        disabled={busy}
-                        name="name"
-                        placeholder="New category"
-                        required
-                        value={categoryDraftName}
-                        onChange={(event) => setCategoryDraftName(event.target.value)}
-                    />
-                    <Button
-                        size="lg"
-                        disabled={busy || !canCreateCategory}
-                        type="submit"
+                <section className={SIDEBAR_PANEL_CLASS}>
+                    <strong className="min-w-0 max-w-full">New Category</strong>
+                    <form
+                        className="grid min-w-0 gap-[0.7rem] *:max-w-full *:min-w-0"
+                        onSubmit={handleCreateCategory}
                     >
-                        Add
-                    </Button>
-                </form>
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 max-[820px]:grid-cols-1">
+                            <Input
+                                disabled={busy}
+                                name="name"
+                                placeholder="New category"
+                                required
+                                value={categoryDraftName}
+                                onChange={(event) => setCategoryDraftName(event.target.value)}
+                            />
+                            <Button
+                                size="lg"
+                                disabled={busy || !canCreateCategory}
+                                type="submit"
+                            >
+                                Add
+                            </Button>
+                        </div>
+                        <label className="inline-flex w-fit items-center gap-[0.45rem] text-[0.86rem] text-muted-foreground">
+                            <input
+                                className="w-auto"
+                                disabled={busy}
+                                name="isPublic"
+                                type="checkbox"
+                            />
+                            <span>Show on profile</span>
+                        </label>
+                    </form>
+                </section>
 
                 <DndContext
                     sensors={sensors}
@@ -1279,7 +1418,8 @@ export function Dashboard({
                 </DndContext>
 
                 {selectedCategory && !activeSessionId ? (
-                    <div className="grid w-full justify-items-stretch gap-[0.7rem]">
+                    <section className={SIDEBAR_PANEL_CLASS}>
+                        <strong className="min-w-0 max-w-full">New Entry</strong>
                         <form className="grid max-w-full min-w-0 gap-2" onSubmit={handleCreateEntry}>
                             <Input
                                 disabled={busy}
@@ -1318,7 +1458,7 @@ export function Dashboard({
                                 </Button>
                             </div>
                         </form>
-                    </div>
+                    </section>
                 ) : null}
 
                 <QueuePanel
@@ -1344,10 +1484,12 @@ export function Dashboard({
             </aside>
 
             <section
-                className="grid min-h-0 min-w-0 content-start gap-[0.9rem] overflow-x-hidden overflow-y-auto px-[clamp(1rem,3vw,2.25rem)] py-5 max-[820px]:overflow-y-visible"
-                ref={mainRef}
+                className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background max-[820px]:overflow-visible"
             >
-                <div className="sticky top-0 z-35 -mt-1 mb-[0.35rem] flex flex-nowrap items-center gap-[0.7rem] border-b border-border bg-background pt-1 pb-[0.95rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
+                <div
+                    className="z-40 flex min-h-0 flex-nowrap items-center gap-[0.7rem] border-b border-border bg-background px-[clamp(0.9rem,2.4vw,1.75rem)] py-[0.8rem] shadow-sm max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0"
+                    data-testid="dashboard-topbar"
+                >
                     <div className="grid max-w-[min(34rem,42vw)] min-w-0 flex-[0_1_auto] gap-[0.15rem]">
                         <h1 className="m-0 truncate text-2xl font-bold">{selectedCategory?.name ?? "Categories"}</h1>
                         <p className="m-0 text-muted-foreground">
@@ -1372,6 +1514,7 @@ export function Dashboard({
                         settings={dashboard.queueSettings}
                         onExport={handleExport}
                         onOpenImport={() => setImportToastOpen(true)}
+                        onOpenProfile={handleOpenProfile}
                         onSaveSettings={handleQueueSettings}
                         onThemeChange={setThemeMode}
                         themeMode={themeMode}
@@ -1381,88 +1524,100 @@ export function Dashboard({
                     />
                 </div>
 
-                {dashboard.categories.length === 0 ? (
-                    <EmptyState
-                        icon={Library}
-                        title="Create Your First Category"
-                    >
-                        Categories keep each ranked list separate. Use the sidebar form to add one.
-                    </EmptyState>
-                ) : null}
-
-                {activeSessionId ? (
-                    <BinaryRankPanel
-                        imageRefreshVersion={imageRefreshVersion}
-                        sessionId={activeSessionId}
-                        onCancel={handleCancelBinarySession}
-                        onComplete={async (sessionId) => {
-                            markBinarySessionClosed(sessionId);
-                            if (activeSessionIdRef.current === sessionId) {
-                                setActiveBinarySessionId(null);
-                            }
-                            const nextDashboard = await refresh();
-                            if (queueRankModeRef.current) {
-                                await startNextQueuedRank(nextDashboard.queuedEntries);
-                            }
-                        }}
-                        onUnavailable={handleMissingBinarySession}
-                        onNeedImage={requestImageForMatch}
-                    />
-                ) : null}
-
-                <DndContext
-                    sensors={sensors}
-                    onDragStart={handleEntryDragStart}
-                    onDragEnd={handleEntryDragEnd}
-                    onDragCancel={handleEntryDragCancel}
+                <div
+                    className="grid min-h-0 min-w-0 content-start gap-[0.85rem] overflow-x-hidden overflow-y-auto px-[clamp(0.9rem,2.4vw,1.75rem)] py-4 max-[820px]:overflow-y-visible"
+                    data-testid="dashboard-scroll-region"
+                    ref={mainRef}
                 >
-                    <SortableContext
-                        items={orderedEntries.map((entry) => entry.id)}
-                        strategy={rectSortingStrategy}
+                    {dashboard.categories.length === 0 ? (
+                        <EmptyState
+                            icon={Library}
+                            title="Create Your First Category"
+                        >
+                            Categories keep each ranked list separate. Use the sidebar form to add one.
+                        </EmptyState>
+                    ) : null}
+
+                    {activeSessionId ? (
+                        <BinaryRankPanel
+                            imageRefreshVersion={imageRefreshVersion}
+                            sessionId={activeSessionId}
+                            onCancel={handleCancelBinarySession}
+                            onComplete={async (sessionId) => {
+                                markBinarySessionClosed(sessionId);
+                                if (activeSessionIdRef.current === sessionId) {
+                                    setActiveBinarySessionId(null);
+                                }
+                                const nextDashboard = await refresh();
+                                if (queueRankModeRef.current) {
+                                    await startNextQueuedRank(nextDashboard.queuedEntries);
+                                }
+                            }}
+                            onUnavailable={handleMissingBinarySession}
+                            onNeedImage={requestImageForMatch}
+                            onPickImage={(entry, category) => setImagePickerTarget({
+                                kind: "entry",
+                                item: entry,
+                                category
+                            })}
+                            onRename={(entry, name) => handleRename(entry.id, name)}
+                        />
+                    ) : null}
+
+                    <DndContext
+                        sensors={sensors}
+                        onDragStart={handleEntryDragStart}
+                        onDragEnd={handleEntryDragEnd}
+                        onDragCancel={handleEntryDragCancel}
                     >
-                        <section className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-4 min-[900px]:grid-cols-[repeat(auto-fill,minmax(min(100%,440px),1fr))]">
-                            {selectedCategory ? orderedEntries.map((entry) => (
-                                <EntryCard
-                                    entry={entry}
-                                    categories={dashboard.categories}
-                                    key={entry.id}
-                                    canDragReorder={canDragReorderEntries}
-                                    listLocked={Boolean(activeSessionId)}
-                                    selectedCategoryId={selectedCategory.id}
-                                    onDelete={() => handleDelete(entry)}
-                                    onPickImage={() => setImagePickerTarget({
-                                        kind: "entry",
-                                        item: entry,
-                                        category: selectedCategory
-                                    })}
-                                    onRename={(name) => handleRename(entry.id, name)}
-                                    onRerank={() => handleRerank(entry.id)}
-                                    onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
-                                />
-                            )) : null}
-                        </section>
-                    </SortableContext>
-                    <DragOverlay>
-                        {activeEntryId
-                            ? (() => {
-                                const activeEntry = displayedEntries.find((entry) => entry.id === activeEntryId);
-                                return activeEntry ? <EntryDragOverlay entry={activeEntry} /> : null;
-                            })()
-                            : null}
-                    </DragOverlay>
-                </DndContext>
-                {selectedCategory && displayedEntries.length === 0 ? (
-                    <EmptyState
-                        icon={entrySearch.trim() ? Search : Swords}
-                        title={entrySearch.trim() ? "No Matches" : "No Entries Yet"}
-                    >
-                        {entrySearch.trim()
-                            ? "Try a different search term or clear the search field."
-                            : dashboard.queueSettings.enabled
-                                ? "Add entries from the sidebar to queue them for ranking."
-                                : "Add an entry from the sidebar to start ranking this category."}
-                    </EmptyState>
-                ) : null}
+                        <SortableContext
+                            items={orderedEntries.map((entry) => entry.id)}
+                            strategy={rectSortingStrategy}
+                        >
+                            <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,16.5rem),1fr))] gap-3">
+                                {selectedCategory ? orderedEntries.map((entry) => (
+                                    <EntryCard
+                                        entry={entry}
+                                        categories={dashboard.categories}
+                                        key={entry.id}
+                                        canDragReorder={canDragReorderEntries}
+                                        listLocked={Boolean(activeSessionId)}
+                                        selectedCategoryId={selectedCategory.id}
+                                        onDelete={() => handleDelete(entry)}
+                                        onPickImage={() => setImagePickerTarget({
+                                            kind: "entry",
+                                            item: entry,
+                                            category: selectedCategory
+                                        })}
+                                        onRename={(name) => handleRename(entry.id, name)}
+                                        onRerank={() => handleRerank(entry.id)}
+                                        onSwitch={(targetCategoryId) => handleSwitch(entry.id, targetCategoryId)}
+                                    />
+                                )) : null}
+                            </section>
+                        </SortableContext>
+                        <DragOverlay>
+                            {activeEntryId
+                                ? (() => {
+                                    const activeEntry = displayedEntries.find((entry) => entry.id === activeEntryId);
+                                    return activeEntry ? <EntryDragOverlay entry={activeEntry} /> : null;
+                                })()
+                                : null}
+                        </DragOverlay>
+                    </DndContext>
+                    {selectedCategory && displayedEntries.length === 0 ? (
+                        <EmptyState
+                            icon={entrySearch.trim() ? Search : Swords}
+                            title={entrySearch.trim() ? "No Matches" : "No Entries Yet"}
+                        >
+                            {entrySearch.trim()
+                                ? "Try a different search term or clear the search field."
+                                : dashboard.queueSettings.enabled
+                                    ? "Add entries from the sidebar to queue them for ranking."
+                                    : "Add an entry from the sidebar to start ranking this category."}
+                        </EmptyState>
+                    ) : null}
+                </div>
             </section>
         </main>
     );

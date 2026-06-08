@@ -25,6 +25,36 @@ async function readOwnSlug(page: Page) {
 }
 
 test.describe("Profiles", () => {
+    test("category creation defaults private and can show a category on the profile", async ({
+        page,
+        context
+    }) => {
+        await seedUsers([{ email: "share@e2e.test", name: "Share Tester" }]);
+        await signInViaApi(context, "share@e2e.test");
+        await gotoApp(page);
+
+        await page.getByPlaceholder("New category").fill("Private Shelf");
+        await page.getByPlaceholder("New category").press("Enter");
+        await expect(page.getByRole("heading", { name: "Private Shelf" })).toBeVisible();
+
+        await page.getByLabel("Show on profile").check();
+        await page.getByPlaceholder("New category").fill("Shared Shelf");
+        await page.getByPlaceholder("New category").press("Enter");
+        await expect(page.getByRole("heading", { name: "Shared Shelf" })).toBeVisible();
+
+        await gotoApp(page, "/profile");
+        await page.getByLabel("Public profile").check();
+        await page.getByRole("button", { name: "Save Profile" }).click();
+        await expect(page.getByText("Profile saved.")).toBeVisible();
+        await expect(page.getByRole("checkbox", { name: /Private Shelf/ })).not.toBeChecked();
+        await expect(page.getByRole("checkbox", { name: /Shared Shelf/ })).toBeChecked();
+
+        await page.getByRole("link", { name: "View Profile" }).click();
+        await expect(page.getByRole("heading", { name: "Share Tester" })).toBeVisible();
+        await expect(page.getByText("Shared Shelf")).toBeVisible();
+        await expect(page.getByText("Private Shelf")).toBeHidden();
+    });
+
     test("publish profile, share rankings, full follow round-trip, revoke access", async ({
         page: alicePage,
         context: aliceContext,
@@ -55,11 +85,11 @@ test.describe("Profiles", () => {
         // round-trip, so click + poll instead of check() (which verifies
         // state synchronously).
         await alicePage.getByRole("checkbox", { name: /Movies/ }).click();
-        await expect(alicePage.getByText("Ranking visibility saved.").first()).toBeVisible();
+        await expect(alicePage.getByText("Profile sharing saved.").first()).toBeVisible();
         await expect(alicePage.getByRole("checkbox", { name: /Movies/ })).toBeChecked();
 
         // --- Her own public page shows only the public category. ---
-        await alicePage.getByRole("link", { name: "Public Profile" }).click();
+        await alicePage.getByRole("link", { name: "View Profile" }).click();
         await expect(alicePage).toHaveURL(`/u/${aliceSlug}`);
         await expect(alicePage.getByRole("heading", { name: "Alice Park" })).toBeVisible();
         await expect(alicePage.getByRole("link", { name: "Edit Profile" })).toBeVisible();
@@ -114,12 +144,12 @@ test.describe("Profiles", () => {
 
         // --- Hiding the category removes it from the public page. ---
         await alicePage.getByRole("checkbox", { name: /Movies/ }).click();
-        await expect(alicePage.getByText("Ranking visibility saved.").first()).toBeVisible();
+        await expect(alicePage.getByText("Profile sharing saved.").first()).toBeVisible();
         await expect(alicePage.getByRole("checkbox", { name: /Movies/ })).not.toBeChecked();
 
         await gotoApp(anonPage, `/u/${aliceSlug}`);
         await expect(anonPage.getByRole("heading", { name: "Alice Park" })).toBeVisible();
-        await expect(anonPage.getByText("No Public Rankings")).toBeVisible();
+        await expect(anonPage.getByText("No Shared Rankings")).toBeVisible();
         await expect(anonPage.getByText("Arrival")).toBeHidden();
 
         // --- Going private hides the page from visitors but not followers. ---

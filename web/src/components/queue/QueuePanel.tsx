@@ -38,6 +38,10 @@ export function QueuePanel({
         return () => window.clearInterval(interval);
     }, []);
 
+    useEffect(() => {
+        setCurrentTime(Date.now());
+    }, [queuedEntries]);
+
     const readyEntries = queuedEntries.filter((entry) => entry.availableAt <= currentTime);
     const pendingEntries = queuedEntries.filter((entry) => entry.availableAt > currentTime);
 
@@ -73,7 +77,8 @@ export function QueuePanel({
                 <div className="grid max-h-[min(42vh,520px)] min-h-0 min-w-0 gap-[0.55rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[820px]:max-h-none max-[820px]:overflow-y-visible max-[820px]:pr-0">
                     {readyEntries.map((entry) => (
                         <QueuedEntryRow
-                            disabled={busy || Boolean(activeSessionId)}
+                            actionLocked={busy || Boolean(activeSessionId)}
+                            metadataDisabled={busy}
                             entry={entry}
                             isReady
                             key={entry.id}
@@ -85,7 +90,8 @@ export function QueuePanel({
                     ))}
                     {pendingEntries.map((entry) => (
                         <QueuedEntryRow
-                            disabled={busy || Boolean(activeSessionId)}
+                            actionLocked={busy || Boolean(activeSessionId)}
+                            metadataDisabled={busy}
                             entry={entry}
                             isReady={false}
                             key={entry.id}

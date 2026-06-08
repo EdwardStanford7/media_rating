@@ -1,7 +1,8 @@
 import type { QueuedEntry, QueueSettings } from "@/lib/types";
 import { all, first, getDb } from "@/server/lib/db";
 
-export const DEFAULT_QUEUE_DELAY_DAYS = 3;
+export const DEFAULT_QUEUE_DELAY_DAYS = 0;
+export const DEFAULT_QUEUE_ENABLED = true;
 export const MAX_QUEUE_DELAY_DAYS = 365;
 
 interface QueueSettingsRow {
@@ -37,7 +38,7 @@ export async function getQueueSettings(userId: string): Promise<QueueSettings> {
     );
 
     return {
-        enabled: row?.enabled === 1,
+        enabled: row ? row.enabled === 1 : DEFAULT_QUEUE_ENABLED,
         delayDays: normalizeQueueDelayDays(row?.delay_days ?? DEFAULT_QUEUE_DELAY_DAYS),
         promptForMissingImages: row?.prompt_missing_images !== 0
     };

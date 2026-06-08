@@ -215,7 +215,7 @@ function ProfileRoute() {
         try {
             await updateCategoryVisibility({ data: { categoryId, isPublic } });
             await refreshSettings();
-            setStatus("Ranking visibility saved.");
+            setStatus("Profile sharing saved.");
         } catch (visibilityError) {
             setActionError(visibilityError);
         } finally {
@@ -407,7 +407,7 @@ function ProfileRoute() {
                 <BrandLink />
                 <nav className="flex items-center gap-[0.8rem]" aria-label="Profile navigation">
                     <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
-                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>
+                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>View Profile</Link>
                 </nav>
             </header>
 
@@ -486,12 +486,12 @@ function ProfileRoute() {
                     <Card className="min-w-0 gap-4 px-4 shadow-panel">
                         <div className="flex items-center justify-between gap-3">
                             <h2 className="text-lg font-semibold">Find Profiles</h2>
-                            <span className="text-muted-foreground">{followSearchLoading ? "Searching..." : "Public search"}</span>
+                            <span className="text-muted-foreground">{followSearchLoading ? "Searching..." : "Profile search"}</span>
                         </div>
                         <form className="grid grid-cols-[minmax(0,1fr)_auto] gap-[0.8rem]" onSubmit={handleRequestFollow}>
                             <Input
                                 aria-label="Profile handle, name, or profile link"
-                                placeholder="search public profiles or paste a private handle"
+                                placeholder="search shared profiles or paste a private handle"
                                 value={followInput}
                                 onChange={(event) => setFollowInput(event.target.value)}
                             />
@@ -625,7 +625,7 @@ function ProfileRoute() {
                 <div className="grid min-w-0 content-start gap-4 max-[1100px]:col-span-full max-[820px]:col-span-auto">
                     <Card className="min-w-0 gap-4 px-4 shadow-panel">
                         <div className="flex items-center justify-between gap-3">
-                            <h2 className="text-lg font-semibold">Public Rankings</h2>
+                            <h2 className="text-lg font-semibold">Shared Rankings</h2>
                             <span className="text-muted-foreground">{settings.categories.filter((category) => category.isPublic).length}</span>
                         </div>
                         {settings.categories.length > 0 ? (
@@ -683,7 +683,7 @@ function FollowProfileList<TProfile extends FollowProfileSummary>({
                             <strong className="font-bold text-foreground no-underline">{profile.name}</strong>
                         )}
                         <p className="m-0 mt-[0.15rem] text-muted-foreground">
-                            @{profile.slug} · {profile.publicCategoryCount} public rankings ·{" "}
+                            @{profile.slug} · {profile.publicCategoryCount} shared rankings ·{" "}
                             {followRelationLabel(profile.relationState)}
                         </p>
                     </div>

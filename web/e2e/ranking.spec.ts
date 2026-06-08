@@ -8,6 +8,58 @@ const RANKER = {
 };
 
 test.describe("Ranking", () => {
+    test("dashboard topbar stays flush while the entry list scrolls", async ({
+        page,
+        context
+    }) => {
+        await seedUsers([{
+            email: "layout@e2e.test",
+            name: "Layout",
+            categories: [{
+                name: "Long List",
+                entries: Array.from({ length: 30 }, (_, index) => `Item ${index + 1}`)
+            }]
+        }]);
+        await signInViaApi(context, "layout@e2e.test");
+        await gotoApp(page);
+        await expect(page.getByText("#1 Item 1")).toBeVisible();
+
+        const scroller = page.getByTestId("dashboard-scroll-region");
+        await scroller.evaluate((element) => element.scrollTo({ top: 520 }));
+        await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+        const metrics = await page.evaluate(() => {
+            const topbarElement = document.querySelector("[data-testid='dashboard-topbar']");
+            const scrollRegionElement = document.querySelector("[data-testid='dashboard-scroll-region']");
+            const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-entry-id]"));
+            const topbar = topbarElement?.getBoundingClientRect();
+            const scrollRegion = scrollRegionElement?.getBoundingClientRect();
+            if (!topbar || !scrollRegion || !scrollRegionElement || cards.length === 0) {
+                throw new Error("Dashboard layout markers not found");
+            }
+
+            const firstCard = cards[0].getBoundingClientRect();
+            const firstRowCards = cards
+                .map((card) => card.getBoundingClientRect())
+                .filter((card) => Math.abs(card.top - firstCard.top) < 2);
+            const style = getComputedStyle(scrollRegionElement);
+            const contentRight = scrollRegion.right - Number.parseFloat(style.paddingRight);
+
+            return {
+                firstRowCardWidth: firstCard.width,
+                firstRowRightGap: contentRight - Math.max(...firstRowCards.map((card) => card.right)),
+                scrollRegionTop: scrollRegion.top,
+                topbarBottom: topbar.bottom,
+                topbarTop: topbar.top
+            };
+        });
+
+        expect(Math.abs(metrics.topbarTop)).toBeLessThanOrEqual(1);
+        expect(metrics.scrollRegionTop).toBeGreaterThanOrEqual(metrics.topbarBottom - 1);
+        expect(metrics.firstRowCardWidth).toBeGreaterThan(200);
+        expect(metrics.firstRowRightGap).toBeLessThanOrEqual(12);
+    });
+
     test("create a category and add the first entry", async ({ page, context }) => {
         await seedUsers([{ email: RANKER.email, name: RANKER.name }]);
         await signInViaApi(context, RANKER.email);
@@ -40,6 +92,67 @@ test.describe("Ranking", () => {
         await expect(page.getByText("#1 Zeta")).toBeVisible({ timeout: 15_000 });
         await expect(page.getByText("#2 Alpha")).toBeVisible();
         await expect(page.getByText("#4 Gamma")).toBeVisible();
+    });
+
+    test("profile navigation during ranking requires confirm cancel", async ({
+        page,
+        context
+    }) => {
+        await seedUsers([RANKER]);
+        await signInViaApi(context, RANKER.email);
+        await gotoApp(page);
+
+        await page.getByPlaceholder("New entry").fill("Zeta");
+        await page.getByPlaceholder("New entry").press("Enter");
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+
+        await page.getByRole("button", { name: "Account menu" }).click();
+        await page.getByRole("menuitem", { name: "Profile" }).click();
+        await expect(page.getByRole("heading", { name: "Cancel active ranking?" })).toBeVisible();
+        await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible();
+        await expect(page).toHaveURL("/");
+
+        await page.getByRole("button", { name: "Account menu" }).click();
+        await page.getByRole("menuitem", { name: "Profile" }).click();
+        await page.getByRole("button", { name: "Cancel and Open Profile" }).click();
+        await expect(page).toHaveURL("/profile");
+        await expect(page.getByRole("heading", { name: "Ranker" })).toBeVisible();
+    });
+
+    test("entry metadata actions stay available while ranking but order actions stay locked", async ({
+        page,
+        context
+    }) => {
+        await seedUsers([RANKER]);
+        await signInViaApi(context, RANKER.email);
+        await gotoApp(page);
+
+        await page.getByPlaceholder("New entry").fill("Zeta");
+        await page.getByPlaceholder("New entry").press("Enter");
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+
+        await page.getByRole("button", { name: "Zeta" }).click({ button: "right" });
+        await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Pick Image" })).toBeEnabled();
+        await page.getByRole("menuitem", { name: "Rename" }).click();
+        await page.getByLabel("Rename Zeta").fill("Zeta Prime");
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+
+        await expect(page.getByRole("button", { name: "Zeta Prime" })).toBeVisible({ timeout: 15_000 });
+        await page.getByText("#1 Alpha").click({ button: "right" });
+        await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Pick Image" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Rerank" })).toHaveAttribute("aria-disabled", "true");
+        await expect(page.getByRole("menuitem", { name: "Change Category" })).toHaveAttribute("aria-disabled", "true");
+        await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveAttribute("aria-disabled", "true");
+
+        await page.getByRole("menuitem", { name: "Rename" }).click();
+        await page.getByLabel("Rename Alpha").fill("Alpha Prime");
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+
+        await expect(page.getByText("#1 Alpha Prime")).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible();
     });
 
     test("deleted entry can be restored via the undo toast", async ({ page, context }) => {

@@ -8,6 +8,30 @@ const USER = {
 };
 
 test.describe("Session expiry", () => {
+    test("restored dashboard tab refreshes an expired session", async ({
+        page,
+        context
+    }) => {
+        await seedUsers([{
+            ...USER,
+            email: "resume-expiry@e2e.test"
+        }]);
+        await signInViaApi(context, "resume-expiry@e2e.test");
+        await gotoApp(page);
+        await expect(page.getByText("#1 Alpha")).toBeVisible();
+
+        await context.clearCookies();
+        await page.evaluate(() => {
+            const event = new Event("pageshow") as PageTransitionEvent;
+            Object.defineProperty(event, "persisted", { value: true });
+            window.dispatchEvent(event);
+        });
+
+        await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible({
+            timeout: 15_000
+        });
+    });
+
     test("mutation after session loss redirects to the sign-in page", async ({
         page,
         context

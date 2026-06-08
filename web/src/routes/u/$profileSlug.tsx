@@ -208,8 +208,8 @@ function PublicProfileRoute() {
                     </div>
                 </div>
             ) : (
-                <EmptyState className="m-0 w-full" icon={ListOrdered} title="No Public Rankings">
-                    Public lists will appear here.
+                <EmptyState className="m-0 w-full" icon={ListOrdered} title="No Shared Rankings">
+                    Shared lists will appear here.
                 </EmptyState>
             )}
         </main>
@@ -220,7 +220,7 @@ function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
     return (
         <header className="m-0 flex w-full items-center justify-between gap-4">
             <BrandLink />
-            <nav className="flex items-center gap-[0.8rem]" aria-label="Public profile navigation">
+            <nav className="flex items-center gap-[0.8rem]" aria-label="Profile navigation">
                 {signedIn ? (
                     <>
                         <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
