@@ -1,11 +1,12 @@
 /*
- * Tailwind v4, without preflight: the base reset would fight this file's
- * existing element-level styles during the shadcn migration. Theme variables
- * + utilities only. shadcn/tailwind.css supplies the data-state variants and
+ * Tailwind v4 with preflight. Now that every component is a shadcn primitive
+ * or styles itself with utilities, preflight's reset is the foundation rather
+ * than a conflict. shadcn/tailwind.css supplies the data-state variants and
  * keyframes its components expect; tw-animate-css supplies animate-in/out.
  */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -246,82 +247,18 @@
 }
 
 /*
- * Element-level defaults live in @layer base so per-component utilities
- * (@layer utilities) can override them.
+ * Page-level defaults. Element resets come from preflight; shadcn primitives
+ * and per-component utilities own everything else.
  */
 @layer base {
-    * {
-        box-sizing: border-box;
-    }
-
     html {
         font-size: clamp(14px, 0.84vw, 16px);
     }
 
     body {
-        margin: 0;
         background: var(--bg);
         color: var(--ink);
         font-family: var(--font-sans);
-    }
-
-    button,
-    input,
-    select,
-    textarea {
-        font: inherit;
-        max-width: 100%;
-        min-width: 0;
-    }
-
-    /* :not([data-slot]) exempts shadcn components, which style themselves. */
-    button:not([data-slot]) {
-        border: 1px solid var(--line);
-        background: var(--panel);
-        color: var(--ink);
-        border-radius: 6px;
-        padding: 0.55rem 0.8rem;
-        cursor: pointer;
-        transition:
-            background-color 150ms ease,
-            border-color 150ms ease,
-            color 150ms ease,
-            box-shadow 150ms ease,
-            transform 150ms ease;
-    }
-
-    button:not([data-slot]):disabled {
-        cursor: not-allowed;
-        opacity: 0.55;
-    }
-
-    input,
-    select,
-    textarea {
-        width: 100%;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 0.58rem 0.7rem;
-        background: var(--input-bg);
-        color: var(--ink);
-    }
-
-    input:focus,
-    select:focus,
-    textarea:focus,
-    button:not([data-slot]):focus-visible {
-        outline: 3px solid color-mix(in srgb, var(--brand) 26%, transparent);
-        outline-offset: 2px;
-    }
-
-    textarea {
-        resize: vertical;
-    }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    button:not([data-slot]):not(:disabled):hover {
-        transform: translateY(-1px);
     }
 }
 

@@ -1,12 +1,14 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { Image as ImageIcon, Pencil, Swords, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
-import { MenuIconLabel } from "@/components/ui/Icon";
+import { Input } from "@/components/ui/input";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useHydrated } from "@/hooks/useHydrated";
 import { formatDateTime } from "@/lib/format";
@@ -60,7 +62,7 @@ export function QueuedEntryRow({
             <div className="grid min-w-0 gap-[0.55rem]">
                 {isRenaming ? (
                     <form className="grid gap-[0.45rem]" onSubmit={handleSubmit}>
-                        <input
+                        <Input
                             autoFocus
                             aria-label={`Rename ${entry.name}`}
                             disabled={disabled}
@@ -68,8 +70,10 @@ export function QueuedEntryRow({
                             onChange={(event) => setName(event.target.value)}
                         />
                         <div className="grid grid-cols-2 gap-[0.45rem]">
-                            <button disabled={disabled} type="submit">Save</button>
-                            <button
+                            <Button size="sm" disabled={disabled} type="submit">Save</Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
                                 disabled={disabled}
                                 type="button"
                                 onClick={() => {
@@ -78,7 +82,7 @@ export function QueuedEntryRow({
                                 }}
                             >
                                 Cancel
-                            </button>
+                            </Button>
                         </div>
                     </form>
                 ) : (
@@ -100,7 +104,7 @@ export function QueuedEntryRow({
             </ContextMenuTrigger>
             <ContextMenuContent>
                 <ContextMenuItem onSelect={() => void onStart(entry)}>
-                    <MenuIconLabel icon="rank">Rank Now</MenuIconLabel>
+                    <Swords />Rank Now
                 </ContextMenuItem>
                 <ContextMenuItem
                     onSelect={() => {
@@ -108,15 +112,14 @@ export function QueuedEntryRow({
                         setIsRenaming(true);
                     }}
                 >
-                    <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                    <Pencil />Rename
                 </ContextMenuItem>
                 <ContextMenuItem onSelect={() => onPickImage(entry)}>
-                    <MenuIconLabel icon="image">
-                        {hasStoredImage(entry.imageKey) ? `Change image` : `Pick image`}
-                    </MenuIconLabel>
+                    <ImageIcon />
+                    {hasStoredImage(entry.imageKey) ? `Change image` : `Pick image`}
                 </ContextMenuItem>
                 <ContextMenuItem variant="destructive" onSelect={() => void onDelete(entry)}>
-                    <MenuIconLabel icon="delete">Remove</MenuIconLabel>
+                    <Trash2 />Remove
                 </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>
@@ -133,7 +136,7 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     if (hasStoredImage(entry.imageKey) && !imageFailed) {
         return (
             <img
-                className="block aspect-[4/5] h-auto w-[54px] overflow-hidden rounded-[5px] border border-line object-cover"
+                className="block aspect-4/5 h-auto w-13.5 overflow-hidden rounded-[5px] border border-line object-cover"
                 src={`/api/queued-images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                 alt=""
                 loading="lazy"
@@ -144,9 +147,9 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     }
 
     return (
-        <div className="grid aspect-[4/5] w-[54px] content-center place-items-center gap-[0.35rem] overflow-hidden rounded-[5px] border border-line bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-[0.8rem] text-muted-foreground">
-            <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
-            {isNoImageKey(entry.imageKey) ? <small className="text-[0.78rem] leading-[1.25] text-muted-foreground">No image</small> : null}
+        <div className="grid aspect-4/5 w-13.5 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-[5px] border border-line bg-[linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-[0.8rem] text-muted-foreground">
+            <span className="text-[1rem] leading-tight">{entry.name}</span>
+            {isNoImageKey(entry.imageKey) ? <small className="text-[0.78rem] leading-tight text-muted-foreground">No image</small> : null}
         </div>
     );
 }

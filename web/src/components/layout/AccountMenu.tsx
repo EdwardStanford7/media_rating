@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { AVATAR_CLASS } from "@/components/ui/classes";
+import { Download, LogOut, Palette, Settings, Upload, User } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -15,7 +16,7 @@ import {
     DropdownMenuSubTrigger,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { MenuIconLabel } from "@/components/ui/Icon";
+import { Input } from "@/components/ui/input";
 import { signOut } from "@/lib/auth-client";
 import { hasStoredImage } from "@/lib/images";
 import type { ThemeMode } from "@/lib/theme";
@@ -121,12 +122,12 @@ export function AccountMenu({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                     <Link to="/profile">
-                        <MenuIconLabel icon="edit">Profile</MenuIconLabel>
+                        <User />Profile
                     </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
-                        <MenuIconLabel icon="settings">Settings</MenuIconLabel>
+                        <Settings />Settings
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="w-52">
                         <DropdownMenuCheckboxItem
@@ -148,7 +149,7 @@ export function AccountMenu({
                         <DropdownMenuSeparator />
                         <label className="grid gap-[0.35rem] px-2 py-1.5" onKeyDown={(event) => event.stopPropagation()}>
                             <span className="text-[0.82rem] text-muted-foreground">Delay days</span>
-                            <input
+                            <Input
                                 disabled={busy || quickSaving}
                                 min={0}
                                 max={365}
@@ -161,7 +162,7 @@ export function AccountMenu({
                 </DropdownMenuSub>
                 <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
-                        <MenuIconLabel icon="reset">Appearance</MenuIconLabel>
+                        <Palette />Appearance
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
                         <DropdownMenuRadioGroup
@@ -175,17 +176,17 @@ export function AccountMenu({
                     </DropdownMenuSubContent>
                 </DropdownMenuSub>
                 <DropdownMenuItem disabled={importDisabled} onSelect={onOpenImport}>
-                    <MenuIconLabel icon="import">Import xlsx</MenuIconLabel>
+                    <Upload />Import xlsx
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={busy} onSelect={() => void onExport()}>
-                    <MenuIconLabel icon="export">Export xlsx</MenuIconLabel>
+                    <Download />Export xlsx
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                     variant="destructive"
                     onSelect={() => void signOut().then(() => window.location.assign("/"))}
                 >
-                    <MenuIconLabel icon="cancel">Sign Out</MenuIconLabel>
+                    <LogOut />Sign Out
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
@@ -201,30 +202,14 @@ function AccountAvatar({
     imageVersion: number;
     large?: boolean;
 }) {
-    const [imageFailed, setImageFailed] = useState(false);
-
-    useEffect(() => {
-        setImageFailed(false);
-    }, [imageKey, imageVersion]);
-
-    const src = hasStoredImage(imageKey) && !imageFailed
+    const src = hasStoredImage(imageKey)
         ? `/api/profile-image?v=${encodeURIComponent(`${imageVersion}:${imageKey}`)}`
         : null;
 
     return (
-        <span
-            className={`${AVATAR_CLASS} relative ${large ? "size-[2.2rem]" : "size-[1.45rem]"}`}
-            aria-hidden="true"
-        >
-            {src ? (
-                <img
-                    alt=""
-                    className="block h-full w-full rounded-[inherit] object-cover"
-                    decoding="async"
-                    src={src}
-                    onError={() => setImageFailed(true)}
-                />
-            ) : null}
-        </span>
+        <Avatar aria-hidden="true" className={large ? "size-[2.2rem]" : "size-[1.45rem]"}>
+            {src ? <AvatarImage alt="" decoding="async" src={src} /> : null}
+            <AvatarFallback className="border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)]" />
+        </Avatar>
     );
 }

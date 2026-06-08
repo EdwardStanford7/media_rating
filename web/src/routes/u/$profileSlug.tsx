@@ -1,7 +1,10 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { AVATAR_CLASS, LINK_BUTTON_CLASS, PAGE_HEADER_CLASS, PAGE_NAV_CLASS, PAGE_NAV_LINK_CLASS, POSTER_CLASS, PROFILE_PAGE_CLASS, PROFILE_PANEL_CLASS, SECTION_HEADING_CLASS, STANDALONE_PANEL_CLASS } from "@/components/ui/classes";
+import { ListOrdered } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BrandLink } from "@/components/ui/BrandLink";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { showToast } from "@/lib/toast";
 import { redirectIfUnauthorized } from "@/lib/errors";
@@ -17,6 +20,8 @@ import {
 } from "@/server/profiles";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
 
+const POSTER_CLASS =
+    "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
 
 export const Route = createFileRoute("/u/$profileSlug")({
     loader: async ({ params }) => {
@@ -95,12 +100,12 @@ function PublicProfileRoute() {
 
     if (!profileData) {
         return (
-            <main className={PROFILE_PAGE_CLASS}>
+            <main className="grid min-h-screen content-start gap-4 bg-app px-[clamp(1rem,3vw,2.25rem)] py-5 text-ink">
                 <PublicProfileTopbar signedIn={false} />
-                <section className={STANDALONE_PANEL_CLASS}>
-                    <h1>Profile Not Found</h1>
+                <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
+                    <h1 className="text-2xl font-bold">Profile Not Found</h1>
                     <p className="text-muted-foreground">This profile is private or does not exist.</p>
-                </section>
+                </Card>
             </main>
         );
     }
@@ -108,17 +113,17 @@ function PublicProfileRoute() {
     const { profile, viewer } = profileData;
 
     return (
-        <main className={PROFILE_PAGE_CLASS}>
+        <main className="grid min-h-screen content-start gap-4 bg-app px-[clamp(1rem,3vw,2.25rem)] py-5 text-ink">
             <PublicProfileTopbar signedIn={viewer.isSignedIn} />
 
-            <section className={`${PROFILE_PANEL_CLASS} flex items-center justify-end gap-[0.8rem] [&_h1]:m-0 [&_h1]:leading-[1.1]`}>
+            <Card className="min-w-0 flex-row items-center justify-end gap-[0.8rem] px-4 shadow-panel">
                 <PublicProfileAvatar
                     imageKey={profile.imageKey}
                     isSelf={viewer.isSelf}
                     userId={profile.userId}
                 />
                 <div>
-                    <h1>{profile.name}</h1>
+                    <h1 className="text-2xl font-bold">{profile.name}</h1>
                     <p className="text-muted-foreground">
                         @{profile.slug}
                         {!viewer.isSelf && viewer.isSignedIn
@@ -128,24 +133,28 @@ function PublicProfileRoute() {
                 </div>
                 <div className="flex justify-end">
                     {viewer.isSelf ? (
-                        <Link className={LINK_BUTTON_CLASS} to="/profile">Edit Profile</Link>
+                        <Button asChild variant="outline">
+                            <Link to="/profile">Edit Profile</Link>
+                        </Button>
                     ) : viewer.isSignedIn ? (
-                        <button
+                        <Button
                             disabled={followSaving}
                             type="button"
                             onClick={() => void handleFollowAction()}
                         >
                             {followSaving ? "Saving..." : followButtonLabel(viewer.relationState)}
-                        </button>
+                        </Button>
                     ) : (
-                        <Link className={LINK_BUTTON_CLASS} to="/">Sign In</Link>
+                        <Button asChild variant="outline">
+                            <Link to="/">Sign In</Link>
+                        </Button>
                     )}
                 </div>
-            </section>
+            </Card>
 
             {profileData.categories.length > 0 ? (
                 <div className="m-0 grid w-full grid-cols-[220px_minmax(0,1fr)] items-start overflow-hidden rounded-panel border border-line bg-panel shadow-panel max-[820px]:grid-cols-1">
-                    <nav className="sticky top-0 grid max-h-screen content-start gap-[2px] overflow-y-auto border-r border-line bg-sidebar p-[0.65rem] max-[820px]:static max-[820px]:flex max-[820px]:max-h-none max-[820px]:flex-row max-[820px]:flex-nowrap max-[820px]:gap-[4px] max-[820px]:overflow-x-auto max-[820px]:overflow-y-hidden max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:p-2" aria-label="Categories">
+                    <nav className="sticky top-0 grid max-h-screen content-start gap-0.5 overflow-y-auto border-r border-line bg-sidebar p-[0.65rem] max-[820px]:static max-[820px]:flex max-[820px]:max-h-none max-[820px]:flex-row max-[820px]:flex-nowrap max-[820px]:gap-1 max-[820px]:overflow-x-auto max-[820px]:overflow-y-hidden max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:p-2" aria-label="Categories">
                         {profileData.categories.map((category) => {
                             const isActive = category.id === selectedCategoryId;
                             return (
@@ -181,7 +190,7 @@ function PublicProfileRoute() {
                     </div>
                 </div>
             ) : (
-                <EmptyState className="m-0 w-full" glyph="◎" title="No Public Rankings">
+                <EmptyState className="m-0 w-full" icon={ListOrdered} title="No Public Rankings">
                     Public lists will appear here.
                 </EmptyState>
             )}
@@ -191,16 +200,16 @@ function PublicProfileRoute() {
 
 function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
     return (
-        <header className={PAGE_HEADER_CLASS}>
+        <header className="m-0 flex w-full items-center justify-between gap-4">
             <BrandLink />
-            <nav className={PAGE_NAV_CLASS} aria-label="Public profile navigation">
+            <nav className="flex items-center gap-[0.8rem]" aria-label="Public profile navigation">
                 {signedIn ? (
                     <>
-                        <Link className={PAGE_NAV_LINK_CLASS} to="/">Rankings</Link>
-                        <Link className={PAGE_NAV_LINK_CLASS} to="/profile">Profile</Link>
+                        <Link className="text-ink no-underline hover:text-accent-strong" to="/">Rankings</Link>
+                        <Link className="text-ink no-underline hover:text-accent-strong" to="/profile">Profile</Link>
                     </>
                 ) : (
-                    <Link className={PAGE_NAV_LINK_CLASS} to="/">Sign In</Link>
+                    <Link className="text-ink no-underline hover:text-accent-strong" to="/">Sign In</Link>
                 )}
             </nav>
         </header>
@@ -218,8 +227,8 @@ function PublicCategory({
 
     return (
         <section className="grid gap-[0.8rem]">
-            <div className={SECTION_HEADING_CLASS}>
-                <h2>{category.name}</h2>
+            <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">{category.name}</h2>
                 <span className="text-muted-foreground">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
             </div>
             <div className="grid gap-[0.65rem]">
@@ -270,7 +279,7 @@ function PublicEntryPoster({
     if (!src) {
         return (
             <span className={`${POSTER_CLASS} grid w-20 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-control border border-line p-1`}>
-                <small className="text-[0.95rem] leading-[1.25] text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+                <small className="text-[0.95rem] leading-tight text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
             </span>
         );
     }
@@ -291,16 +300,16 @@ function PublicProfileAvatar({
     isSelf: boolean;
     userId: string;
 }) {
-    const [failed, setFailed] = useState(false);
-    const src = hasStoredImage(imageKey) && !failed
+    const src = hasStoredImage(imageKey)
         ? isSelf
             ? `/api/profile-image?v=${encodeURIComponent(imageKey ?? "")}`
             : `/api/public-profile-image/${encodeURIComponent(userId)}`
         : null;
 
     return (
-        <span className={`${AVATAR_CLASS} size-16`} aria-hidden="true">
-            {src ? <img alt="" decoding="async" src={src} onError={() => setFailed(true)} /> : null}
-        </span>
+        <Avatar aria-hidden="true" className="size-16">
+            {src ? <AvatarImage alt="" decoding="async" src={src} /> : null}
+            <AvatarFallback className="border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)]" />
+        </Avatar>
     );
 }

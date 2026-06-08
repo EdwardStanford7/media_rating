@@ -1,12 +1,14 @@
 import type { DragEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
-import { MenuIconLabel } from "@/components/ui/Icon";
+import { Input } from "@/components/ui/input";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { DropPlacement } from "@/lib/dragReorder";
 import type { CategoryWithEntries } from "@/lib/types";
@@ -95,7 +97,7 @@ export function CategoryListItem({
     if (isRenaming) {
         return (
             <form className="grid gap-[0.45rem] rounded-control border border-line bg-subtle-panel p-[0.55rem]" onSubmit={handleSubmit}>
-                <input
+                <Input
                     autoFocus
                     aria-label={`Rename ${category.name}`}
                     disabled={busy}
@@ -103,8 +105,10 @@ export function CategoryListItem({
                     onChange={(event) => setName(event.target.value)}
                 />
                 <div className="grid grid-cols-2 gap-[0.45rem]">
-                    <button disabled={busy} type="submit">Save</button>
-                    <button
+                    <Button size="sm" disabled={busy} type="submit">Save</Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
                         disabled={busy}
                         type="button"
                         onClick={() => {
@@ -113,7 +117,7 @@ export function CategoryListItem({
                         }}
                     >
                         Cancel
-                    </button>
+                    </Button>
                 </div>
             </form>
         );
@@ -170,12 +174,12 @@ export function CategoryListItem({
             }}
         >
             <button
-                className={`min-w-0 text-left ${
+                className={`block w-full min-w-0 cursor-pointer rounded-control border px-[0.8rem] py-[0.55rem] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
                     isDragging
                         ? CATEGORY_BUTTON_DRAGGING_CLASS
                         : isActive
                             ? "border-gold bg-selected-panel shadow-[inset_3px_0_0_var(--gold)]"
-                            : ""
+                            : "border-line bg-panel hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--line))]"
                 } ${isCategoryDraggable && !isDragging ? "cursor-grab" : ""}`.trim()}
                 disabled={busy}
                 title="Double-click to rename · Right-click for actions"
@@ -200,14 +204,14 @@ export function CategoryListItem({
                         setIsRenaming(true);
                     }}
                 >
-                    <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                    <Pencil />Rename
                 </ContextMenuItem>
                 <ContextMenuItem
                     variant="destructive"
                     disabled={busy || listLocked}
                     onSelect={onDelete}
                 >
-                    <MenuIconLabel icon="delete">Delete</MenuIconLabel>
+                    <Trash2 />Delete
                 </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>

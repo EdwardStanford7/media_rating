@@ -21,10 +21,13 @@ This folder expects Node.js and npm or pnpm.
 
 ```sh
 cd web
-npm install
+# if you dont have pnpm, install it
+npm i -g pnpm
+
+pnpm install
 cp .env.example .env
-npm run db:migrate:local
-npm run dev
+pnpm db:migrate:local
+pnpm dev
 ```
 
 Create Cloudflare D1/R2 resources before remote deploy, then replace the placeholder `database_id` in `wrangler.jsonc`. The app now deploys to `https://goldshelf.net`, but the existing D1 database and R2 bucket intentionally keep their `media-rating` names to avoid data migration risk.

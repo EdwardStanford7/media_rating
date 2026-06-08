@@ -1,19 +1,30 @@
 import type { DragEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { METRIC_CLASS, POSTER_CLASS } from "@/components/ui/classes";
+import { ArrowRightLeft, Image as ImageIcon, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
-import { MenuIconLabel } from "@/components/ui/Icon";
+import { Input } from "@/components/ui/input";
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from "@/components/ui/select";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { DropPlacement } from "@/lib/dragReorder";
 import { formatDate } from "@/lib/format";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import type { CategoryWithEntries, Entry } from "@/lib/types";
 
+const POSTER_CLASS =
+    "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
 const ENTRY_CARD_DRAGGING_CLASS =
     "cursor-grabbing border-dashed border-brand bg-selected-panel shadow-none [&>*]:opacity-0";
 
@@ -170,15 +181,17 @@ export function EntryCard({
                 {isRenaming ? (
                     <form className="grid gap-[0.45rem]" onSubmit={handleRenameSubmit}>
                         <span className="text-muted-foreground">#{entry.rankPosition + 1}</span>
-                        <input
+                        <Input
                             autoFocus
                             aria-label={`Rename ${entry.name}`}
                             value={renameValue}
                             onChange={(event) => setRenameValue(event.target.value)}
                         />
                         <div className="grid grid-cols-2 gap-[0.45rem]">
-                            <button type="submit">Save</button>
-                            <button
+                            <Button size="sm" type="submit">Save</Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
                                 type="button"
                                 onClick={() => {
                                     setRenameValue(entry.name);
@@ -186,12 +199,12 @@ export function EntryCard({
                                 }}
                             >
                                 Cancel
-                            </button>
+                            </Button>
                         </div>
                     </form>
                 ) : (
                     <strong
-                        className="block truncate leading-[1.25] [overflow-wrap:normal]"
+                        className="block truncate leading-tight wrap-normal"
                         title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
                         onDoubleClick={() => {
                             if (!listLocked) {
@@ -206,38 +219,44 @@ export function EntryCard({
                 )}
                 {entry.firstConsumedAt ? (
                     <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
-                        <span className={METRIC_CLASS}>{formatDate(entry.firstConsumedAt)}</span>
+                        <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-line px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
                     </div>
                 ) : null}
                 {moveControlsOpen ? (
                     <div className="grid gap-[0.55rem] rounded-control border border-line bg-subtle-panel p-[0.65rem]">
                         <strong>Change Category</strong>
                         <div className="grid min-w-0 grid-cols-1 gap-[0.45rem]">
-                            <select
-                                aria-label={`Move ${entry.name}`}
-                                value={targetCategoryId}
-                                onChange={(event) => setTargetCategoryId(event.target.value)}
-                            >
-                                {categories.map((category) => (
-                                    <option key={category.id} value={category.id}>
-                                        {category.name}
-                                    </option>
-                                ))}
-                            </select>
+                            <Select value={targetCategoryId} onValueChange={setTargetCategoryId}>
+                                <SelectTrigger aria-label={`Move ${entry.name}`} className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        {categories.map((category) => (
+                                            <SelectItem key={category.id} value={category.id}>
+                                                {category.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
                             <div className="grid min-w-0 grid-cols-2 gap-[0.45rem]">
-                                <button
+                                <Button
+                                    size="sm"
+                                    variant="outline"
                                     type="button"
                                     onClick={() => setMoveControlsOpen(false)}
                                 >
                                     Cancel
-                                </button>
-                                <button
+                                </Button>
+                                <Button
+                                    size="sm"
                                     disabled={listLocked || targetCategoryId === selectedCategoryId}
                                     type="button"
                                     onClick={() => onSwitch(targetCategoryId)}
                                 >
                                     Move
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>
@@ -254,21 +273,20 @@ export function EntryCard({
                         setIsRenaming(true);
                     }}
                 >
-                    <MenuIconLabel icon="edit">Rename</MenuIconLabel>
+                    <Pencil />Rename
                 </ContextMenuItem>
                 <ContextMenuItem disabled={listLocked} onSelect={onRerank}>
-                    <MenuIconLabel icon="rerank">Rerank</MenuIconLabel>
+                    <RefreshCw />Rerank
                 </ContextMenuItem>
                 <ContextMenuItem onSelect={onPickImage}>
-                    <MenuIconLabel icon="image">
-                        {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
-                    </MenuIconLabel>
+                    <ImageIcon />
+                    {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
                 </ContextMenuItem>
                 <ContextMenuItem disabled={listLocked} onSelect={() => setMoveControlsOpen(true)}>
-                    <MenuIconLabel icon="category">Change Category</MenuIconLabel>
+                    <ArrowRightLeft />Change Category
                 </ContextMenuItem>
                 <ContextMenuItem variant="destructive" disabled={listLocked} onSelect={onDelete}>
-                    <MenuIconLabel icon="delete">Delete</MenuIconLabel>
+                    <Trash2 />Delete
                 </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>
@@ -300,8 +318,8 @@ function EntryPoster({
                 />
             ) : (
                 <div className={`${POSTER_CLASS} grid content-center place-items-center gap-[0.35rem] p-4 [grid-area:1/1]`}>
-                    <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
-                    <small className="text-[0.95rem] leading-[1.25] text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+                    <span className="text-[1rem] leading-tight">{entry.name}</span>
+                    <small className="text-[0.95rem] leading-tight text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
                 </div>
             )}
         </div>

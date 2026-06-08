@@ -1,5 +1,7 @@
 import type { FormEvent } from "react";
-import { IconButton } from "@/components/ui/Icon";
+import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function ImportSpreadsheetToast({
     busy,
@@ -21,26 +23,29 @@ export function ImportSpreadsheetToast({
         >
             <div className="flex items-center justify-between gap-3">
                 <strong>Import Spreadsheet</strong>
-                <IconButton
+                <Button
+                    aria-label="Close import"
                     disabled={busy}
-                    icon="close"
-                    label="Close import"
-                    size="sm"
+                    size="icon-sm"
+                    title="Close import"
                     type="button"
+                    variant="ghost"
                     onClick={onClose}
-                />
+                >
+                    <X />
+                </Button>
             </div>
             <label className="grid min-w-0 content-start gap-[0.35rem]">
                 <span className="text-muted-foreground">First consumed date</span>
-                <input disabled={disabled} name="firstConsumedAt" type="date" />
+                <Input disabled={disabled} name="firstConsumedAt" type="date" />
             </label>
             <label className="grid min-w-0 content-start gap-[0.35rem]">
                 <span className="text-muted-foreground">Workbook</span>
-                <input disabled={disabled} name="workbook" type="file" accept=".xlsx" />
+                <Input disabled={disabled} name="workbook" type="file" accept=".xlsx" />
             </label>
-            <button disabled={disabled} type="submit">
+            <Button disabled={disabled} type="submit">
                 {busyLabel?.startsWith("Import") ? "Importing..." : "Import"}
-            </button>
+            </Button>
         </form>
     );
 }

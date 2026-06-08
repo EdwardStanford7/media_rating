@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { POSTER_CLASS, STATUS_CLASS } from "@/components/ui/classes";
+import { Button } from "@/components/ui/button";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { errorMessage } from "@/lib/format";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
@@ -8,6 +8,10 @@ import type { BinarySessionView, CategoryWithEntries, Entry } from "@/lib/types"
 
 const RANK_PANEL_CLASS =
     "max-w-full min-w-0 rounded-panel border border-line bg-panel p-4 shadow-panel";
+const STATUS_CLASS =
+    "rounded-control border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line";
+const POSTER_CLASS =
+    "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
 
 export function BinaryRankPanel({
     sessionId,
@@ -129,7 +133,7 @@ export function BinaryRankPanel({
 
     return (
         <section className={`${RANK_PANEL_CLASS} grid content-start gap-[0.9rem]`}>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
                 <div>
                     <strong>
                         {session.phase === "local_repair"
@@ -141,8 +145,9 @@ export function BinaryRankPanel({
                     </p>
                 </div>
                 {session.source === "new_entry" || session.source === "rerank_entry" ? (
-                    <button
-                        className="px-[0.6rem] py-[0.35rem] text-[0.85rem]"
+                    <Button
+                        size="sm"
+                        variant="outline"
                         disabled={submitting}
                         type="button"
                         onClick={() => void cancelRanking()}
@@ -150,12 +155,12 @@ export function BinaryRankPanel({
                         {session.source === "rerank_entry"
                             ? "Cancel Rerank"
                             : "Cancel Add"}
-                    </button>
+                    </Button>
                 ) : null}
             </div>
             <div className="grid min-w-0 grid-cols-2 gap-4 max-[820px]:grid-cols-1">
                 <button
-                    className="overflow-hidden p-0 text-left"
+                    className="cursor-pointer overflow-hidden rounded-panel border border-line bg-panel text-left transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-55"
                     disabled={submitting}
                     type="button"
                     onClick={() => void chooseWinner(session.subject.id)}
@@ -164,7 +169,7 @@ export function BinaryRankPanel({
                     <strong className="block p-[0.7rem]">{session.subject.name}</strong>
                 </button>
                 <button
-                    className="overflow-hidden p-0 text-left"
+                    className="cursor-pointer overflow-hidden rounded-panel border border-line bg-panel text-left transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-55"
                     disabled={submitting}
                     type="button"
                     onClick={() => void chooseWinner(session.opponent.id)}
@@ -198,8 +203,8 @@ function MatchPoster({ entry }: { entry: Entry }) {
 
     return (
         <div className={`${POSTER_CLASS} grid content-center place-items-center gap-[0.35rem] p-4`}>
-            <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
-            <small className="text-[0.95rem] leading-[1.25] text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+            <span className="text-[1rem] leading-tight">{entry.name}</span>
+            <small className="text-[0.95rem] leading-tight text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
         </div>
     );
 }

@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Library, Search, Swords } from "lucide-react";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { BinaryRankPanel } from "@/components/ranking/BinaryRankPanel";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,16 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { EntryCard } from "@/components/dashboard/EntryCard";
 import { ImagePickerModal } from "@/components/ranking/ImagePickerModal";
 import { ImportSpreadsheetToast } from "@/components/queue/ImportSpreadsheetToast";
+import { Input } from "@/components/ui/input";
 import { QueuePanel } from "@/components/queue/QueuePanel";
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from "@/components/ui/select";
 import { showActionToast, showToast, type ToastVariant } from "@/lib/toast";
 import { isEditableShortcutTarget, nextPaint } from "@/lib/dom";
 import {
@@ -1186,10 +1196,10 @@ export function Dashboard({
                 </div>
 
                 <form
-                    className="flex flex-wrap items-center gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0"
+                    className="flex flex-wrap items-center gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0"
                     onSubmit={handleCreateCategory}
                 >
-                    <input
+                    <Input
                         className="flex-[1_1_12rem]"
                         disabled={busy}
                         name="name"
@@ -1249,7 +1259,7 @@ export function Dashboard({
                     {dashboard.categories.length === 0 ? (
                         <EmptyState
                             compact
-                            icon="category"
+                            icon={Library}
                             title="No Categories"
                         >
                             Add a category to start building a ranked list.
@@ -1260,7 +1270,7 @@ export function Dashboard({
                 {selectedCategory && !activeSessionId ? (
                     <div className="grid w-full justify-items-stretch gap-[0.7rem]">
                         <form className="grid max-w-full min-w-0 gap-2" onSubmit={handleCreateEntry}>
-                            <input
+                            <Input
                                 disabled={busy}
                                 name="name"
                                 placeholder="New entry"
@@ -1269,20 +1279,25 @@ export function Dashboard({
                                 onChange={(event) => setEntryDraftName(event.target.value)}
                             />
                             <div className="grid min-w-0 grid-cols-[minmax(10.5rem,1fr)_auto] gap-2 max-[820px]:grid-cols-1">
-                                <select
-                                    aria-label="Category"
-                                    className="w-full min-w-0 flex-none"
+                                <Select
                                     defaultValue={selectedCategory.id}
                                     disabled={busy}
                                     key={selectedCategory.id}
                                     name="categoryId"
                                 >
-                                    {dashboard.categories.map((category) => (
-                                        <option key={category.id} value={category.id}>
-                                            {category.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    <SelectTrigger aria-label="Category" className="w-full min-w-0">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            {dashboard.categories.map((category) => (
+                                                <SelectItem key={category.id} value={category.id}>
+                                                    {category.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
                                 <Button
                                     size="lg"
                                     disabled={busy || !canCreateEntry}
@@ -1321,9 +1336,9 @@ export function Dashboard({
                 className="grid min-h-0 min-w-0 content-start gap-[0.9rem] overflow-x-hidden overflow-y-auto px-[clamp(1rem,3vw,2.25rem)] py-5 max-[820px]:overflow-y-visible"
                 ref={mainRef}
             >
-                <div className="sticky top-0 z-35 -mt-1 mb-[0.35rem] flex flex-nowrap items-center gap-[0.7rem] border-b border-line bg-app pt-1 pb-[0.95rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0">
+                <div className="sticky top-0 z-35 -mt-1 mb-[0.35rem] flex flex-nowrap items-center gap-[0.7rem] border-b border-line bg-app pt-1 pb-[0.95rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
                     <div className="grid max-w-[min(34rem,42vw)] min-w-0 flex-[0_1_auto] gap-[0.15rem]">
-                        <h1 className="m-0 truncate">{selectedCategory?.name ?? "Categories"}</h1>
+                        <h1 className="m-0 truncate text-2xl font-bold">{selectedCategory?.name ?? "Categories"}</h1>
                         <p className="m-0 text-muted-foreground">
                             {selectedCategory
                                 ? `${displayedEntries.length}${entrySearch.trim() ? ` of ${selectedCategory.entries.length}` : ""} entries`
@@ -1331,8 +1346,8 @@ export function Dashboard({
                         </p>
                     </div>
                     {selectedCategory && !activeSessionId ? (
-                        <div className="mr-auto grid w-[min(26rem,100%)] max-w-[26rem] min-w-0 flex-[0_1_26rem] gap-2 max-[820px]:w-full max-[820px]:max-w-none">
-                            <input
+                        <div className="mr-auto grid w-[min(26rem,100%)] max-w-104 min-w-0 flex-[0_1_26rem] gap-2 max-[820px]:w-full max-[820px]:max-w-none">
+                            <Input
                                 aria-label="Search entries"
                                 value={entrySearch}
                                 placeholder="Search entries"
@@ -1357,7 +1372,7 @@ export function Dashboard({
 
                 {dashboard.categories.length === 0 ? (
                     <EmptyState
-                        icon="category"
+                        icon={Library}
                         title="Create Your First Category"
                     >
                         Categories keep each ranked list separate. Use the sidebar form to add one.
@@ -1432,7 +1447,7 @@ export function Dashboard({
                 </section>
                 {selectedCategory && displayedEntries.length === 0 ? (
                     <EmptyState
-                        icon={entrySearch.trim() ? "search" : "rank"}
+                        icon={entrySearch.trim() ? Search : Swords}
                         title={entrySearch.trim() ? "No Matches" : "No Entries Yet"}
                     >
                         {entrySearch.trim()

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { METRIC_CLASS } from "@/components/ui/classes";
+import { Square, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Icon } from "@/components/ui/Icon";
 import { QueuedEntryRow } from "@/components/queue/QueuedEntryRow";
 import type { QueuedEntry } from "@/lib/types";
+
+const METRIC_CLASS =
+    "max-w-full min-w-0 whitespace-nowrap rounded-full border border-line px-[0.45rem] py-[0.15rem] text-[0.78rem] text-muted-foreground";
 
 export function QueuePanel({
     activeSessionId,
@@ -62,7 +64,7 @@ export function QueuePanel({
                         }
                     }}
                 >
-                    <Icon name={queueRankMode ? "cancel" : "rank"} />
+                    {queueRankMode ? <Square data-icon="inline-start" /> : <Swords data-icon="inline-start" />}
                     <span>{queueRankMode ? "Stop Ranking Queue" : "Rank Queue"}</span>
                 </Button>
             </div>
@@ -95,7 +97,7 @@ export function QueuePanel({
                     ))}
                 </div>
             ) : (
-                <EmptyState compact icon="rank" title="Queue Empty">
+                <EmptyState compact icon={Swords} title="Queue Empty">
                     {activeSessionId
                         ? "Queue controls will return after the active ranking finishes."
                         : "Queued entries will appear here after you add them."}

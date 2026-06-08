@@ -51,7 +51,8 @@ test.describe("Entry operations", () => {
         // --- Moving an entry into an empty category places it directly at #1. ---
         await page.getByText("#3 Dune").click({ button: "right" });
         await page.getByRole("menuitem", { name: "Change Category" }).click();
-        await page.getByLabel("Move Dune").selectOption({ label: "Books" });
+        await page.getByLabel("Move Dune").click();
+        await page.getByRole("option", { name: "Books" }).click();
         await page.getByRole("button", { name: "Move", exact: true }).click();
 
         await expect(page.getByRole("heading", { name: "Books" })).toBeVisible();
@@ -66,7 +67,8 @@ test.describe("Entry operations", () => {
         // --- Moving into a non-empty category runs a ranking session there. ---
         await page.getByText("#3 Heat").click({ button: "right" });
         await page.getByRole("menuitem", { name: "Change Category" }).click();
-        await page.getByLabel("Move Heat").selectOption({ label: "Books" });
+        await page.getByLabel("Move Heat").click();
+        await page.getByRole("option", { name: "Books" }).click();
         await page.getByRole("button", { name: "Move", exact: true }).click();
 
         await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
