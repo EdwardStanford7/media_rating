@@ -1,6 +1,6 @@
 import { Link, createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { updateCategoryVisibility } from "@/server/categories";
 import {
     approveFollowRequest,
@@ -31,6 +31,16 @@ const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
 const FOLLOW_SEARCH_DELAY_MS = 250;
 
+interface ProfileImageDraft {
+    file: File;
+    objectUrl: string;
+}
+
+interface CropCenter {
+    x: number;
+    y: number;
+}
+
 export const Route = createFileRoute("/profile")({
     loader: async () => {
         const session = await getSession();
@@ -57,6 +67,7 @@ function ProfileRoute() {
     const [followSearchLoading, setFollowSearchLoading] = useState(false);
     const [savingProfile, setSavingProfile] = useState(false);
     const [savingProfileImage, setSavingProfileImage] = useState(false);
+    const [profileImageDraft, setProfileImageDraft] = useState<ProfileImageDraft | null>(null);
     const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
     const [savingFollowId, setSavingFollowId] = useState<string | null>(null);
     useEffect(() => {
@@ -65,6 +76,14 @@ function ProfileRoute() {
         setProfileSlug(loaderData.settings?.user.slug ?? "");
         setProfileIsPublic(loaderData.settings?.user.isPublic ?? false);
     }, [loaderData.settings]);
+
+    useEffect(() => {
+        if (!profileImageDraft) {
+            return undefined;
+        }
+
+        return () => URL.revokeObjectURL(profileImageDraft.objectUrl);
+    }, [profileImageDraft]);
 
     useEffect(() => {
         const query = followInput.trim();
@@ -157,12 +176,29 @@ function ProfileRoute() {
             return;
         }
 
+        setStatus(null);
+        setError(null);
+
+        try {
+            if (file.size > MAX_LOCAL_IMAGE_BYTES) {
+                throw new Error("Image file is too large");
+            }
+
+            setProfileImageDraft({
+                file,
+                objectUrl: URL.createObjectURL(file)
+            });
+        } catch (imageError) {
+            setActionError(imageError);
+        }
+    }
+
+    async function handleProfileImageSave(blob: Blob) {
         setSavingProfileImage(true);
         setStatus(null);
         setError(null);
 
         try {
-            const blob = await imageFileToAvatarBlob(file);
             const response = await fetch("/api/profile-image", {
                 method: "POST",
                 headers: {
@@ -176,6 +212,7 @@ function ProfileRoute() {
             }
 
             await refreshSettings();
+            setProfileImageDraft(null);
             setStatus("Profile photo updated.");
         } catch (imageError) {
             setActionError(imageError);
@@ -403,6 +440,19 @@ function ProfileRoute() {
 
     return (
         <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
+            {profileImageDraft ? (
+                <ProfilePhotoEditor
+                    file={profileImageDraft.file}
+                    objectUrl={profileImageDraft.objectUrl}
+                    saving={savingProfileImage}
+                    onCancel={() => {
+                        if (!savingProfileImage) {
+                            setProfileImageDraft(null);
+                        }
+                    }}
+                    onSave={(blob) => handleProfileImageSave(blob)}
+                />
+            ) : null}
             <header className="m-0 flex w-full items-center justify-between gap-4">
                 <BrandLink />
                 <nav className="flex items-center gap-[0.8rem]" aria-label="Profile navigation">
@@ -717,30 +767,194 @@ function ProfileAvatar({
     );
 }
 
-function imageFileToAvatarBlob(file: File) {
-    if (file.size > MAX_LOCAL_IMAGE_BYTES) {
-        throw new Error("Image file is too large");
+function ProfilePhotoEditor({
+    file,
+    objectUrl,
+    saving,
+    onCancel,
+    onSave
+}: {
+    file: File;
+    objectUrl: string;
+    saving: boolean;
+    onCancel: () => void;
+    onSave: (blob: Blob) => Promise<void>;
+}) {
+    const viewportRef = useRef<HTMLDivElement | null>(null);
+    const dragRef = useRef<{
+        pointerId: number;
+        startX: number;
+        startY: number;
+        startCenter: CropCenter;
+    } | null>(null);
+    const [image, setImage] = useState<HTMLImageElement | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [zoom, setZoom] = useState(1);
+    const [center, setCenter] = useState<CropCenter>({ x: 0, y: 0 });
+    const [viewportSize, setViewportSize] = useState(320);
+
+    useEffect(() => {
+        const nextImage = new Image();
+        setImage(null);
+        setLoadError(null);
+        nextImage.onload = () => {
+            setImage(nextImage);
+            setZoom(1);
+            setCenter({
+                x: nextImage.naturalWidth / 2,
+                y: nextImage.naturalHeight / 2
+            });
+        };
+        nextImage.onerror = () => setLoadError("Image could not be loaded");
+        nextImage.src = objectUrl;
+    }, [objectUrl]);
+
+    useEffect(() => {
+        const viewport = viewportRef.current;
+        if (!viewport) {
+            return undefined;
+        }
+        const viewportElement = viewport;
+
+        function updateViewportSize() {
+            setViewportSize(Math.max(1, viewportElement.getBoundingClientRect().width));
+        }
+
+        updateViewportSize();
+        const resizeObserver = new ResizeObserver(updateViewportSize);
+        resizeObserver.observe(viewportElement);
+        return () => resizeObserver.disconnect();
+    }, []);
+
+    const cropSize = image ? Math.min(image.naturalWidth, image.naturalHeight) / zoom : 1;
+    const clampedCenter = image ? clampCropCenter(center, image, zoom) : center;
+    const imageScale = image ? viewportSize / cropSize : 1;
+    const imageStyle = image
+        ? {
+            height: `${image.naturalHeight * imageScale}px`,
+            left: `${viewportSize / 2 - clampedCenter.x * imageScale}px`,
+            top: `${viewportSize / 2 - clampedCenter.y * imageScale}px`,
+            width: `${image.naturalWidth * imageScale}px`
+        }
+        : undefined;
+
+    function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+        if (!image || saving) {
+            return;
+        }
+
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startCenter: clampedCenter
+        };
     }
 
-    return new Promise<Blob>((resolve, reject) => {
-        const image = new Image();
-        const objectUrl = URL.createObjectURL(file);
+    function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+        if (!image || !dragRef.current || dragRef.current.pointerId !== event.pointerId) {
+            return;
+        }
 
-        image.onload = () => {
-            imageElementToAvatarBlob(image)
-                .then(resolve)
-                .catch(reject)
-                .finally(() => URL.revokeObjectURL(objectUrl));
-        };
-        image.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error("Image could not be loaded"));
-        };
-        image.src = objectUrl;
-    });
+        const nextCropSize = Math.min(image.naturalWidth, image.naturalHeight) / zoom;
+        const sourcePixelsPerScreenPixel = nextCropSize / viewportSize;
+        setCenter(clampCropCenter({
+            x: dragRef.current.startCenter.x - (event.clientX - dragRef.current.startX) * sourcePixelsPerScreenPixel,
+            y: dragRef.current.startCenter.y - (event.clientY - dragRef.current.startY) * sourcePixelsPerScreenPixel
+        }, image, zoom));
+    }
+
+    function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+        if (dragRef.current?.pointerId === event.pointerId) {
+            dragRef.current = null;
+        }
+    }
+
+    function handleZoom(nextZoom: number) {
+        if (!image) {
+            setZoom(nextZoom);
+            return;
+        }
+
+        setZoom(nextZoom);
+        setCenter((currentCenter) => clampCropCenter(currentCenter, image, nextZoom));
+    }
+
+    async function handleSave() {
+        if (!image || saving) {
+            return;
+        }
+
+        await onSave(await imageElementToAvatarBlob(image, clampedCenter, zoom));
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-modal-backdrop p-4" role="dialog" aria-modal="true" aria-labelledby="profile-photo-editor-title">
+            <div className="grid w-[min(100%,30rem)] gap-4 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-floating">
+                <div className="flex items-center justify-between gap-3">
+                    <h2 id="profile-photo-editor-title" className="text-lg font-semibold">Edit Photo</h2>
+                    <span className="max-w-[14rem] truncate text-sm text-muted-foreground">{file.name}</span>
+                </div>
+                <div
+                    ref={viewportRef}
+                    className="relative mx-auto aspect-square w-[min(100%,22rem)] touch-none select-none overflow-hidden rounded-full border border-border bg-muted"
+                    onPointerCancel={handlePointerEnd}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerEnd}
+                >
+                    {image && imageStyle ? (
+                        <img
+                            alt=""
+                            className="absolute block max-w-none cursor-move"
+                            draggable={false}
+                            src={objectUrl}
+                            style={imageStyle}
+                        />
+                    ) : (
+                        <div className="grid h-full place-items-center text-sm text-muted-foreground">
+                            {loadError ?? "Loading..."}
+                        </div>
+                    )}
+                </div>
+                <label className="grid gap-[0.35rem]">
+                    <span>Zoom</span>
+                    <input
+                        aria-label="Zoom"
+                        disabled={saving || !image}
+                        max="3"
+                        min="1"
+                        step="0.01"
+                        type="range"
+                        value={zoom}
+                        onChange={(event) => handleZoom(Number(event.target.value))}
+                    />
+                </label>
+                <div className="flex flex-wrap justify-end gap-2">
+                    <Button variant="outline" disabled={saving} type="button" onClick={onCancel}>
+                        Cancel
+                    </Button>
+                    <Button disabled={saving || !image} type="button" onClick={() => void handleSave()}>
+                        {saving ? "Saving..." : "Save Photo"}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
 }
 
-function imageElementToAvatarBlob(image: HTMLImageElement) {
+function clampCropCenter(center: CropCenter, image: HTMLImageElement, zoom: number): CropCenter {
+    const cropSize = Math.min(image.naturalWidth, image.naturalHeight) / zoom;
+    const halfCropSize = cropSize / 2;
+
+    return {
+        x: Math.min(image.naturalWidth - halfCropSize, Math.max(halfCropSize, center.x)),
+        y: Math.min(image.naturalHeight - halfCropSize, Math.max(halfCropSize, center.y))
+    };
+}
+
+function imageElementToAvatarBlob(image: HTMLImageElement, center: CropCenter, zoom: number) {
     return new Promise<Blob>((resolve, reject) => {
         try {
             const canvas = document.createElement("canvas");
@@ -755,9 +969,10 @@ function imageElementToAvatarBlob(image: HTMLImageElement) {
                 throw new Error("Image has no dimensions");
             }
 
-            const cropSize = Math.min(sourceWidth, sourceHeight);
-            const cropX = (sourceWidth - cropSize) / 2;
-            const cropY = (sourceHeight - cropSize) / 2;
+            const cropSize = Math.min(sourceWidth, sourceHeight) / zoom;
+            const cropCenter = clampCropCenter(center, image, zoom);
+            const cropX = cropCenter.x - cropSize / 2;
+            const cropY = cropCenter.y - cropSize / 2;
 
             canvas.width = AVATAR_SIZE;
             canvas.height = AVATAR_SIZE;

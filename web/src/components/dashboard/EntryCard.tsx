@@ -134,7 +134,7 @@ export function EntryCard({
                             </form>
                         ) : (
                             <strong
-                                className="block truncate text-[0.95rem] leading-tight wrap-normal"
+                                className="block truncate text-[0.70rem] leading-tight wrap-normal"
                                 title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
                                 onDoubleClick={() => {
                                     setMoveControlsOpen(false);
@@ -147,7 +147,7 @@ export function EntryCard({
                         )}
                         {entry.firstConsumedAt ? (
                             <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
-                                <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.4rem] py-[0.12rem] text-[0.72rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
+                                <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.4rem] py-[0.12rem] text-[0.68rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
                             </div>
                         ) : null}
                         {moveControlsOpen ? (
@@ -228,7 +228,7 @@ export function EntryDragOverlay({ entry }: { entry: Entry }) {
             </span>
             <EntryPoster entry={entry} />
             <div className="grid min-w-0 gap-[0.55rem] p-[0.65rem]">
-                <strong className="block truncate text-[0.95rem] leading-tight wrap-normal">
+                <strong className="block truncate text-[0.70rem] leading-tight wrap-normal">
                     #{entry.rankPosition + 1} {entry.name}
                 </strong>
             </div>

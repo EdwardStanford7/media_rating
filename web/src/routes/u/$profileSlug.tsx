@@ -1,6 +1,6 @@
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ListOrdered } from "lucide-react";
+import { CopyPlus, ListOrdered } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { orderEntries } from "@/lib/ranking";
 import {
     approveFollowRequest,
     cancelFollowRequest,
+    copyPublicCategoryToQueue,
     followProfile,
     loadPublicProfile,
     removeFollow
@@ -52,6 +53,7 @@ function PublicProfileRoute() {
     const loaderData = Route.useLoaderData();
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
     const [followSaving, setFollowSaving] = useState(false);
+    const [copyingCategoryId, setCopyingCategoryId] = useState<string | null>(null);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
         loaderData?.categories[0]?.id ?? null
     );
@@ -113,6 +115,30 @@ function PublicProfileRoute() {
             showToast(followError instanceof Error ? followError.message : String(followError), "danger");
         } finally {
             setFollowSaving(false);
+        }
+    }
+
+    async function handleCopyCategory(category: CategoryWithEntries) {
+        if (!profileData || !profileData.viewer.isSignedIn || profileData.viewer.isSelf) {
+            return;
+        }
+
+        setCopyingCategoryId(category.id);
+
+        try {
+            const result = await copyPublicCategoryToQueue({ data: { categoryId: category.id } });
+            showToast(
+                `Copied ${result.copiedCount} ${result.copiedCount === 1 ? "entry" : "entries"} to ${result.categoryName}.`,
+                "success"
+            );
+        } catch (copyError) {
+            if (redirectIfUnauthorized(copyError)) {
+                return;
+            }
+
+            showToast(copyError instanceof Error ? copyError.message : String(copyError), "danger");
+        } finally {
+            setCopyingCategoryId(null);
         }
     }
 
@@ -201,6 +227,12 @@ function PublicProfileRoute() {
                             return (
                                 <PublicCategory
                                     category={category}
+                                    copyDisabled={copyingCategoryId === category.id}
+                                    onCopy={
+                                        viewer.isSignedIn && !viewer.isSelf
+                                            ? () => void handleCopyCategory(category)
+                                            : undefined
+                                    }
                                     usePrivateImages={viewer.isSelf}
                                 />
                             );
@@ -236,9 +268,13 @@ function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
 
 function PublicCategory({
     category,
+    copyDisabled,
+    onCopy,
     usePrivateImages
 }: {
     category: CategoryWithEntries;
+    copyDisabled?: boolean;
+    onCopy?: () => void;
     usePrivateImages: boolean;
 }) {
     const entries = useMemo(() => orderEntries(category.entries), [category.entries]);
@@ -247,7 +283,21 @@ function PublicCategory({
         <section className="grid gap-[0.8rem]">
             <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">{category.name}</h2>
-                <span className="text-muted-foreground">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="text-muted-foreground">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
+                    {onCopy ? (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={copyDisabled}
+                            type="button"
+                            onClick={onCopy}
+                        >
+                            <CopyPlus data-icon="inline-start" />
+                            <span>{copyDisabled ? "Copying..." : "Copy to Queue"}</span>
+                        </Button>
+                    ) : null}
+                </div>
             </div>
             <div className="grid gap-[0.65rem]">
                 {entries.map((entry) => (

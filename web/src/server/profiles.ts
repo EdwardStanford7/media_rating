@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
+import { env } from "cloudflare:workers";
 import { canViewProfile, deriveFollowRelationState } from "@/lib/follows";
+import { hasStoredImage } from "@/lib/images";
 import { orderEntries } from "@/lib/ranking";
 import type {
     CategoryWithEntries,
@@ -12,7 +14,7 @@ import type {
     ProfileSettingsData,
     PublicProfileData
 } from "@/lib/types";
-import { all, assertOwned, first, getDb, now } from "@/server/lib/db";
+import { all, assertOwned, first, getDb, newId, now, runBatches } from "@/server/lib/db";
 import { authMiddleware, optionalAuthMiddleware } from "@/server/middleware/auth";
 import type { CategoryRow } from "./stores/categoryStore";
 import {
@@ -62,6 +64,14 @@ interface FollowSearchRow {
     incoming_status: FollowStatus | null;
     incoming_created_at: number | null;
     incoming_accepted_at: number | null;
+}
+
+interface CopyableCategoryRow {
+    id: string;
+    user_id: string;
+    name: string;
+    profile_is_public: number;
+    owner_name: string;
 }
 
 export const updateUserProfile = createServerFn({ method: "POST" })
@@ -422,6 +432,130 @@ export const loadPublicProfile = createServerFn({ method: "GET" })
         };
     });
 
+export const copyPublicCategoryToQueue = createServerFn({ method: "POST" })
+    .middleware([authMiddleware])
+    .inputValidator((data: { categoryId: string }) => data)
+    .handler(async ({ context, data }) => {
+        const userId = context.user.id;
+        const sourceCategory = await first<CopyableCategoryRow>(
+            getDb()
+                .prepare(
+                    `SELECT categories.id, categories.user_id, categories.name,
+                    user_profiles.is_public AS profile_is_public,
+                    "user".name AS owner_name
+             FROM categories
+             INNER JOIN user_profiles ON user_profiles.user_id = categories.user_id
+             INNER JOIN "user" ON "user".id = categories.user_id
+             WHERE categories.id = ? AND categories.is_public = 1`
+                )
+                .bind(data.categoryId)
+        );
+        assertOwned(sourceCategory, "Shared category");
+
+        if (sourceCategory.user_id === userId) {
+            throw new Error("You already own this category");
+        }
+
+        const relationState = await getFollowRelationState(userId, sourceCategory.user_id);
+        if (!canViewProfile(Boolean(sourceCategory.profile_is_public), false, relationState)) {
+            throw new Error("Shared category not found");
+        }
+
+        const entries = await all<EntryRow>(
+            getDb()
+                .prepare(
+                    `SELECT id, category_id, name, rank_position, image_key, created_at,
+                    first_consumed_at
+             FROM entries
+             WHERE user_id = ? AND category_id = ? AND status = 'active'
+             ORDER BY rank_position ASC, name ASC`
+                )
+                .bind(sourceCategory.user_id, sourceCategory.id)
+        );
+        const orderedEntries = orderEntries(entries.map(mapEntry));
+        const createdAt = now();
+        const categoryId = newId("cat");
+        const categoryName = await nextCopiedCategoryName(userId, sourceCategory.name);
+        const maxSort = await first<{ max_sort: number | null }>(
+            getDb()
+                .prepare(`SELECT MAX(sort_order) AS max_sort FROM categories WHERE user_id = ?`)
+                .bind(userId)
+        );
+        const copiedImageKeys: string[] = [];
+        const queuedEntries: Array<{ id: string; name: string; imageKey: string | null; createdAt: number }> = [];
+
+        for (const [index, entry] of orderedEntries.entries()) {
+            const queueId = newId("queue");
+            const copiedImageKey = await copyEntryImageToQueueImage(
+                userId,
+                queueId,
+                entry.imageKey,
+                createdAt + index
+            );
+            if (hasStoredImage(copiedImageKey)) {
+                copiedImageKeys.push(copiedImageKey);
+            }
+
+            queuedEntries.push({
+                id: queueId,
+                name: entry.name,
+                imageKey: copiedImageKey,
+                createdAt: createdAt + index
+            });
+        }
+
+        const db = getDb();
+        const statements: D1PreparedStatement[] = [
+            db
+                .prepare(
+                    `INSERT INTO categories (id, user_id, name, sort_order, created_at, updated_at, is_public)
+             VALUES (?, ?, ?, ?, ?, ?, 0)`
+                )
+                .bind(
+                    categoryId,
+                    userId,
+                    categoryName,
+                    (maxSort?.max_sort ?? -1) + 1,
+                    createdAt,
+                    createdAt
+                ),
+            ...queuedEntries.map((entry) =>
+                db
+                    .prepare(
+                        `INSERT INTO entry_queue (
+                   id, user_id, category_id, name, image_key, first_consumed_at,
+                   available_at, status, created_at, updated_at
+                 )
+                 VALUES (?, ?, ?, ?, ?, NULL, ?, 'queued', ?, ?)`
+                    )
+                    .bind(
+                        entry.id,
+                        userId,
+                        categoryId,
+                        entry.name,
+                        entry.imageKey,
+                        entry.createdAt,
+                        entry.createdAt,
+                        entry.createdAt
+                    )
+            )
+        ];
+
+        try {
+            await runBatches(db, statements);
+        } catch (error) {
+            await Promise.all(copiedImageKeys.map((imageKey) => env.IMAGES.delete(imageKey).catch(() => undefined)));
+            throw error;
+        }
+
+        return {
+            categoryId,
+            categoryName,
+            copiedCount: queuedEntries.length,
+            ownerName: sourceCategory.owner_name
+        };
+    });
+
 
 
 
@@ -437,6 +571,56 @@ async function assertProfileSlugAvailable(userId: string, profileSlug: string) {
     }
 }
 
+async function nextCopiedCategoryName(userId: string, sourceName: string) {
+    const rows = await all<{ name: string }>(
+        getDb()
+            .prepare(`SELECT name FROM categories WHERE user_id = ?`)
+            .bind(userId)
+    );
+    const existingNames = new Set(rows.map((row) => row.name));
+    if (!existingNames.has(sourceName)) {
+        return sourceName;
+    }
+
+    const baseName = `${sourceName} Copy`;
+    if (!existingNames.has(baseName)) {
+        return baseName;
+    }
+
+    for (let suffix = 2; suffix < 1000; suffix += 1) {
+        const candidate = `${baseName} ${suffix}`;
+        if (!existingNames.has(candidate)) {
+            return candidate;
+        }
+    }
+
+    throw new Error("Too many copied categories with this name");
+}
+
+async function copyEntryImageToQueueImage(
+    userId: string,
+    queueId: string,
+    sourceImageKey: string | null,
+    timestamp: number
+) {
+    if (!hasStoredImage(sourceImageKey)) {
+        return sourceImageKey;
+    }
+
+    const image = await env.IMAGES.get(sourceImageKey);
+    if (!image?.body) {
+        return null;
+    }
+
+    const imageKey = `${userId}/queue/${queueId}-copy-${timestamp}.jpg`;
+    await env.IMAGES.put(imageKey, image.body, {
+        httpMetadata: {
+            contentType: image.httpMetadata?.contentType ?? "image/jpeg"
+        }
+    });
+
+    return imageKey;
+}
 
 async function loadPublicCategories(userId: string): Promise<CategoryWithEntries[]> {
     const categories = await all<CategoryRow>(
@@ -712,6 +896,3 @@ function parseProfileSlugInput(value: string) {
         return normalizeProfileSlug(trimmed.replace(/^@/, ""));
     }
 }
-
-
-

@@ -25,6 +25,71 @@ async function readOwnSlug(page: Page) {
 }
 
 test.describe("Profiles", () => {
+    test("profile photo upload opens an editor before saving", async ({
+        page,
+        context
+    }) => {
+        await seedUsers([{ email: "avatar@e2e.test", name: "Avatar Tester" }]);
+        await signInViaApi(context, "avatar@e2e.test");
+        await gotoApp(page, "/profile");
+
+        await page.locator("input[type='file']").setInputFiles({
+            name: "avatar.svg",
+            mimeType: "image/svg+xml",
+            buffer: Buffer.from(`
+                <svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+                    <rect width="320" height="180" fill="#5b39d6"/>
+                    <circle cx="250" cy="90" r="58" fill="#f2b84b"/>
+                </svg>
+            `)
+        });
+
+        await expect(page.getByRole("heading", { name: "Edit Photo" })).toBeVisible();
+        await page.getByLabel("Zoom").evaluate((input) => {
+            const slider = input as HTMLInputElement;
+            slider.value = "1.4";
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+            slider.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        await page.getByRole("button", { name: "Save Photo" }).click();
+        await expect(page.getByText("Profile photo updated.")).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole("heading", { name: "Edit Photo" })).toBeHidden();
+    });
+
+    test("signed-in viewers can copy a shared category to their queue", async ({
+        page: alicePage,
+        context: aliceContext,
+        browser
+    }) => {
+        await seedUsers([ALICE, BOB]);
+        await signInViaApi(aliceContext, ALICE.email);
+
+        await gotoApp(alicePage, "/profile");
+        const aliceSlug = await readOwnSlug(alicePage);
+        await alicePage.getByLabel("Public profile").check();
+        await alicePage.getByRole("button", { name: "Save Profile" }).click();
+        await expect(alicePage.getByText("Profile saved.")).toBeVisible();
+        await alicePage.getByRole("checkbox", { name: /Movies/ }).click();
+        await expect(alicePage.getByText("Profile sharing saved.").first()).toBeVisible();
+
+        const bobContext = await browser.newContext();
+        const bobPage = await bobContext.newPage();
+        await signInViaApi(bobContext, BOB.email);
+        await gotoApp(bobPage, `/u/${aliceSlug}`);
+
+        await bobPage.getByRole("button", { name: "Copy to Queue" }).click();
+        await expect(bobPage.getByText("Copied 2 entries to Movies.")).toBeVisible({ timeout: 15_000 });
+
+        await gotoApp(bobPage);
+        await expect(bobPage.getByRole("heading", { name: "Movies" })).toBeVisible();
+        await expect(bobPage.getByText("2 queued")).toBeVisible();
+        await expect(bobPage.getByText("2 ready")).toBeVisible();
+        await expect(bobPage.getByText("Arrival").first()).toBeVisible();
+        await expect(bobPage.getByText("Dune").first()).toBeVisible();
+
+        await bobContext.close();
+    });
+
     test("category creation defaults private and can show a category on the profile", async ({
         page,
         context
