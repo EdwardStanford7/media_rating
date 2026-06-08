@@ -31,7 +31,7 @@ export function PasswordField({
         />
         <Button
           aria-label={visible ? 'Hide password' : 'Show password'}
-          className="absolute top-1/2 right-[0.35rem] -translate-y-1/2"
+          className="absolute inset-y-0 right-[0.35rem] my-auto active:translate-y-0!"
           size="icon-sm"
           type="button"
           variant="ghost"
