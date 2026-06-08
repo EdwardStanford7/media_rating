@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
-import { DANGER_BUTTON_CLASS, PRIMARY_BUTTON_CLASS } from "@/components/ui/classes";
-import { useEscapeKey } from "@/hooks/useEscapeKey";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 
 export function ConfirmDialog({
     children,
@@ -17,38 +25,24 @@ export function ConfirmDialog({
     onCancel: () => void;
     onConfirm: () => void;
 }) {
-    useEscapeKey(true, onCancel);
-
+    // Mounted only while open, so `open` is always true; Esc/Cancel close via onOpenChange.
     return (
-        <div
-            className="fixed inset-0 z-60 grid place-items-center bg-modal-backdrop p-4"
-            onPointerDown={(event) => {
-                if (event.target === event.currentTarget) {
-                    onCancel();
-                }
-            }}
-        >
-            <section
-                aria-labelledby="confirm-dialog-title"
-                aria-modal="true"
-                className="grid w-[min(420px,100%)] max-w-[calc(100vw-2rem)] gap-4 rounded-panel border border-line bg-panel p-4 shadow-panel [&_h2]:m-0 [&_p]:m-0"
-                role="dialog"
-            >
-                <div>
-                    <h2 id="confirm-dialog-title">{title}</h2>
-                    <div className="text-muted-foreground">{children}</div>
-                </div>
-                <div className="grid grid-cols-2 gap-[0.6rem]">
-                    <button type="button" onClick={onCancel}>Cancel</button>
-                    <button
-                        className={variant === "danger" ? DANGER_BUTTON_CLASS : PRIMARY_BUTTON_CLASS}
-                        type="button"
+        <AlertDialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>{title}</AlertDialogTitle>
+                    <AlertDialogDescription>{children}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                        variant={variant === "danger" ? "destructive" : "default"}
                         onClick={onConfirm}
                     >
                         {confirmLabel}
-                    </button>
-                </div>
-            </section>
-        </div>
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
     );
 }

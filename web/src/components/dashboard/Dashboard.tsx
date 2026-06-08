@@ -1195,12 +1195,10 @@ export function Dashboard({
                     onCancel={() => setCategoryDeleteTarget(null)}
                     onConfirm={() => void handleDeleteCategory(categoryDeleteTarget)}
                 >
-                    <p>
-                        This permanently removes {categoryDeleteTarget.entries.length} ranked {categoryDeleteTarget.entries.length === 1 ? "entry" : "entries"},
-                        {" "}
-                        {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length} queued {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length === 1 ? "entry" : "entries"},
-                        {" "}and stored images for this category.
-                    </p>
+                    This permanently removes {categoryDeleteTarget.entries.length} ranked {categoryDeleteTarget.entries.length === 1 ? "entry" : "entries"},
+                    {" "}
+                    {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length} queued {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length === 1 ? "entry" : "entries"},
+                    {" "}and stored images for this category.
                 </ConfirmDialog>
             ) : null}
             <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-line bg-sidebar p-4 max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:overflow-y-visible">
