@@ -14,7 +14,8 @@ import {
     updateUserProfile
 } from "@/server/profiles";
 import { getSession } from "@/server/session";
-import { AVATAR_CLASS, LINK_BUTTON_CLASS, PAGE_HEADER_CLASS, PAGE_NAV_CLASS, PAGE_NAV_LINK_CLASS, PRIMARY_BUTTON_CLASS, PROFILE_PAGE_CLASS, PROFILE_PANEL_CLASS, SECTION_HEADING_CLASS, STANDALONE_PANEL_CLASS } from "@/components/ui/classes";
+import { AVATAR_CLASS, LINK_BUTTON_CLASS, PAGE_HEADER_CLASS, PAGE_NAV_CLASS, PAGE_NAV_LINK_CLASS, PROFILE_PAGE_CLASS, PROFILE_PANEL_CLASS, SECTION_HEADING_CLASS, STANDALONE_PANEL_CLASS } from "@/components/ui/classes";
+import { Button } from "@/components/ui/button";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
@@ -495,12 +496,12 @@ function ProfileRoute() {
                                 <span>Public profile</span>
                             </label>
                             <div className="flex flex-wrap gap-2">
-                                <button className={PRIMARY_BUTTON_CLASS} disabled={savingProfile} type="submit">
+                                <Button size="lg" disabled={savingProfile} type="submit">
                                     {savingProfile ? "Saving..." : "Save Profile"}
-                                </button>
-                                <button disabled={!settings.user.isPublic} type="button" onClick={handleCopyProfileLink}>
+                                </Button>
+                                <Button size="lg" variant="outline" disabled={!settings.user.isPublic} type="button" onClick={handleCopyProfileLink}>
                                     Copy Link
-                                </button>
+                                </Button>
                             </div>
                         </form>
                     </section>

@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { PRIMARY_BUTTON_CLASS, STATUS_CLASS } from "@/components/ui/classes";
+import { STATUS_CLASS } from "@/components/ui/classes";
+import { Button } from "@/components/ui/button";
 import { signIn, signUp } from "@/lib/auth-client";
 
 type AuthMode = "signin" | "signup" | "reset-request";
@@ -8,7 +9,7 @@ type AuthMode = "signin" | "signup" | "reset-request";
 const FORM_CLASS = "grid gap-[0.95rem]";
 const FIELD_CLASS = "grid gap-[0.4rem] text-[0.92rem] font-bold text-muted-foreground";
 const FIELD_INPUT_CLASS = "min-h-12 font-medium text-ink";
-const SUBMIT_CLASS = `${PRIMARY_BUTTON_CLASS} mt-1 min-h-[3.15rem] font-extrabold`;
+const SUBMIT_CLASS = "mt-1 min-h-[3.15rem] w-full text-base font-extrabold";
 const LINK_BUTTON_CLASS = "border-0 bg-transparent p-0 font-extrabold text-brand enabled:hover:text-accent-strong enabled:hover:underline";
 
 export function AuthPage({
@@ -191,9 +192,9 @@ export function AuthPage({
                                 placeholder="Confirm new password"
                                 autoComplete="new-password"
                             />
-                            <button className={SUBMIT_CLASS} disabled={submitting} type="submit">
+                            <Button size="lg" className={SUBMIT_CLASS} disabled={submitting} type="submit">
                                 {submitting ? "Updating..." : "Update password"}
-                            </button>
+                            </Button>
                         </form>
                     ) : authMode === "reset-request" ? (
                         <form className={FORM_CLASS} onSubmit={handleRequestPasswordReset}>
@@ -201,9 +202,9 @@ export function AuthPage({
                                 <span>Email</span>
                                 <input className={FIELD_INPUT_CLASS} name="email" type="email" placeholder="you@example.com" autoComplete="email" required />
                             </label>
-                            <button className={SUBMIT_CLASS} disabled={submitting} type="submit">
+                            <Button size="lg" className={SUBMIT_CLASS} disabled={submitting} type="submit">
                                 {submitting ? "Sending..." : "Send reset link"}
-                            </button>
+                            </Button>
                         </form>
                     ) : (
                         <form className={FORM_CLASS} onSubmit={(event) => handleEmailAuth(event, authMode)}>
@@ -223,11 +224,11 @@ export function AuthPage({
                                 placeholder={authMode === "signin" ? "Password" : "At least 12 characters"}
                                 autoComplete={authMode === "signin" ? "current-password" : "new-password"}
                             />
-                            <button className={SUBMIT_CLASS} disabled={submitting} type="submit">
+                            <Button size="lg" className={SUBMIT_CLASS} disabled={submitting} type="submit">
                                 {submitting
                                     ? authMode === "signin" ? "Signing in..." : "Creating account..."
                                     : authMode === "signin" ? "Sign in" : "Create account"}
-                            </button>
+                            </Button>
                         </form>
                     )}
 

@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { BinaryRankPanel } from "@/components/ranking/BinaryRankPanel";
-import { PRIMARY_BUTTON_CLASS } from "@/components/ui/classes";
+import { Button } from "@/components/ui/button";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { BusyOverlay } from "@/components/ui/BusyOverlay";
 import { CategoryListItem } from "@/components/dashboard/CategoryListItem";
@@ -1221,13 +1221,13 @@ export function Dashboard({
                         value={categoryDraftName}
                         onChange={(event) => setCategoryDraftName(event.target.value)}
                     />
-                    <button
-                        className={canCreateCategory ? PRIMARY_BUTTON_CLASS : undefined}
+                    <Button
+                        size="lg"
                         disabled={busy || !canCreateCategory}
                         type="submit"
                     >
                         Add
-                    </button>
+                    </Button>
                 </form>
 
                 <div
@@ -1306,13 +1306,13 @@ export function Dashboard({
                                         </option>
                                     ))}
                                 </select>
-                                <button
-                                    className={canCreateEntry ? PRIMARY_BUTTON_CLASS : undefined}
+                                <Button
+                                    size="lg"
                                     disabled={busy || !canCreateEntry}
                                     type="submit"
                                 >
                                     Add
-                                </button>
+                                </Button>
                             </div>
                         </form>
                     </div>
