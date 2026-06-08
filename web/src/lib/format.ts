@@ -1,0 +1,46 @@
+// Calendar dates (e.g. firstConsumedAt) are stored as UTC-midnight timestamps
+// and always formatted in UTC, so server and client render the same day
+// regardless of timezone (avoids SSR hydration mismatches).
+export function dateInputToTimestamp(value: string) {
+    return value ? new Date(`${value}T00:00:00Z`).getTime() : null;
+}
+
+export function currentDateTimestamp() {
+    const today = new Date();
+    return Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+}
+
+export function formatDate(timestamp: number) {
+    return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC"
+    }).format(new Date(timestamp));
+}
+
+// Formats a real instant. Defaults to the runtime's local timezone, which
+// differs between server and client — for SSR-rendered instants, pass "UTC"
+// until hydration completes (see useHydrated) and switch to local after mount.
+export function formatDateTime(timestamp: number, timeZone?: "UTC") {
+    return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone
+    }).format(new Date(timestamp));
+}
+
+export function errorMessage(error: unknown) {
+    if (
+        typeof DOMException !== "undefined" &&
+        error instanceof DOMException &&
+        error.name === "AbortError"
+    ) {
+        return "Image search timed out";
+    }
+
+    return error instanceof Error ? error.message : String(error);
+}

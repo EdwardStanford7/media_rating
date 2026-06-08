@@ -1,11 +1,12 @@
-import ExcelJS from "exceljs";
+import { readSheet } from "read-excel-file/universal";
+import writeXlsxFile from "write-excel-file/universal";
 import { describe, expect, it } from "vitest";
 import { parseLegacyWorkbook, writeExportWorkbook } from "../src/lib/importExport";
 import type { CategoryWithEntries, Entry } from "../src/lib/types";
 
 describe("xlsx export", () => {
     it("does not write blank padding cells in shorter category columns", async () => {
-        const buffer = await writeExportWorkbook([
+        const blob = await writeExportWorkbook([
             category("Books", [entry("Dune", 0)]),
             category("Movies", [
                 entry("Alien", 0),
@@ -14,15 +15,13 @@ describe("xlsx export", () => {
             ])
         ]);
 
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(buffer);
-        const sheet = workbook.getWorksheet("Sorted");
+        const rows = await readSheet(await blob.arrayBuffer(), "Sorted");
 
-        expect(sheet?.getCell(1, 1).value).toBe("Books");
-        expect(sheet?.getCell(2, 1).value).toBe("Dune");
-        expect(sheet?.getCell(3, 1).value).toBeNull();
-        expect(sheet?.getCell(4, 1).value).toBeNull();
-        expect(sheet?.getCell(4, 2).value).toBe("Heat");
+        expect(rows[0]?.[0]).toBe("Books");
+        expect(rows[1]?.[0]).toBe("Dune");
+        expect(rows[2]?.[0] ?? null).toBeNull();
+        expect(rows[3]?.[0] ?? null).toBeNull();
+        expect(rows[3]?.[1]).toBe("Heat");
     });
 
     it("rejects exports with no entries", async () => {
@@ -32,11 +31,9 @@ describe("xlsx export", () => {
 
 describe("xlsx import", () => {
     it("rejects spreadsheets with no importable entries", async () => {
-        const workbook = new ExcelJS.Workbook();
-        workbook.addWorksheet("Blank");
-        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = await writeXlsxFile([{ sheet: "Blank", data: [] }]).toBlob();
 
-        await expect(parseLegacyWorkbook(buffer, null)).rejects.toThrow("no importable entries");
+        await expect(parseLegacyWorkbook(await blob.arrayBuffer(), null)).rejects.toThrow("no importable entries");
     });
 });
 

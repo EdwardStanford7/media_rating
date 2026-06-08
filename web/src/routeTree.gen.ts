@@ -9,18 +9,34 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignupRouteImport } from './routes/signup'
+import { Route as SigninRouteImport } from './routes/signin'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UProfileSlugRouteImport } from './routes/u/$profileSlug'
 import { Route as ApiProfileImageRouteImport } from './routes/api/profile-image'
 import { Route as ApiImageSearchRouteImport } from './routes/api/image-search'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
+import { Route as ApiTestSeedRouteImport } from './routes/api/test/seed'
+import { Route as ApiTestResetRouteImport } from './routes/api/test/reset'
+import { Route as ApiTestHealthRouteImport } from './routes/api/test/health'
+import { Route as ApiTestAuthUrlRouteImport } from './routes/api/test/auth-url'
 import { Route as ApiQueuedImagesQueuedEntryIdRouteImport } from './routes/api/queued-images/$queuedEntryId'
 import { Route as ApiPublicProfileImageUserIdRouteImport } from './routes/api/public-profile-image/$userId'
 import { Route as ApiPublicImagesEntryIdRouteImport } from './routes/api/public-images/$entryId'
 import { Route as ApiImagesEntryIdRouteImport } from './routes/api/images/$entryId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -49,6 +65,26 @@ const ApiImageSearchRoute = ApiImageSearchRouteImport.update({
 const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
   id: '/api/image-proxy',
   path: '/api/image-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTestSeedRoute = ApiTestSeedRouteImport.update({
+  id: '/api/test/seed',
+  path: '/api/test/seed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTestResetRoute = ApiTestResetRouteImport.update({
+  id: '/api/test/reset',
+  path: '/api/test/reset',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTestHealthRoute = ApiTestHealthRouteImport.update({
+  id: '/api/test/health',
+  path: '/api/test/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTestAuthUrlRoute = ApiTestAuthUrlRouteImport.update({
+  id: '/api/test/auth-url',
+  path: '/api/test/auth-url',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiQueuedImagesQueuedEntryIdRoute =
@@ -82,6 +118,8 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
+  '/signup': typeof SignupRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
@@ -91,10 +129,16 @@ export interface FileRoutesByFullPath {
   '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
   '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
+  '/api/test/auth-url': typeof ApiTestAuthUrlRoute
+  '/api/test/health': typeof ApiTestHealthRoute
+  '/api/test/reset': typeof ApiTestResetRoute
+  '/api/test/seed': typeof ApiTestSeedRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
+  '/signup': typeof SignupRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
@@ -104,11 +148,17 @@ export interface FileRoutesByTo {
   '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
   '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
+  '/api/test/auth-url': typeof ApiTestAuthUrlRoute
+  '/api/test/health': typeof ApiTestHealthRoute
+  '/api/test/reset': typeof ApiTestResetRoute
+  '/api/test/seed': typeof ApiTestSeedRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
+  '/signup': typeof SignupRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/image-search': typeof ApiImageSearchRoute
   '/api/profile-image': typeof ApiProfileImageRoute
@@ -118,12 +168,18 @@ export interface FileRoutesById {
   '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
   '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
+  '/api/test/auth-url': typeof ApiTestAuthUrlRoute
+  '/api/test/health': typeof ApiTestHealthRoute
+  '/api/test/reset': typeof ApiTestResetRoute
+  '/api/test/seed': typeof ApiTestSeedRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/profile'
+    | '/signin'
+    | '/signup'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
@@ -133,10 +189,16 @@ export interface FileRouteTypes {
     | '/api/public-images/$entryId'
     | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
+    | '/api/test/auth-url'
+    | '/api/test/health'
+    | '/api/test/reset'
+    | '/api/test/seed'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/profile'
+    | '/signin'
+    | '/signup'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
@@ -146,10 +208,16 @@ export interface FileRouteTypes {
     | '/api/public-images/$entryId'
     | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
+    | '/api/test/auth-url'
+    | '/api/test/health'
+    | '/api/test/reset'
+    | '/api/test/seed'
   id:
     | '__root__'
     | '/'
     | '/profile'
+    | '/signin'
+    | '/signup'
     | '/api/image-proxy'
     | '/api/image-search'
     | '/api/profile-image'
@@ -159,11 +227,17 @@ export interface FileRouteTypes {
     | '/api/public-images/$entryId'
     | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
+    | '/api/test/auth-url'
+    | '/api/test/health'
+    | '/api/test/reset'
+    | '/api/test/seed'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProfileRoute: typeof ProfileRoute
+  SigninRoute: typeof SigninRoute
+  SignupRoute: typeof SignupRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
   ApiImageSearchRoute: typeof ApiImageSearchRoute
   ApiProfileImageRoute: typeof ApiProfileImageRoute
@@ -173,10 +247,28 @@ export interface RootRouteChildren {
   ApiPublicImagesEntryIdRoute: typeof ApiPublicImagesEntryIdRoute
   ApiPublicProfileImageUserIdRoute: typeof ApiPublicProfileImageUserIdRoute
   ApiQueuedImagesQueuedEntryIdRoute: typeof ApiQueuedImagesQueuedEntryIdRoute
+  ApiTestAuthUrlRoute: typeof ApiTestAuthUrlRoute
+  ApiTestHealthRoute: typeof ApiTestHealthRoute
+  ApiTestResetRoute: typeof ApiTestResetRoute
+  ApiTestSeedRoute: typeof ApiTestSeedRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profile': {
       id: '/profile'
       path: '/profile'
@@ -217,6 +309,34 @@ declare module '@tanstack/react-router' {
       path: '/api/image-proxy'
       fullPath: '/api/image-proxy'
       preLoaderRoute: typeof ApiImageProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test/seed': {
+      id: '/api/test/seed'
+      path: '/api/test/seed'
+      fullPath: '/api/test/seed'
+      preLoaderRoute: typeof ApiTestSeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test/reset': {
+      id: '/api/test/reset'
+      path: '/api/test/reset'
+      fullPath: '/api/test/reset'
+      preLoaderRoute: typeof ApiTestResetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test/health': {
+      id: '/api/test/health'
+      path: '/api/test/health'
+      fullPath: '/api/test/health'
+      preLoaderRoute: typeof ApiTestHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test/auth-url': {
+      id: '/api/test/auth-url'
+      path: '/api/test/auth-url'
+      fullPath: '/api/test/auth-url'
+      preLoaderRoute: typeof ApiTestAuthUrlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/queued-images/$queuedEntryId': {
@@ -260,6 +380,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProfileRoute: ProfileRoute,
+  SigninRoute: SigninRoute,
+  SignupRoute: SignupRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
   ApiImageSearchRoute: ApiImageSearchRoute,
   ApiProfileImageRoute: ApiProfileImageRoute,
@@ -269,6 +391,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicImagesEntryIdRoute: ApiPublicImagesEntryIdRoute,
   ApiPublicProfileImageUserIdRoute: ApiPublicProfileImageUserIdRoute,
   ApiQueuedImagesQueuedEntryIdRoute: ApiQueuedImagesQueuedEntryIdRoute,
+  ApiTestAuthUrlRoute: ApiTestAuthUrlRoute,
+  ApiTestHealthRoute: ApiTestHealthRoute,
+  ApiTestResetRoute: ApiTestResetRoute,
+  ApiTestSeedRoute: ApiTestSeedRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

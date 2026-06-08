@@ -1,9 +1,21 @@
 import { betterAuth } from "better-auth";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { env } from "cloudflare:workers";
+import { captureAuthUrl, isTestMode } from "./testMode";
 
 export const MIN_PASSWORD_LENGTH = 12;
 const MAX_PASSWORD_LENGTH = 128;
+
+// better-auth names the session cookie `<prefix>better-auth.session_token`
+// (prefixed with `__Secure-` when secure cookies are on). We only need to
+// know whether a session cookie is present to decide if a DB session lookup
+// is worth attempting, so a substring check on the opaque name is enough.
+const SESSION_COOKIE_HINT = "better-auth.session_token";
+
+/** True when the request carries a better-auth session cookie. */
+export function requestHasSessionCookie(headers: Headers) {
+    return headers.get("cookie")?.includes(SESSION_COOKIE_HINT) ?? false;
+}
 
 function optionalEnv(value: string | undefined) {
     const trimmed = value?.trim();
@@ -23,6 +35,11 @@ async function sendResetPasswordEmail({
     user: { email: string; name?: string | null };
     url: string;
 }) {
+    if (isTestMode()) {
+        captureAuthUrl("reset-password", user.email, url);
+        return;
+    }
+
     const resendApiKey = optionalEnv(env.RESEND_API_KEY);
     const fromEmail = optionalEnv(env.PASSWORD_RESET_FROM_EMAIL);
     if (!resendApiKey || !fromEmail) {
@@ -78,7 +95,14 @@ export const auth = betterAuth({
     database: env.DB,
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
-    trustedOrigins: [env.BETTER_AUTH_URL],
+    // In TEST_MODE, additionally trust:
+    // - the e2e server origin, because a local .env (loaded by wrangler over
+    //   the vars in wrangler.e2e.jsonc) may override BETTER_AUTH_URL
+    // - the production origin, because the app sends it as the password-reset
+    //   redirectTo; the reset request is rejected without it.
+    trustedOrigins: isTestMode()
+        ? [env.BETTER_AUTH_URL, "http://localhost:3100", "https://goldshelf.net"]
+        : [env.BETTER_AUTH_URL],
     emailAndPassword: {
         enabled: true,
         minPasswordLength: MIN_PASSWORD_LENGTH,
@@ -88,7 +112,8 @@ export const auth = betterAuth({
         revokeSessionsOnPasswordReset: true
     },
     rateLimit: {
-        enabled: true,
+        // Disabled in TEST_MODE so e2e tests can sign up/in repeatedly.
+        enabled: !isTestMode(),
         storage: "database",
         window: 60,
         max: 60,

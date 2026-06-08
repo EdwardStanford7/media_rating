@@ -1,0 +1,10 @@
+allowBuilds:
+  esbuild: true
+  msw: false
+  sharp: true
+  workerd: true
+
+overrides:
+  # @better-auth/kysely-adapter claims kysely ^0.29 support but imports
+  # DEFAULT_MIGRATION_TABLE/DEFAULT_MIGRATION_LOCK_TABLE, which 0.29 removed.
+  kysely: ^0.28.17

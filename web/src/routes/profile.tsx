@@ -1,39 +1,41 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { Link, createFileRoute, redirect } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import { updateCategoryVisibility } from "@/server/categories";
 import {
     approveFollowRequest,
     cancelFollowRequest,
     declineFollowRequest,
     followProfile,
-    getSession,
     loadProfileSettings,
     removeFollow,
     requestFollowByProfileSlug,
     searchPublicProfiles,
-    updateCategoryVisibility,
     updateUserProfile
-} from "@/lib/server/actions";
+} from "@/server/profiles";
+import { getSession } from "@/server/session";
+import { Inbox, ListOrdered, Send, UserPlus, Users } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { BrandLink } from "@/components/ui/BrandLink";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/input";
+import { showToast } from "@/lib/toast";
+import { redirectIfUnauthorized } from "@/lib/errors";
 import { canViewProfile, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage } from "@/lib/images";
 import type { FollowProfileSummary, FollowSearchResult, ProfileSettingsData } from "@/lib/types";
 
 const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
-const TOAST_TIMEOUT_MS = 5_000;
 const FOLLOW_SEARCH_DELAY_MS = 250;
-
-interface ProfileToast {
-    id: number;
-    message: string;
-    variant?: "default" | "success" | "danger";
-}
 
 export const Route = createFileRoute("/profile")({
     loader: async () => {
         const session = await getSession();
         if (!session?.user) {
-            return { session: null, settings: null };
+            throw redirect({ to: "/signin" });
         }
 
         return {
@@ -57,23 +59,12 @@ function ProfileRoute() {
     const [savingProfileImage, setSavingProfileImage] = useState(false);
     const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
     const [savingFollowId, setSavingFollowId] = useState<string | null>(null);
-    const [toasts, setToasts] = useState<ProfileToast[]>([]);
-    const toastIdRef = useRef(0);
-    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
-
     useEffect(() => {
         setSettings(loaderData.settings);
         setDisplayName(loaderData.settings?.user.name ?? "");
         setProfileSlug(loaderData.settings?.user.slug ?? "");
         setProfileIsPublic(loaderData.settings?.user.isPublic ?? false);
     }, [loaderData.settings]);
-
-    useEffect(() => () => {
-        for (const timeoutId of toastTimeoutsRef.current.values()) {
-            window.clearTimeout(timeoutId);
-        }
-        toastTimeoutsRef.current.clear();
-    }, []);
 
     useEffect(() => {
         const query = followInput.trim();
@@ -95,7 +86,7 @@ function ProfileRoute() {
                 .catch((searchError) => {
                     if (!canceled) {
                         setFollowSearchResults([]);
-                        setError(errorMessage(searchError));
+                        setActionError(searchError);
                     }
                 })
                 .finally(() => {
@@ -111,34 +102,20 @@ function ProfileRoute() {
         };
     }, [followInput, loaderData.session?.user]);
 
-    function dismissToast(toastId: number) {
-        const timeoutId = toastTimeoutsRef.current.get(toastId);
-        if (timeoutId !== undefined) {
-            window.clearTimeout(timeoutId);
-            toastTimeoutsRef.current.delete(toastId);
-        }
-
-        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
-    }
-
-    function pushToast(toast: Omit<ProfileToast, "id">) {
-        const id = toastIdRef.current + 1;
-        toastIdRef.current = id;
-        setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
-        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
-        toastTimeoutsRef.current.set(id, timeoutId);
-    }
-
     function setStatus(message: string | null) {
-        if (message) {
-            pushToast({ message, variant: "success" });
-        }
+        showToast(message, "success");
     }
 
     function setError(message: string | null) {
-        if (message) {
-            pushToast({ message, variant: "danger" });
+        showToast(message, "danger");
+    }
+
+    function setActionError(error: unknown) {
+        if (redirectIfUnauthorized(error)) {
+            return;
         }
+
+        setError(errorMessage(error));
     }
 
     async function refreshSettings() {
@@ -167,7 +144,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile saved.");
         } catch (profileError) {
-            setError(errorMessage(profileError));
+            setActionError(profileError);
         } finally {
             setSavingProfile(false);
         }
@@ -201,7 +178,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile photo updated.");
         } catch (imageError) {
-            setError(errorMessage(imageError));
+            setActionError(imageError);
         } finally {
             setSavingProfileImage(false);
         }
@@ -224,7 +201,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile photo removed.");
         } catch (imageError) {
-            setError(errorMessage(imageError));
+            setActionError(imageError);
         } finally {
             setSavingProfileImage(false);
         }
@@ -240,7 +217,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Ranking visibility saved.");
         } catch (visibilityError) {
-            setError(errorMessage(visibilityError));
+            setActionError(visibilityError);
         } finally {
             setSavingCategoryId(null);
         }
@@ -259,7 +236,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus(result.relationState === "requested" ? "Follow request sent." : "Profile followed.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -275,7 +252,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile followed.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -291,7 +268,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Follow request accepted.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -307,7 +284,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Follow request declined.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -323,7 +300,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Follow request canceled.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -339,7 +316,7 @@ function ProfileRoute() {
             await refreshSettings();
             setStatus("Profile unfollowed.");
         } catch (followError) {
-            setError(errorMessage(followError));
+            setActionError(followError);
         } finally {
             setSavingFollowId(null);
         }
@@ -362,18 +339,21 @@ function ProfileRoute() {
             || profile.relationState === "mutual";
         if (profile.relationState === "incoming_request") {
             return (
-                <button
+                <Button
+                    size="sm"
                     disabled={savingFollowId === profile.userId}
                     type="button"
                     onClick={() => void handleApproveFollow(profile)}
                 >
                     {savingFollowId === profile.userId ? "Saving..." : "Accept"}
-                </button>
+                </Button>
             );
         }
 
         return (
-            <button
+            <Button
+                size="sm"
+                variant="outline"
                 disabled={disabled}
                 type="button"
                 onClick={() => void handleFollowSearchResult(profile)}
@@ -385,140 +365,139 @@ function ProfileRoute() {
                         : profile.relationState === "following" || profile.relationState === "mutual"
                             ? "Following"
                             : "Follow"}
-            </button>
+            </Button>
         );
     }
 
     function renderFollowerAction(profile: FollowProfileSummary) {
         if (profile.relationState === "mutual") {
-            return <span className="relation-pill">Mutual</span>;
+            return <span className="inline-flex min-h-[2.35rem] items-center rounded-full border border-border px-3 text-muted-foreground">Mutual</span>;
         }
 
         return (
-            <button
+            <Button
+                size="sm"
                 disabled={savingFollowId === profile.userId}
                 type="button"
                 onClick={() => void handleFollowSearchResult({ ...profile, matchKind: "public_profile" })}
             >
                 {savingFollowId === profile.userId ? "Saving..." : "Follow"}
-            </button>
+            </Button>
         );
     }
 
     if (!loaderData.session?.user || !settings) {
         return (
-            <main className="standalone-page">
-                <section className="standalone-panel">
-                    <Link className="brand-link" to="/">
-                        <img alt="" src="/favicon.svg" />
-                        <span>Goldshelf</span>
-                    </Link>
-                    <h1>Profile</h1>
-                    <p className="muted">Sign in to edit your profile.</p>
-                    <Link className="primary link-button" to="/">Sign In</Link>
-                </section>
+            <main className="grid min-h-screen place-items-center bg-background p-8 text-foreground">
+                <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
+                    <BrandLink />
+                    <h1 className="text-2xl font-bold">Profile</h1>
+                    <p className="text-muted-foreground">Sign in to edit your profile.</p>
+                    <Button asChild className="w-fit">
+                        <Link to="/">Sign In</Link>
+                    </Button>
+                </Card>
             </main>
         );
     }
 
     return (
-        <main className="profile-page">
-            <ProfileToastStack toasts={toasts} onDismiss={dismissToast} />
-            <header className="profile-page-header">
-                <Link className="brand-link" to="/">
-                    <img alt="" src="/favicon.svg" />
-                    <span>Goldshelf</span>
-                </Link>
-                <nav className="profile-page-nav" aria-label="Profile navigation">
-                    <Link to="/">Rankings</Link>
-                    <Link to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>
+        <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
+            <header className="m-0 flex w-full items-center justify-between gap-4">
+                <BrandLink />
+                <nav className="flex items-center gap-[0.8rem]" aria-label="Profile navigation">
+                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
+                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>
                 </nav>
             </header>
 
-            <div className="profile-page-grid">
-                <div className="profile-column profile-account-column">
-                    <section className="profile-panel profile-main-panel">
-                        <div className="profile-title-row">
+            <div className="m-0 grid w-full grid-cols-[minmax(18rem,0.8fr)_minmax(24rem,1fr)_minmax(18rem,0.82fr)] items-start gap-4 max-[1100px]:grid-cols-[minmax(18rem,0.85fr)_minmax(24rem,1fr)] max-[820px]:grid-cols-1">
+                <div className="grid min-w-0 content-start gap-4">
+                    <Card className="min-w-0 gap-4 px-4 shadow-panel">
+                        <div className="mb-4 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-[0.8rem] [&_h1]:m-0 [&_h1]:leading-[1.1]">
                             <ProfileAvatar currentUser imageKey={settings.user.imageKey} userId={settings.user.id} />
                             <div>
-                                <h1>{settings.user.name}</h1>
-                                <p className="muted">@{settings.user.slug}</p>
-                                <div className="profile-avatar-actions profile-page-avatar-actions">
-                                    <label className={`file-button ${savingProfileImage ? "disabled" : ""}`}>
+                                <h1 className="text-2xl font-bold">{settings.user.name}</h1>
+                                <p className="text-muted-foreground">@{settings.user.slug}</p>
+                                <div className="mt-[0.65rem] flex flex-wrap gap-2">
+                                    <label className={`w-fit rounded-sm border border-border bg-card px-[0.8rem] py-[0.55rem] text-foreground ${savingProfileImage ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
                                         <span>{savingProfileImage ? "Uploading..." : "Upload Photo"}</span>
                                         <input
                                             accept="image/*"
+                                            className="absolute h-px w-px overflow-hidden [clip:rect(0,0,0,0)]"
                                             disabled={savingProfileImage}
                                             type="file"
                                             onChange={(event) => void handleProfileImageInput(event)}
                                         />
                                     </label>
-                                    <button
+                                    <Button
+                                        variant="outline"
                                         disabled={savingProfileImage || !hasStoredImage(settings.user.imageKey)}
                                         type="button"
                                         onClick={() => void handleRemoveProfileImage()}
                                     >
                                         Remove
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         </div>
 
-                        <form className="profile-form" onSubmit={handleProfileSubmit}>
-                            <label>
+                        <form className="grid gap-[0.8rem]" onSubmit={handleProfileSubmit}>
+                            <label className="grid gap-[0.35rem]">
                                 <span>Display Name</span>
-                                <input
+                                <Input
                                     required
                                     maxLength={80}
                                     value={displayName}
                                     onChange={(event) => setDisplayName(event.target.value)}
                                 />
                             </label>
-                            <label>
+                            <label className="grid gap-[0.35rem]">
                                 <span>Public Handle</span>
-                                <input
+                                <Input
                                     required
                                     maxLength={40}
                                     value={profileSlug}
                                     onChange={(event) => setProfileSlug(event.target.value)}
                                 />
                             </label>
-                            <label className="switch-row profile-switch-row">
+                            <label className="inline-flex items-center justify-start gap-[0.4rem] text-[0.86rem] text-muted-foreground">
                                 <input
                                     checked={profileIsPublic}
+                                    className="w-auto"
                                     type="checkbox"
                                     onChange={(event) => setProfileIsPublic(event.target.checked)}
                                 />
                                 <span>Public profile</span>
                             </label>
-                            <div className="profile-actions">
-                                <button className="primary" disabled={savingProfile} type="submit">
+                            <div className="flex flex-wrap gap-2">
+                                <Button size="lg" disabled={savingProfile} type="submit">
                                     {savingProfile ? "Saving..." : "Save Profile"}
-                                </button>
-                                <button disabled={!settings.user.isPublic} type="button" onClick={handleCopyProfileLink}>
+                                </Button>
+                                <Button size="lg" variant="outline" disabled={!settings.user.isPublic} type="button" onClick={handleCopyProfileLink}>
                                     Copy Link
-                                </button>
+                                </Button>
                             </div>
                         </form>
-                    </section>
+                    </Card>
                 </div>
 
-                <div className="profile-column profile-follow-column">
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
-                            <h2>Find Profiles</h2>
-                            <span className="muted">{followSearchLoading ? "Searching..." : "Public search"}</span>
+                <div className="grid min-w-0 content-start gap-4">
+                    <Card className="min-w-0 gap-4 px-4 shadow-panel">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">Find Profiles</h2>
+                            <span className="text-muted-foreground">{followSearchLoading ? "Searching..." : "Public search"}</span>
                         </div>
-                        <form className="follow-add-form" onSubmit={handleRequestFollow}>
-                            <input
+                        <form className="grid grid-cols-[minmax(0,1fr)_auto] gap-[0.8rem]" onSubmit={handleRequestFollow}>
+                            <Input
                                 aria-label="Profile handle, name, or profile link"
                                 placeholder="search public profiles or paste a private handle"
                                 value={followInput}
                                 onChange={(event) => setFollowInput(event.target.value)}
                             />
-                            <button disabled={savingFollowId === "new" || !followInput.trim()} type="submit">
+                            <Button disabled={savingFollowId === "new" || !followInput.trim()} type="submit">
                                 {savingFollowId === "new" ? "Saving..." : "Follow"}
-                            </button>
+                            </Button>
                         </form>
                         {followSearchResults.length > 0 ? (
                             <FollowProfileList
@@ -526,45 +505,45 @@ function ProfileRoute() {
                                 renderActions={renderSearchAction}
                             />
                         ) : followInput.trim().length >= 2 && !followSearchLoading ? (
-                            <p className="muted compact-note">No public profiles match that search.</p>
+                            <p className="m-0 text-muted-foreground">No public profiles match that search.</p>
                         ) : (
-                            <p className="muted compact-note">
+                            <p className="m-0 text-muted-foreground">
                                 Public profiles appear as you type. Exact private handles can still receive follow requests.
                             </p>
                         )}
-                    </section>
+                    </Card>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
-                            <h2>Following</h2>
-                            <span className="muted">{settings.following.length}</span>
+                    <Card className="min-w-0 gap-4 px-4 shadow-panel">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">Following</h2>
+                            <span className="text-muted-foreground">{settings.following.length}</span>
                         </div>
                         {settings.following.length > 0 ? (
                             <FollowProfileList
                                 profiles={settings.following}
                                 renderActions={(profile) => (
-                                    <button
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
                                         disabled={savingFollowId === profile.userId}
                                         type="button"
                                         onClick={() => void handleRemoveFollow(profile)}
                                     >
                                         {savingFollowId === profile.userId ? "Saving..." : "Unfollow"}
-                                    </button>
+                                    </Button>
                                 )}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon="+"
-                                title="Not Following Anyone"
-                                text="Profiles you follow appear here."
-                            />
+                            <EmptyState compact icon={UserPlus} title="Not Following Anyone">
+                                Profiles you follow appear here.
+                            </EmptyState>
                         )}
-                    </section>
+                    </Card>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
-                            <h2>Followers</h2>
-                            <span className="muted">{settings.followers.length}</span>
+                    <Card className="min-w-0 gap-4 px-4 shadow-panel">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">Followers</h2>
+                            <span className="text-muted-foreground">{settings.followers.length}</span>
                         </div>
                         {settings.followers.length > 0 ? (
                             <FollowProfileList
@@ -572,94 +551,94 @@ function ProfileRoute() {
                                 renderActions={renderFollowerAction}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon="◎"
-                                title="No Followers"
-                                text="Accepted followers appear here."
-                            />
+                            <EmptyState compact icon={Users} title="No Followers">
+                                Accepted followers appear here.
+                            </EmptyState>
                         )}
-                    </section>
+                    </Card>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
-                            <h2>Follow Requests</h2>
-                            <span className="muted">{settings.incomingFollowRequests.length}</span>
+                    <Card className="min-w-0 gap-4 px-4 shadow-panel">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">Follow Requests</h2>
+                            <span className="text-muted-foreground">{settings.incomingFollowRequests.length}</span>
                         </div>
                         {settings.incomingFollowRequests.length > 0 ? (
                             <FollowProfileList
                                 profiles={settings.incomingFollowRequests}
                                 renderActions={(profile) => (
-                                    <div className="follow-row-actions">
-                                        <button
+                                    <div className="flex flex-wrap justify-end gap-[0.4rem]">
+                                        <Button
+                                            size="sm"
                                             disabled={savingFollowId === profile.userId}
                                             type="button"
                                             onClick={() => void handleApproveFollow(profile)}
                                         >
                                             Accept
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
                                             disabled={savingFollowId === profile.userId}
                                             type="button"
                                             onClick={() => void handleDeclineFollow(profile)}
                                         >
                                             Decline
-                                        </button>
+                                        </Button>
                                     </div>
                                 )}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon="+"
-                                title="No Pending Requests"
-                                text="Requests to follow private profiles appear here."
-                            />
+                            <EmptyState compact icon={Inbox} title="No Pending Requests">
+                                Requests to follow private profiles appear here.
+                            </EmptyState>
                         )}
-                    </section>
+                    </Card>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
-                            <h2>Sent Requests</h2>
-                            <span className="muted">{settings.outgoingFollowRequests.length}</span>
+                    <Card className="min-w-0 gap-4 px-4 shadow-panel">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">Sent Requests</h2>
+                            <span className="text-muted-foreground">{settings.outgoingFollowRequests.length}</span>
                         </div>
                         {settings.outgoingFollowRequests.length > 0 ? (
                             <FollowProfileList
                                 profiles={settings.outgoingFollowRequests}
                                 renderActions={(profile) => (
-                                    <button
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
                                         disabled={savingFollowId === profile.userId}
                                         type="button"
                                         onClick={() => void handleCancelFollow(profile)}
                                     >
                                         {savingFollowId === profile.userId ? "Saving..." : "Cancel"}
-                                    </button>
+                                    </Button>
                                 )}
                             />
                         ) : (
-                            <FollowEmptyState
-                                icon=">"
-                                title="No Sent Requests"
-                                text="Private-profile requests you send appear here."
-                            />
+                            <EmptyState compact icon={Send} title="No Sent Requests">
+                                Private-profile requests you send appear here.
+                            </EmptyState>
                         )}
-                    </section>
+                    </Card>
                 </div>
 
-                <div className="profile-column profile-rankings-column">
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
-                            <h2>Public Rankings</h2>
-                            <span className="muted">{settings.categories.filter((category) => category.isPublic).length}</span>
+                <div className="grid min-w-0 content-start gap-4 max-[1100px]:col-span-full max-[820px]:col-span-auto">
+                    <Card className="min-w-0 gap-4 px-4 shadow-panel">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">Public Rankings</h2>
+                            <span className="text-muted-foreground">{settings.categories.filter((category) => category.isPublic).length}</span>
                         </div>
                         {settings.categories.length > 0 ? (
-                            <div className="profile-category-list">
+                            <div className="grid gap-[0.65rem]">
                                 {settings.categories.map((category) => (
-                                    <label className="profile-category-row" key={category.id}>
+                                    <label className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-md border border-border bg-muted p-3" key={category.id}>
                                         <span>
                                             <strong>{category.name}</strong>
-                                            <small className="muted">{category.entryCount} entries</small>
+                                            <small className="m-0 mt-[0.15rem] block text-muted-foreground">{category.entryCount} entries</small>
                                         </span>
                                         <input
                                             checked={category.isPublic}
+                                            className="w-auto"
                                             disabled={savingCategoryId === category.id}
                                             type="checkbox"
                                             onChange={(event) => void handleCategoryVisibility(category.id, event.target.checked)}
@@ -668,15 +647,11 @@ function ProfileRoute() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="empty-state compact">
-                                <div className="empty-state-icon">◎</div>
-                                <div>
-                                    <strong>No Rankings</strong>
-                                    <p className="muted">Create a category before sharing rankings.</p>
-                                </div>
-                            </div>
+                            <EmptyState compact icon={ListOrdered} title="No Rankings">
+                                Create a category before sharing rankings.
+                            </EmptyState>
                         )}
-                    </section>
+                    </Card>
                 </div>
             </div>
         </main>
@@ -691,19 +666,23 @@ function FollowProfileList<TProfile extends FollowProfileSummary>({
     renderActions: (profile: TProfile) => ReactNode;
 }) {
     return (
-        <div className="follow-list">
+        <div className="grid gap-[0.65rem]">
             {profiles.map((profile) => (
-                <div className="follow-row" key={profile.userId}>
+                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-md border border-border bg-muted p-[0.65rem]" key={profile.userId}>
                     <ProfileAvatar imageKey={profile.imageKey} userId={profile.userId} />
                     <div>
                         {canViewProfile(profile.isPublic, false, profile.relationState) ? (
-                            <Link to="/u/$profileSlug" params={{ profileSlug: profile.slug }}>
+                            <Link
+                                className="font-bold text-foreground no-underline hover:text-accent-strong"
+                                to="/u/$profileSlug"
+                                params={{ profileSlug: profile.slug }}
+                            >
                                 {profile.name}
                             </Link>
                         ) : (
-                            <strong>{profile.name}</strong>
+                            <strong className="font-bold text-foreground no-underline">{profile.name}</strong>
                         )}
-                        <p className="muted">
+                        <p className="m-0 mt-[0.15rem] text-muted-foreground">
                             @{profile.slug} · {profile.publicCategoryCount} public rankings ·{" "}
                             {followRelationLabel(profile.relationState)}
                         </p>
@@ -711,26 +690,6 @@ function FollowProfileList<TProfile extends FollowProfileSummary>({
                     {renderActions(profile)}
                 </div>
             ))}
-        </div>
-    );
-}
-
-function FollowEmptyState({
-    icon,
-    text,
-    title
-}: {
-    icon: string;
-    text: string;
-    title: string;
-}) {
-    return (
-        <div className="empty-state compact">
-            <div className="empty-state-icon">{icon}</div>
-            <div>
-                <strong>{title}</strong>
-                <p className="muted">{text}</p>
-            </div>
         </div>
     );
 }
@@ -751,39 +710,10 @@ function ProfileAvatar({
         : null;
 
     return (
-        <span className="profile-avatar" aria-hidden="true">
-            {src ? <img alt="" decoding="async" src={src} /> : null}
-        </span>
-    );
-}
-
-function ProfileToastStack({
-    onDismiss,
-    toasts
-}: {
-    onDismiss: (toastId: number) => void;
-    toasts: ProfileToast[];
-}) {
-    if (toasts.length === 0) {
-        return null;
-    }
-
-    return (
-        <div aria-live="polite" className="toast-stack">
-            {toasts.map((toast) => (
-                <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
-                    <span>{toast.message}</span>
-                    <button
-                        aria-label="Dismiss notification"
-                        className="toast-close-button"
-                        type="button"
-                        onClick={() => onDismiss(toast.id)}
-                    >
-                        x
-                    </button>
-                </div>
-            ))}
-        </div>
+        <Avatar aria-hidden="true" className="size-12">
+            {src ? <AvatarImage alt="" decoding="async" src={src} /> : null}
+            <AvatarFallback className="border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)]" />
+        </Avatar>
     );
 }
 

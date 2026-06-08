@@ -1,0 +1,152 @@
+/*
+ * Styling for the minimal "Gilded Shelf" marketing page. Layout lives in the
+ * JSX as Tailwind utilities; this file owns the atmospheric background, the
+ * display serif, and a restrained set of page-load reveals. Every color pulls
+ * from the existing semantic tokens (--gold, --foreground, --card, ...) so it
+ * tracks the active theme. Motion is quiet: entrance reveals plus subtle hover
+ * state changes only, and nothing shifts position on hover.
+ */
+
+.font-display {
+    font-family: "Fraunces", Georgia, "Times New Roman", serif;
+    font-optical-sizing: auto;
+    letter-spacing: -0.015em;
+}
+
+/* ---- Atmosphere ------------------------------------------------------- */
+
+/*
+ * A calm, layered field: deep base, one soft gold light pool toward the top, a
+ * faint cool counter-glow at the lower left, and an edge vignette. Acts as the
+ * fallback beneath the WebGL canvas if WebGL is unavailable.
+ */
+.gs-field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(55% 45% at 82% -5%, color-mix(in oklab, var(--gold) 20%, transparent), transparent 70%),
+        radial-gradient(45% 45% at 6% 95%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 70%),
+        radial-gradient(120% 90% at 50% 0%, transparent 55%, color-mix(in oklab, var(--background) 65%, black) 100%),
+        var(--background);
+}
+
+/* The WebGL canvas sits over the field; both stay below grain and content. */
+.gs-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Fine, low-opacity grain for a tactile printed finish (static, not glitchy). */
+.gs-grain {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.16;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.gs-content {
+    position: relative;
+    z-index: 2;
+}
+
+/* ---- Type detail ------------------------------------------------------ */
+
+.gs-gold {
+    color: var(--gold);
+}
+
+/* The dimmed second clause of the two-tone headline. */
+.gs-dim {
+    color: color-mix(in oklab, var(--foreground) 40%, transparent);
+}
+
+.gs-kicker {
+    letter-spacing: 0.34em;
+    color: color-mix(in oklab, var(--gold) 78%, var(--foreground));
+}
+
+/* ---- Surfaces --------------------------------------------------------- */
+
+.gs-glass {
+    background: color-mix(in oklab, var(--card) 55%, transparent);
+    backdrop-filter: blur(16px) saturate(1.05);
+    -webkit-backdrop-filter: blur(16px) saturate(1.05);
+    border: 1px solid color-mix(in oklab, var(--gold) 14%, var(--border));
+}
+
+.gs-rule {
+    border-color: color-mix(in oklab, var(--gold) 18%, var(--border));
+}
+
+/* ---- Calls to action (no positional movement on hover) --------------- */
+
+.gs-cta {
+    color: #1b1206;
+    background: linear-gradient(160deg, color-mix(in oklab, var(--gold) 80%, white) 0%, var(--gold) 55%, var(--gold-strong) 100%);
+    box-shadow: 0 1px 0 color-mix(in oklab, var(--gold) 55%, white) inset, var(--shadow);
+    transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+.gs-cta:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 1px 0 color-mix(in oklab, var(--gold) 65%, white) inset, var(--floating-shadow);
+}
+
+.gs-ghost {
+    color: var(--foreground);
+    border: 1px solid color-mix(in oklab, var(--gold) 26%, var(--border));
+    background: color-mix(in oklab, var(--card) 28%, transparent);
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+.gs-ghost:hover {
+    border-color: color-mix(in oklab, var(--gold) 50%, transparent);
+    background: color-mix(in oklab, var(--card) 50%, transparent);
+}
+
+/* ---- Feature gallery (no positional movement on hover) --------------- */
+
+.gs-panel {
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.gs-panel:hover {
+    border-color: color-mix(in oklab, var(--gold) 38%, transparent);
+    box-shadow: var(--floating-shadow);
+}
+.gs-numeral {
+    font-family: "Fraunces", Georgia, serif;
+    color: color-mix(in oklab, var(--gold) 45%, transparent);
+    line-height: 0.8;
+}
+
+/* ---- Page-load reveal ------------------------------------------------- */
+
+.gs-rise {
+    opacity: 0;
+    animation: gs-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes gs-rise {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gs-rise {
+        animation: none;
+        opacity: 1;
+    }
+}

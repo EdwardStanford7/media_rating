@@ -1,5 +1,5 @@
-import { auth } from "@/lib/server/auth";
-import { assertSafeImageUrl, decodeImageUrl } from "@/lib/server/imageSearch";
+import { auth } from "@/server/lib/auth";
+import { assertSafeImageUrl, decodeImageUrl } from "@/server/lib/imageSearch";
 import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_PROXY_IMAGE_BYTES = 8 * 1024 * 1024;

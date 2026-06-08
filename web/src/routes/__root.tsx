@@ -5,10 +5,12 @@ import { useEffect } from "react";
 import {
     HeadContent,
     Outlet,
+    ScriptOnce,
     Scripts,
     createRootRoute
 } from "@tanstack/react-router";
-import { applyThemeMode, readInitialThemeMode } from "@/lib/theme";
+import { Toaster } from "@/components/ui/sonner";
+import { applyThemeMode, readInitialThemeMode, themeInitScript } from "@/lib/theme";
 import "../styles/global.css";
 
 const SITE_DESCRIPTION = "Build personal ranked lists for movies, books, games, and more by comparing choices one at a time.";
@@ -46,6 +48,11 @@ function RootComponent() {
         return applyThemeMode(readInitialThemeMode());
     }, []);
 
+    // Marks client-side hydration so e2e tests can wait before interacting.
+    useEffect(() => {
+        document.documentElement.dataset.hydrated = "true";
+    }, []);
+
     return (
         <RootDocument>
             <Outlet />
@@ -55,12 +62,14 @@ function RootComponent() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
     return (
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
             <head>
+                <ScriptOnce>{themeInitScript}</ScriptOnce>
                 <HeadContent />
             </head>
             <body>
                 {children}
+                <Toaster position="bottom-left" />
                 <Scripts />
             </body>
         </html>

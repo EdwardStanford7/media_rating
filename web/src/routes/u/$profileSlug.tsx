@@ -1,5 +1,13 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, createFileRoute, notFound } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { ListOrdered } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { BrandLink } from "@/components/ui/BrandLink";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { showToast } from "@/lib/toast";
+import { redirectIfUnauthorized } from "@/lib/errors";
 import { followButtonLabel, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import { orderEntries } from "@/lib/ranking";
@@ -9,64 +17,49 @@ import {
     followProfile,
     loadPublicProfile,
     removeFollow
-} from "@/lib/server/actions";
+} from "@/server/profiles";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
 
-const TOAST_TIMEOUT_MS = 5_000;
-
-interface PublicProfileToast {
-    id: number;
-    message: string;
-    variant?: "default" | "success" | "danger";
-}
+const POSTER_CLASS =
+    "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
 
 export const Route = createFileRoute("/u/$profileSlug")({
     loader: async ({ params }) => {
-        return loadPublicProfile({ data: { profileSlug: params.profileSlug } });
+        const data = await loadPublicProfile({ data: { profileSlug: params.profileSlug } });
+        if (!data) {
+            throw notFound();
+        }
+
+        return data;
     },
-    component: PublicProfileRoute
+    component: PublicProfileRoute,
+    notFoundComponent: ProfileNotFound
 });
+
+function ProfileNotFound() {
+    return (
+        <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
+            <PublicProfileTopbar signedIn={false} />
+            <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
+                <h1 className="text-2xl font-bold">Profile Not Found</h1>
+                <p className="text-muted-foreground">This profile is private or does not exist.</p>
+            </Card>
+        </main>
+    );
+}
 
 function PublicProfileRoute() {
     const loaderData = Route.useLoaderData();
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
     const [followSaving, setFollowSaving] = useState(false);
-    const [toasts, setToasts] = useState<PublicProfileToast[]>([]);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
         loaderData?.categories[0]?.id ?? null
     );
-    const toastIdRef = useRef(0);
-    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
 
     useEffect(() => {
         setProfileData(loaderData);
         setSelectedCategoryId(loaderData?.categories[0]?.id ?? null);
     }, [loaderData]);
-
-    useEffect(() => () => {
-        for (const timeoutId of toastTimeoutsRef.current.values()) {
-            window.clearTimeout(timeoutId);
-        }
-        toastTimeoutsRef.current.clear();
-    }, []);
-
-    function dismissToast(toastId: number) {
-        const timeoutId = toastTimeoutsRef.current.get(toastId);
-        if (timeoutId !== undefined) {
-            window.clearTimeout(timeoutId);
-            toastTimeoutsRef.current.delete(toastId);
-        }
-
-        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
-    }
-
-    function pushToast(toast: Omit<PublicProfileToast, "id">) {
-        const id = toastIdRef.current + 1;
-        toastIdRef.current = id;
-        setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
-        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
-        toastTimeoutsRef.current.set(id, timeoutId);
-    }
 
     async function handleFollowAction() {
         if (!profileData || profileData.viewer.isSelf) {
@@ -111,15 +104,13 @@ function PublicProfileRoute() {
                     relationState: nextRelation
                 }
             });
-            pushToast({
-                message,
-                variant: "success"
-            });
+            showToast(message, "success");
         } catch (followError) {
-            pushToast({
-                message: followError instanceof Error ? followError.message : String(followError),
-                variant: "danger"
-            });
+            if (redirectIfUnauthorized(followError)) {
+                return;
+            }
+
+            showToast(followError instanceof Error ? followError.message : String(followError), "danger");
         } finally {
             setFollowSaving(false);
         }
@@ -127,12 +118,12 @@ function PublicProfileRoute() {
 
     if (!profileData) {
         return (
-            <main className="public-profile-page">
+            <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
                 <PublicProfileTopbar signedIn={false} />
-                <section className="standalone-panel">
-                    <h1>Profile Not Found</h1>
-                    <p className="muted">This profile is private or does not exist.</p>
-                </section>
+                <Card className="grid w-[min(100%,34rem)] gap-4 px-4 shadow-panel">
+                    <h1 className="text-2xl font-bold">Profile Not Found</h1>
+                    <p className="text-muted-foreground">This profile is private or does not exist.</p>
+                </Card>
             </main>
         );
     }
@@ -140,61 +131,68 @@ function PublicProfileRoute() {
     const { profile, viewer } = profileData;
 
     return (
-        <main className="public-profile-page">
-            <PublicProfileToastStack toasts={toasts} onDismiss={dismissToast} />
+        <main className="grid min-h-screen content-start gap-4 bg-background px-[clamp(1rem,3vw,2.25rem)] py-5 text-foreground">
             <PublicProfileTopbar signedIn={viewer.isSignedIn} />
 
-            <section className="public-profile-header">
+            <Card className="min-w-0 flex-row items-center justify-end gap-[0.8rem] px-4 shadow-panel">
                 <PublicProfileAvatar
                     imageKey={profile.imageKey}
                     isSelf={viewer.isSelf}
                     userId={profile.userId}
                 />
                 <div>
-                    <h1>{profile.name}</h1>
-                    <p className="muted">
+                    <h1 className="text-2xl font-bold">{profile.name}</h1>
+                    <p className="text-muted-foreground">
                         @{profile.slug}
                         {!viewer.isSelf && viewer.isSignedIn
                             ? ` · ${followRelationLabel(viewer.relationState)}`
                             : null}
                     </p>
                 </div>
-                <div className="public-profile-actions">
+                <div className="flex justify-end">
                     {viewer.isSelf ? (
-                        <Link className="small-button" to="/profile">Edit Profile</Link>
+                        <Button asChild variant="outline">
+                            <Link to="/profile">Edit Profile</Link>
+                        </Button>
                     ) : viewer.isSignedIn ? (
-                        <button
+                        <Button
                             disabled={followSaving}
                             type="button"
                             onClick={() => void handleFollowAction()}
                         >
                             {followSaving ? "Saving..." : followButtonLabel(viewer.relationState)}
-                        </button>
+                        </Button>
                     ) : (
-                        <Link className="small-button" to="/">Sign In</Link>
+                        <Button asChild variant="outline">
+                            <Link to="/">Sign In</Link>
+                        </Button>
                     )}
                 </div>
-            </section>
+            </Card>
 
             {profileData.categories.length > 0 ? (
-                <div className="public-profile-body">
-                    <nav className="public-category-sidebar" aria-label="Categories">
+                <div className="m-0 grid w-full grid-cols-[220px_minmax(0,1fr)] items-start overflow-hidden rounded-md border border-border bg-card shadow-panel max-[820px]:grid-cols-1">
+                    <nav className="sticky top-0 grid max-h-screen content-start gap-0.5 overflow-y-auto border-r border-border bg-sidebar p-[0.65rem] max-[820px]:static max-[820px]:flex max-[820px]:max-h-none max-[820px]:flex-row max-[820px]:flex-nowrap max-[820px]:gap-1 max-[820px]:overflow-x-auto max-[820px]:overflow-y-hidden max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:p-2" aria-label="Categories">
                         {profileData.categories.map((category) => {
                             const isActive = category.id === selectedCategoryId;
                             return (
                                 <button
-                                    className={`public-category-tab${isActive ? " active" : ""}`}
+                                    className={`w-full rounded-sm border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-border enabled:hover:bg-secondary max-[820px]:w-auto max-[820px]:flex-none ${
+                                        isActive
+                                            ? "border-primary bg-accent font-bold text-accent-strong"
+                                            : "border-transparent bg-transparent"
+                                    }`}
                                     key={category.id}
                                     type="button"
                                     aria-current={isActive ? "true" : undefined}
                                     onClick={() => setSelectedCategoryId(category.id)}
                                 >
-                                    <span className="public-category-tab-name">{category.name}</span>
+                                    <span className="block min-w-0 truncate text-[0.92rem]">{category.name}</span>
                                 </button>
                             );
                         })}
                     </nav>
-                    <div className="public-category-panel">
+                    <div className="min-w-0 p-4">
                         {(() => {
                             const category = profileData.categories.find(
                                 (c) => c.id === selectedCategoryId
@@ -210,13 +208,9 @@ function PublicProfileRoute() {
                     </div>
                 </div>
             ) : (
-                <section className="empty-state public-empty-state">
-                    <div className="empty-state-icon">◎</div>
-                    <div>
-                        <strong>No Public Rankings</strong>
-                        <p className="muted">Public lists will appear here.</p>
-                    </div>
-                </section>
+                <EmptyState className="m-0 w-full" icon={ListOrdered} title="No Public Rankings">
+                    Public lists will appear here.
+                </EmptyState>
             )}
         </main>
     );
@@ -224,19 +218,16 @@ function PublicProfileRoute() {
 
 function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
     return (
-        <header className="profile-page-header">
-            <Link className="brand-link" to="/">
-                <img alt="" src="/favicon.svg" />
-                <span>Goldshelf</span>
-            </Link>
-            <nav className="profile-page-nav" aria-label="Public profile navigation">
+        <header className="m-0 flex w-full items-center justify-between gap-4">
+            <BrandLink />
+            <nav className="flex items-center gap-[0.8rem]" aria-label="Public profile navigation">
                 {signedIn ? (
                     <>
-                        <Link to="/">Rankings</Link>
-                        <Link to="/profile">Profile</Link>
+                        <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
+                        <Link className="text-foreground no-underline hover:text-accent-strong" to="/profile">Profile</Link>
                     </>
                 ) : (
-                    <Link to="/">Sign In</Link>
+                    <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Sign In</Link>
                 )}
             </nav>
         </header>
@@ -253,12 +244,12 @@ function PublicCategory({
     const entries = useMemo(() => orderEntries(category.entries), [category.entries]);
 
     return (
-        <section className="public-ranking-section">
-            <div className="public-category-panel-heading">
-                <h2>{category.name}</h2>
-                <span className="muted">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
+        <section className="grid gap-[0.8rem]">
+            <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">{category.name}</h2>
+                <span className="text-muted-foreground">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
             </div>
-            <div className="public-entry-list">
+            <div className="grid gap-[0.65rem]">
                 {entries.map((entry) => (
                     <PublicEntryRow
                         entry={entry}
@@ -279,8 +270,8 @@ function PublicEntryRow({
     usePrivateImages: boolean;
 }) {
     return (
-        <article className="public-entry-row">
-            <span className="public-rank-number">#{entry.rankPosition + 1}</span>
+        <article className="grid grid-cols-[3.2rem_5rem_minmax(0,1fr)] items-center gap-[0.65rem] rounded-md border border-border bg-muted px-[0.55rem] py-[0.65rem]">
+            <span className="font-extrabold text-muted-foreground">#{entry.rankPosition + 1}</span>
             <PublicEntryPoster entry={entry} usePrivateImages={usePrivateImages} />
             <div>
                 <strong>{entry.name}</strong>
@@ -305,15 +296,15 @@ function PublicEntryPoster({
 
     if (!src) {
         return (
-            <span className="public-entry-poster image-placeholder">
-                <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+            <span className={`${POSTER_CLASS} grid w-20 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-sm border border-border p-1`}>
+                <small className="text-[0.95rem] leading-tight text-muted-foreground">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
             </span>
         );
     }
 
     return (
-        <span className="public-entry-poster">
-            <img alt="" decoding="async" loading="lazy" src={src} onError={() => setFailed(true)} />
+        <span className={`${POSTER_CLASS} block w-20 overflow-hidden rounded-sm border border-border`}>
+            <img className="block h-full w-full object-cover" alt="" decoding="async" loading="lazy" src={src} onError={() => setFailed(true)} />
         </span>
     );
 }
@@ -327,46 +318,16 @@ function PublicProfileAvatar({
     isSelf: boolean;
     userId: string;
 }) {
-    const [failed, setFailed] = useState(false);
-    const src = hasStoredImage(imageKey) && !failed
+    const src = hasStoredImage(imageKey)
         ? isSelf
             ? `/api/profile-image?v=${encodeURIComponent(imageKey ?? "")}`
             : `/api/public-profile-image/${encodeURIComponent(userId)}`
         : null;
 
     return (
-        <span className="profile-avatar public-profile-avatar" aria-hidden="true">
-            {src ? <img alt="" decoding="async" src={src} onError={() => setFailed(true)} /> : null}
-        </span>
-    );
-}
-
-function PublicProfileToastStack({
-    onDismiss,
-    toasts
-}: {
-    onDismiss: (toastId: number) => void;
-    toasts: PublicProfileToast[];
-}) {
-    if (toasts.length === 0) {
-        return null;
-    }
-
-    return (
-        <div aria-live="polite" className="toast-stack">
-            {toasts.map((toast) => (
-                <div className={`toast ${toast.variant ?? "default"}`} key={toast.id} role="status">
-                    <span>{toast.message}</span>
-                    <button
-                        aria-label="Dismiss notification"
-                        className="toast-close-button"
-                        type="button"
-                        onClick={() => onDismiss(toast.id)}
-                    >
-                        x
-                    </button>
-                </div>
-            ))}
-        </div>
+        <Avatar aria-hidden="true" className="size-16">
+            {src ? <AvatarImage alt="" decoding="async" src={src} /> : null}
+            <AvatarFallback className="border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)]" />
+        </Avatar>
     );
 }
