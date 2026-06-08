@@ -8,6 +8,7 @@ import {
     Scripts,
     createRootRoute
 } from "@tanstack/react-router";
+import { Toaster } from "@/components/ui/sonner";
 import { applyThemeMode, readInitialThemeMode } from "@/lib/theme";
 import "../styles/global.css";
 
@@ -66,6 +67,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
             </head>
             <body>
                 {children}
+                <Toaster position="bottom-left" />
                 <Scripts />
             </body>
         </html>

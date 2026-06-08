@@ -1,9 +1,9 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AVATAR_CLASS, LINK_BUTTON_CLASS, PAGE_HEADER_CLASS, PAGE_NAV_CLASS, PAGE_NAV_LINK_CLASS, POSTER_CLASS, PROFILE_PAGE_CLASS, PROFILE_PANEL_CLASS, SECTION_HEADING_CLASS, STANDALONE_PANEL_CLASS } from "@/components/ui/classes";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
+import { showToast } from "@/lib/toast";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { followButtonLabel, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
@@ -17,7 +17,6 @@ import {
 } from "@/server/profiles";
 import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types";
 
-const TOAST_TIMEOUT_MS = 5_000;
 
 export const Route = createFileRoute("/u/$profileSlug")({
     loader: async ({ params }) => {
@@ -30,42 +29,14 @@ function PublicProfileRoute() {
     const loaderData = Route.useLoaderData();
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
     const [followSaving, setFollowSaving] = useState(false);
-    const [toasts, setToasts] = useState<AppToast[]>([]);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
         loaderData?.categories[0]?.id ?? null
     );
-    const toastIdRef = useRef(0);
-    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
 
     useEffect(() => {
         setProfileData(loaderData);
         setSelectedCategoryId(loaderData?.categories[0]?.id ?? null);
     }, [loaderData]);
-
-    useEffect(() => () => {
-        for (const timeoutId of toastTimeoutsRef.current.values()) {
-            window.clearTimeout(timeoutId);
-        }
-        toastTimeoutsRef.current.clear();
-    }, []);
-
-    function dismissToast(toastId: number) {
-        const timeoutId = toastTimeoutsRef.current.get(toastId);
-        if (timeoutId !== undefined) {
-            window.clearTimeout(timeoutId);
-            toastTimeoutsRef.current.delete(toastId);
-        }
-
-        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
-    }
-
-    function pushToast(toast: Omit<AppToast, "id">) {
-        const id = toastIdRef.current + 1;
-        toastIdRef.current = id;
-        setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
-        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
-        toastTimeoutsRef.current.set(id, timeoutId);
-    }
 
     async function handleFollowAction() {
         if (!profileData || profileData.viewer.isSelf) {
@@ -110,19 +81,13 @@ function PublicProfileRoute() {
                     relationState: nextRelation
                 }
             });
-            pushToast({
-                message,
-                variant: "success"
-            });
+            showToast(message, "success");
         } catch (followError) {
             if (redirectIfUnauthorized(followError)) {
                 return;
             }
 
-            pushToast({
-                message: followError instanceof Error ? followError.message : String(followError),
-                variant: "danger"
-            });
+            showToast(followError instanceof Error ? followError.message : String(followError), "danger");
         } finally {
             setFollowSaving(false);
         }
@@ -144,7 +109,6 @@ function PublicProfileRoute() {
 
     return (
         <main className={PROFILE_PAGE_CLASS}>
-            <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <PublicProfileTopbar signedIn={viewer.isSignedIn} />
 
             <section className={`${PROFILE_PANEL_CLASS} flex items-center justify-end gap-[0.8rem] [&_h1]:m-0 [&_h1]:leading-[1.1]`}>

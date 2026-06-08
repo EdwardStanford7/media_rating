@@ -12,7 +12,7 @@ import { EntryCard } from "@/components/dashboard/EntryCard";
 import { ImagePickerModal } from "@/components/ranking/ImagePickerModal";
 import { ImportSpreadsheetToast } from "@/components/queue/ImportSpreadsheetToast";
 import { QueuePanel } from "@/components/queue/QueuePanel";
-import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
+import { showActionToast, showToast, type ToastVariant } from "@/lib/toast";
 import { isEditableShortcutTarget, nextPaint } from "@/lib/dom";
 import {
     isReorderNoop,
@@ -68,12 +68,11 @@ interface ReversibleAction {
     id: number;
     undoToastMessage: string;
     redoToastMessage: string;
-    variant?: AppToast["variant"];
+    variant?: ToastVariant;
     undo: () => Promise<void>;
     redo: () => Promise<void>;
 }
 
-const TOAST_TIMEOUT_MS = 7000;
 const UNDO_STACK_LIMIT = 20;
 
 export function Dashboard({
@@ -110,7 +109,6 @@ export function Dashboard({
     const [currentUserName, setCurrentUserName] = useState(userName);
     const [currentUserImage, setCurrentUserImage] = useState(userImage);
     const [currentUserImageVersion, setCurrentUserImageVersion] = useState(0);
-    const [toasts, setToasts] = useState<AppToast[]>([]);
     const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
     const [entryDragPreview, setEntryDragPreview] = useState<EntryDragPreview | null>(null);
     const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
@@ -119,8 +117,6 @@ export function Dashboard({
     const reversibleActionIdRef = useRef(0);
     const undoStackRef = useRef<ReversibleAction[]>([]);
     const redoStackRef = useRef<ReversibleAction[]>([]);
-    const toastIdRef = useRef(0);
-    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
 
     const selectedCategory = useMemo(
         () =>
@@ -191,13 +187,6 @@ export function Dashboard({
         busyRef.current = busy;
     }, [busy]);
 
-    useEffect(() => () => {
-        for (const timeoutId of toastTimeoutsRef.current.values()) {
-            window.clearTimeout(timeoutId);
-        }
-        toastTimeoutsRef.current.clear();
-    }, []);
-
     useEffect(() => {
         setCurrentUserName(userName);
     }, [userName]);
@@ -260,33 +249,25 @@ export function Dashboard({
         });
     }
 
-    function dismissToast(toastId: number) {
-        const timeoutId = toastTimeoutsRef.current.get(toastId);
-        if (timeoutId !== undefined) {
-            window.clearTimeout(timeoutId);
-            toastTimeoutsRef.current.delete(toastId);
+    function pushToast(toast: {
+        message: string;
+        variant?: ToastVariant;
+        actionLabel?: string;
+        onAction?: () => Promise<void> | void;
+    }) {
+        if (toast.actionLabel && toast.onAction) {
+            showActionToast(toast.message, {
+                variant: toast.variant,
+                actionLabel: toast.actionLabel,
+                onAction: toast.onAction
+            });
+        } else {
+            showToast(toast.message, toast.variant);
         }
-
-        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
     }
 
-    function pushToast(toast: Omit<AppToast, "id">) {
-        const id = toastIdRef.current + 1;
-        toastIdRef.current = id;
-        const nextToast = { ...toast, id };
-        setToasts((currentToasts) => [...currentToasts.filter((item) => item.id !== id), nextToast]);
-
-        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
-        toastTimeoutsRef.current.set(id, timeoutId);
-        return id;
-    }
-
-    function setMessage(message: string | null, variant: AppToast["variant"] = "default") {
-        if (!message) {
-            return;
-        }
-
-        pushToast({ message, variant });
+    function setMessage(message: string | null, variant: ToastVariant = "default") {
+        showToast(message, variant);
     }
 
     function setErrorMessage(error: unknown) {
@@ -1164,22 +1145,20 @@ export function Dashboard({
             aria-busy={busy}
         >
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
-            <ToastStack toasts={toasts} onDismiss={dismissToast}>
-                {importToastOpen ? (
-                    <ImportSpreadsheetToast
-                        busy={busy}
-                        busyLabel={busyLabel}
-                        disabled={busy || Boolean(activeSessionId)}
-                        onClose={() => setImportToastOpen(false)}
-                        onImport={async (event) => {
-                            const imported = await handleImport(event);
-                            if (imported) {
-                                setImportToastOpen(false);
-                            }
-                        }}
-                    />
-                ) : null}
-            </ToastStack>
+            {importToastOpen ? (
+                <ImportSpreadsheetToast
+                    busy={busy}
+                    busyLabel={busyLabel}
+                    disabled={busy || Boolean(activeSessionId)}
+                    onClose={() => setImportToastOpen(false)}
+                    onImport={async (event) => {
+                        const imported = await handleImport(event);
+                        if (imported) {
+                            setImportToastOpen(false);
+                        }
+                    }}
+                />
+            ) : null}
             {imagePickerTarget ? (
                 <ImagePickerModal
                     target={imagePickerTarget}

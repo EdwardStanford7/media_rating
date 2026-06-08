@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { updateCategoryVisibility } from "@/server/categories";
 import {
@@ -18,7 +18,7 @@ import { AVATAR_CLASS, LINK_BUTTON_CLASS, PAGE_HEADER_CLASS, PAGE_NAV_CLASS, PAG
 import { Button } from "@/components/ui/button";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
+import { showToast } from "@/lib/toast";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { canViewProfile, followRelationLabel } from "@/lib/follows";
 import { hasStoredImage } from "@/lib/images";
@@ -26,7 +26,6 @@ import type { FollowProfileSummary, FollowSearchResult, ProfileSettingsData } fr
 
 const AVATAR_SIZE = 256;
 const MAX_LOCAL_IMAGE_BYTES = 12 * 1024 * 1024;
-const TOAST_TIMEOUT_MS = 5_000;
 const FOLLOW_SEARCH_DELAY_MS = 250;
 
 export const Route = createFileRoute("/profile")({
@@ -57,23 +56,12 @@ function ProfileRoute() {
     const [savingProfileImage, setSavingProfileImage] = useState(false);
     const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
     const [savingFollowId, setSavingFollowId] = useState<string | null>(null);
-    const [toasts, setToasts] = useState<AppToast[]>([]);
-    const toastIdRef = useRef(0);
-    const toastTimeoutsRef = useRef<Map<number, number>>(new Map());
-
     useEffect(() => {
         setSettings(loaderData.settings);
         setDisplayName(loaderData.settings?.user.name ?? "");
         setProfileSlug(loaderData.settings?.user.slug ?? "");
         setProfileIsPublic(loaderData.settings?.user.isPublic ?? false);
     }, [loaderData.settings]);
-
-    useEffect(() => () => {
-        for (const timeoutId of toastTimeoutsRef.current.values()) {
-            window.clearTimeout(timeoutId);
-        }
-        toastTimeoutsRef.current.clear();
-    }, []);
 
     useEffect(() => {
         const query = followInput.trim();
@@ -111,34 +99,12 @@ function ProfileRoute() {
         };
     }, [followInput, loaderData.session?.user]);
 
-    function dismissToast(toastId: number) {
-        const timeoutId = toastTimeoutsRef.current.get(toastId);
-        if (timeoutId !== undefined) {
-            window.clearTimeout(timeoutId);
-            toastTimeoutsRef.current.delete(toastId);
-        }
-
-        setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
-    }
-
-    function pushToast(toast: Omit<AppToast, "id">) {
-        const id = toastIdRef.current + 1;
-        toastIdRef.current = id;
-        setToasts((currentToasts) => [...currentToasts, { ...toast, id }]);
-        const timeoutId = window.setTimeout(() => dismissToast(id), TOAST_TIMEOUT_MS);
-        toastTimeoutsRef.current.set(id, timeoutId);
-    }
-
     function setStatus(message: string | null) {
-        if (message) {
-            pushToast({ message, variant: "success" });
-        }
+        showToast(message, "success");
     }
 
     function setError(message: string | null) {
-        if (message) {
-            pushToast({ message, variant: "danger" });
-        }
+        showToast(message, "danger");
     }
 
     function setActionError(error: unknown) {
@@ -428,7 +394,6 @@ function ProfileRoute() {
 
     return (
         <main className={PROFILE_PAGE_CLASS}>
-            <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <header className={PAGE_HEADER_CLASS}>
                 <BrandLink />
                 <nav className={PAGE_NAV_CLASS} aria-label="Profile navigation">
