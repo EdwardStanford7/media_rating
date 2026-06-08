@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { METRIC_CLASS } from "@/components/ui/classes";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
 import { QueuedEntryRow } from "@/components/queue/QueuedEntryRow";
@@ -38,17 +39,17 @@ export function QueuePanel({
     const pendingEntries = queuedEntries.filter((entry) => entry.availableAt > currentTime);
 
     return (
-        <section className="stack panel queue-panel">
-            <div className="toolbar queue-toolbar">
-                <strong>Queue</strong>
-                <div className="queue-summary">
-                    <span className="metric">{queuedEntries.length} queued</span>
-                    <span className="metric">{readyEntries.length} ready</span>
+        <section className="grid min-h-0 min-w-0 max-w-full content-start gap-[0.9rem] rounded-panel border border-line bg-panel p-4 shadow-panel">
+            <div className="flex flex-wrap items-center justify-between gap-[0.7rem]">
+                <strong className="min-w-0 max-w-full">Queue</strong>
+                <div className="flex min-w-0 max-w-full flex-wrap justify-end gap-[0.4rem]">
+                    <span className={METRIC_CLASS}>{queuedEntries.length} queued</span>
+                    <span className={METRIC_CLASS}>{readyEntries.length} ready</span>
                 </div>
             </div>
-            <div className="queue-rank-actions">
+            <div className="grid">
                 <button
-                    className={queueRankMode ? undefined : "primary"}
+                    className={`inline-flex items-center justify-center gap-[0.45rem] ${queueRankMode ? "" : "primary"}`.trim()}
                     disabled={queueRankMode ? false : busy || Boolean(activeSessionId) || readyEntries.length === 0}
                     type="button"
                     onClick={() => {
@@ -65,7 +66,7 @@ export function QueuePanel({
             </div>
 
             {queuedEntries.length > 0 ? (
-                <div className="queue-list">
+                <div className="grid max-h-[min(42vh,520px)] min-h-0 min-w-0 gap-[0.55rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[820px]:max-h-none max-[820px]:overflow-y-visible max-[820px]:pr-0">
                     {readyEntries.map((entry) => (
                         <QueuedEntryRow
                             disabled={busy || Boolean(activeSessionId)}

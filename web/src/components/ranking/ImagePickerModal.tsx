@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { STATUS_CLASS } from "@/components/ui/classes";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { errorMessage } from "@/lib/format";
@@ -229,30 +230,31 @@ export function ImagePickerModal({
 
     return (
         <div
-            className="modal-backdrop"
+            className="fixed inset-0 z-60 grid place-items-center bg-modal-backdrop p-4"
             onPointerDown={(event) => {
                 if (event.target === event.currentTarget) {
                     onClose();
                 }
             }}
         >
-            <section className="image-picker-modal">
-                <div className="toolbar">
+            <section className="grid max-h-[min(760px,calc(100vh-2rem))] w-[min(920px,100%)] max-w-[calc(100vw-2rem)] gap-[0.9rem] overflow-x-hidden overflow-y-auto rounded-panel border border-line bg-panel p-4 shadow-panel [&_h2]:m-0 [&_p]:m-0">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0">
                     <div>
                         <h2>Pick Image</h2>
-                        <p className="muted">{target.item.name} - {target.category.name}</p>
+                        <p className="text-muted">{target.item.name} - {target.category.name}</p>
                     </div>
                     <button type="button" onClick={onClose}>Close</button>
                 </div>
 
                 <form
-                    className="form-row"
+                    className="flex flex-wrap items-center gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0"
                     onSubmit={(event) => {
                         event.preventDefault();
                         void search(query);
                     }}
                 >
                     <input
+                        className="flex-[1_1_12rem]"
                         value={query}
                         onChange={(event) => {
                             setQuery(event.target.value);
@@ -275,11 +277,12 @@ export function ImagePickerModal({
                     </button>
                 </form>
 
-                <div className="image-picker-actions">
-                    <label className="file-button">
+                <div className="flex flex-wrap items-center gap-[0.65rem]">
+                    <label className="w-fit cursor-pointer rounded-control border border-line bg-panel px-[0.8rem] py-[0.55rem] text-ink">
                         <span>Upload File</span>
                         <input
                             accept="image/*"
+                            className="absolute h-px w-px overflow-hidden [clip:rect(0,0,0,0)]"
                             disabled={Boolean(savingCandidateId)}
                             type="file"
                             onChange={(event) => {
@@ -299,13 +302,13 @@ export function ImagePickerModal({
                     </button>
                 </div>
 
-                {error ? <div className="status">{error}</div> : null}
-                {loading ? <div className="status">Searching for images...</div> : null}
+                {error ? <div className={STATUS_CLASS}>{error}</div> : null}
+                {loading ? <div className={STATUS_CLASS}>Searching for images...</div> : null}
 
-                <div className="image-picker-grid">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-[0.7rem]">
                     {candidates.map((candidate) => (
                         <button
-                            className="image-candidate"
+                            className="relative block aspect-[4/5] overflow-hidden bg-panel-alt p-0"
                             disabled={Boolean(savingCandidateId)}
                             key={candidate.id}
                             type="button"
@@ -316,18 +319,19 @@ export function ImagePickerModal({
                         >
                             <img
                                 alt=""
+                                className="block h-full w-full object-cover"
                                 src={candidate.thumbnailUrl}
                                 loading="lazy"
                                 decoding="async"
                                 onLoad={(event) => cacheRenderedThumbnail(candidate, event.currentTarget)}
                             />
-                            {savingCandidateId === candidate.id ? <span>Saving...</span> : null}
+                            {savingCandidateId === candidate.id ? <span className="absolute inset-x-0 bottom-0 bg-overlay-strip p-[0.45rem] text-center text-overlay-button-ink">Saving...</span> : null}
                         </button>
                     ))}
                 </div>
 
                 {!loading && candidates.length === 0 ? (
-                    <div className="muted">No image candidates loaded.</div>
+                    <div className="text-muted">No image candidates loaded.</div>
                 ) : null}
             </section>
         </div>

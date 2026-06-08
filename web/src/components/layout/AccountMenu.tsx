@@ -9,6 +9,13 @@ import { hasStoredImage } from "@/lib/images";
 import type { ThemeMode } from "@/lib/theme";
 import type { QueueSettings } from "@/lib/types";
 
+// justify-between! beats the unlayered `.topbar button { justify-content: center }`
+// rule; drop the important flag once the dashboard shell converts to utilities.
+const MENU_ITEM_CHROME =
+    "flex w-full items-center justify-between! gap-3 rounded-control border px-[0.8rem] py-[0.55rem] text-left text-ink no-underline focus-visible:border-gold focus-visible:bg-selected-panel";
+const MENU_ITEM_CLASS = `${MENU_ITEM_CHROME} border-line bg-panel`;
+const MENU_ITEM_LINK_CLASS = `${MENU_ITEM_CLASS} hover:border-gold hover:bg-selected-panel`;
+
 export function AccountMenu({
     busy,
     listLocked,
@@ -136,11 +143,11 @@ export function AccountMenu({
     }
 
     return (
-        <div className="account-menu" ref={menuRef}>
+        <div className="relative ml-auto flex-none max-[820px]:self-end" ref={menuRef}>
             <button
                 aria-label="Account menu"
                 aria-expanded={menuOpen}
-                className="account-menu-toggle"
+                className="flex h-[2.35rem] w-[2.35rem] items-center justify-center rounded-full p-0"
                 ref={floatingMenu.triggerRef}
                 type="button"
                 onClick={() => {
@@ -163,7 +170,7 @@ export function AccountMenu({
                     style={floatingMenu.style}
                 >
                     <Link
-                        className="account-menu-header account-menu-header-link"
+                        className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-line pb-3 text-ink no-underline hover:text-accent-strong"
                         to="/profile"
                         onClick={() => {
                             setMenuOpen(false);
@@ -177,12 +184,12 @@ export function AccountMenu({
                             large
                         />
                         <div>
-                            <strong className="account-display-name">{userName}</strong>
-                            <span className="muted">Account</span>
+                            <strong className="block min-w-0 truncate">{userName}</strong>
+                            <span className="mt-[0.1rem] block text-[0.82rem] text-muted">Account</span>
                         </div>
                     </Link>
                     <Link
-                        className="account-menu-item"
+                        className={MENU_ITEM_LINK_CLASS}
                         to="/profile"
                         onClick={() => setMenuOpen(false)}
                         onMouseEnter={clearPanel}
@@ -191,7 +198,7 @@ export function AccountMenu({
                     </Link>
                     <button
                         aria-expanded={activePanel === "settings"}
-                        className={`account-menu-item has-flyout ${activePanel === "settings" ? "active" : ""}`}
+                        className={`${MENU_ITEM_CHROME} ${activePanel === "settings" ? "border-gold bg-selected-panel" : "border-line bg-panel"}`}
                         type="button"
                         onClick={(event) => showPanel("settings", event)}
                         onFocus={(event) => showPanel("settings", event)}
@@ -202,7 +209,7 @@ export function AccountMenu({
                     </button>
                     <button
                         aria-expanded={activePanel === "appearance"}
-                        className={`account-menu-item has-flyout ${activePanel === "appearance" ? "active" : ""}`}
+                        className={`${MENU_ITEM_CHROME} ${activePanel === "appearance" ? "border-gold bg-selected-panel" : "border-line bg-panel"}`}
                         type="button"
                         onClick={(event) => showPanel("appearance", event)}
                         onFocus={(event) => showPanel("appearance", event)}
@@ -212,7 +219,7 @@ export function AccountMenu({
                         <span aria-hidden="true">›</span>
                     </button>
                     <button
-                        className="account-menu-item"
+                        className={MENU_ITEM_CLASS}
                         disabled={importDisabled}
                         type="button"
                         onClick={() => {
@@ -225,7 +232,7 @@ export function AccountMenu({
                         <MenuIconLabel icon="import">Import xlsx</MenuIconLabel>
                     </button>
                     <button
-                        className="account-menu-item"
+                        className={MENU_ITEM_CLASS}
                         disabled={busy}
                         type="button"
                         onClick={() => void handleExportClick()}
@@ -234,7 +241,7 @@ export function AccountMenu({
                         <MenuIconLabel icon="export">Export xlsx</MenuIconLabel>
                     </button>
                     <button
-                        className="account-menu-item danger menu-danger"
+                        className={`${MENU_ITEM_CLASS} danger menu-danger`}
                         type="button"
                         onClick={() => signOut().then(() => window.location.assign("/"))}
                         onMouseEnter={clearPanel}
@@ -250,30 +257,29 @@ export function AccountMenu({
                     onMouseEnter={() => setActivePanel("settings")}
                 >
                     <strong>Settings</strong>
-                    <div
-                        className="settings-toggle-grid"
-                        style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}
-                    >
-                        <label className="checkbox-row">
+                    <div className="flex flex-col items-start gap-[8px]">
+                        <label className="flex items-center gap-[0.55rem]">
                             <input
                                 checked={promptForMissingImages}
+                                className="w-auto"
                                 disabled={busy || quickSaving}
                                 type="checkbox"
                                 onChange={(event) => void updateToggle("promptForMissingImages", event.target.checked)}
                             />
                             <span>Image prompts</span>
                         </label>
-                        <label className="checkbox-row">
+                        <label className="flex items-center gap-[0.55rem]">
                             <input
                                 checked={enabled}
+                                className="w-auto"
                                 disabled={busy || quickSaving}
                                 type="checkbox"
                                 onChange={(event) => void updateToggle("enabled", event.target.checked)}
                             />
                             <span>Queue entries</span>
                         </label>
-                        <label className="stack compact-stack">
-                            <span className="muted">Delay days</span>
+                        <label className="grid min-w-0 content-start gap-[0.35rem]">
+                            <span className="text-muted">Delay days</span>
                             <input
                                 disabled={busy || quickSaving}
                                 min={0}
@@ -298,7 +304,7 @@ export function AccountMenu({
                         ["system", "System"]
                     ] as Array<[ThemeMode, string]>).map(([mode, label]) => (
                         <button
-                            className="appearance-option"
+                            className="flex items-center justify-between! gap-3"
                             key={mode}
                             type="button"
                             onClick={() => onThemeChange(mode)}
@@ -333,10 +339,16 @@ function AccountAvatar({
         : null;
 
     return (
-        <span className={`account-avatar ${large ? "large" : ""}`} aria-hidden="true">
+        <span
+            className={`relative block overflow-hidden rounded-full border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)] ${
+                large ? "size-[2.2rem]" : "size-[1.45rem]"
+            }`}
+            aria-hidden="true"
+        >
             {src ? (
                 <img
                     alt=""
+                    className="block h-full w-full rounded-[inherit] object-cover"
                     decoding="async"
                     src={src}
                     onError={() => setImageFailed(true)}

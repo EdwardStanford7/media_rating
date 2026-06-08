@@ -1,5 +1,6 @@
 import type { DragEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { METRIC_CLASS, POSTER_CLASS } from "@/components/ui/classes";
 import { MenuIconLabel } from "@/components/ui/Icon";
 import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -8,6 +9,9 @@ import type { DropPlacement } from "@/lib/dragReorder";
 import { formatDate } from "@/lib/format";
 import { hasStoredImage, isNoImageKey } from "@/lib/images";
 import type { CategoryWithEntries, Entry } from "@/lib/types";
+
+const ENTRY_CARD_DRAGGING_CLASS =
+    "cursor-grabbing border-dashed border-accent bg-selected-panel shadow-none [&>*]:opacity-0";
 
 export function EntryCard({
     entry,
@@ -87,7 +91,7 @@ export function EntryCard({
         const card = event.currentTarget;
         const rect = card.getBoundingClientRect();
         const dragImage = card.cloneNode(true) as HTMLElement;
-        dragImage.classList.remove("dragging");
+        dragImage.classList.remove(...ENTRY_CARD_DRAGGING_CLASS.split(" "));
         dragImage.classList.add("entry-drag-image");
         dragImage.style.width = `${rect.width}px`;
         dragImage.style.height = `${rect.height}px`;
@@ -108,7 +112,11 @@ export function EntryCard({
 
     return (
         <article
-            className={`entry-card ${isEntryDraggable ? "draggable" : ""} ${isDragging ? "dragging" : ""}`}
+            className={`relative max-w-full min-w-0 rounded-panel border border-line bg-panel shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${
+                isDragging
+                    ? ENTRY_CARD_DRAGGING_CLASS
+                    : "motion-safe:hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--line))] motion-safe:hover:shadow-floating"
+            } ${isEntryDraggable && !isDragging ? "cursor-grab" : ""}`.trim()}
             data-entry-id={entry.id}
             draggable={isEntryDraggable}
             onDragEnd={onDragEnd}
@@ -162,9 +170,9 @@ export function EntryCard({
             }}
         >
             <EntryPoster entry={entry} />
-            <div className="entry-card-body">
+            <div className="grid min-w-0 gap-[0.7rem] p-[0.9rem]">
                 {isRenaming ? (
-                    <form className="entry-rename-form" onSubmit={handleRenameSubmit}>
+                    <form className="grid gap-[0.45rem]" onSubmit={handleRenameSubmit}>
                         <span className="muted">#{entry.rankPosition + 1}</span>
                         <input
                             autoFocus
@@ -172,7 +180,7 @@ export function EntryCard({
                             value={renameValue}
                             onChange={(event) => setRenameValue(event.target.value)}
                         />
-                        <div className="entry-rename-actions">
+                        <div className="grid grid-cols-2 gap-[0.45rem]">
                             <button type="submit">Save</button>
                             <button
                                 type="button"
@@ -187,7 +195,7 @@ export function EntryCard({
                     </form>
                 ) : (
                     <strong
-                        className="entry-title"
+                        className="block truncate leading-[1.25] [overflow-wrap:normal]"
                         title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
                         onDoubleClick={() => {
                             if (!listLocked) {
@@ -202,14 +210,14 @@ export function EntryCard({
                     </strong>
                 )}
                 {entry.firstConsumedAt ? (
-                    <div className="metric-row">
-                        <span className="metric">{formatDate(entry.firstConsumedAt)}</span>
+                    <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
+                        <span className={METRIC_CLASS}>{formatDate(entry.firstConsumedAt)}</span>
                     </div>
                 ) : null}
                 {moveControlsOpen ? (
-                    <div className="entry-move-panel">
+                    <div className="grid gap-[0.55rem] rounded-control border border-line bg-subtle-panel p-[0.65rem]">
                         <strong>Change Category</strong>
-                        <div className="entry-actions stacked-action">
+                        <div className="grid min-w-0 grid-cols-1 gap-[0.45rem]">
                             <select
                                 aria-label={`Move ${entry.name}`}
                                 value={targetCategoryId}
@@ -221,7 +229,7 @@ export function EntryCard({
                                     </option>
                                 ))}
                             </select>
-                            <div className="entry-actions two-buttons">
+                            <div className="grid min-w-0 grid-cols-2 gap-[0.45rem]">
                                 <button
                                     type="button"
                                     onClick={() => setMoveControlsOpen(false)}
@@ -243,7 +251,7 @@ export function EntryCard({
             <div className="context-menu-host" ref={menuRef}>
                 {menuOpen ? (
                     <div
-                        className="entry-overflow-panel floating-menu-panel"
+                        className="floating-menu-panel min-w-36"
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >
@@ -320,10 +328,10 @@ function EntryPoster({
     }, [entry.id, entry.imageKey]);
 
     return (
-        <div className="entry-poster-frame">
+        <div className="relative grid overflow-hidden rounded-t-panel">
             {hasStoredImage(entry.imageKey) && !imageFailed ? (
                 <img
-                    className="entry-poster"
+                    className={`${POSTER_CLASS} block h-auto w-full max-w-full object-cover [grid-area:1/1]`}
                     src={`/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                     alt=""
                     draggable={false}
@@ -332,9 +340,9 @@ function EntryPoster({
                     onError={() => setImageFailed(true)}
                 />
             ) : (
-                <div className="entry-poster image-placeholder">
-                    <span>{entry.name}</span>
-                    <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+                <div className={`${POSTER_CLASS} grid content-center place-items-center gap-[0.35rem] p-4 [grid-area:1/1]`}>
+                    <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
+                    <small className="text-[0.95rem] leading-[1.25] text-muted">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
                 </div>
             )}
         </div>

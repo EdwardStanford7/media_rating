@@ -52,7 +52,9 @@ export function QueuedEntryRow({
 
     return (
         <div
-            className={`queue-item ${isReady ? "ready" : ""}`}
+            className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-control border p-[0.65rem] ${
+                isReady ? "border-accent bg-ready-panel" : "border-line bg-subtle-panel"
+            }`}
             onContextMenu={(event) => {
                 event.preventDefault();
                 if (disabled) {
@@ -63,9 +65,9 @@ export function QueuedEntryRow({
             }}
         >
             <QueuedPoster entry={entry} />
-            <div className="queue-item-body">
+            <div className="grid min-w-0 gap-[0.55rem]">
                 {isRenaming ? (
-                    <form className="queue-rename-form" onSubmit={handleSubmit}>
+                    <form className="grid gap-[0.45rem]" onSubmit={handleSubmit}>
                         <input
                             autoFocus
                             aria-label={`Rename ${entry.name}`}
@@ -73,7 +75,7 @@ export function QueuedEntryRow({
                             value={name}
                             onChange={(event) => setName(event.target.value)}
                         />
-                        <div className="queue-rename-actions">
+                        <div className="grid grid-cols-2 gap-[0.45rem]">
                             <button disabled={disabled} type="submit">Save</button>
                             <button
                                 disabled={disabled}
@@ -99,14 +101,14 @@ export function QueuedEntryRow({
                         }}
                     >
                         <strong>{entry.name}</strong>
-                        <p className="muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt, hydrated ? undefined : "UTC")}</p>
+                        <p className="m-0 mt-[0.2rem] text-muted">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt, hydrated ? undefined : "UTC")}</p>
                     </div>
                 )}
             </div>
             <div className="context-menu-host" ref={menuRef}>
                 {menuOpen ? (
                     <div
-                        className="queue-overflow-panel floating-menu-panel"
+                        className="floating-menu-panel min-w-36"
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >
@@ -171,7 +173,7 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     if (hasStoredImage(entry.imageKey) && !imageFailed) {
         return (
             <img
-                className="queue-poster"
+                className="block aspect-[4/5] h-auto w-[54px] overflow-hidden rounded-[5px] border border-line object-cover"
                 src={`/api/queued-images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                 alt=""
                 loading="lazy"
@@ -182,9 +184,9 @@ function QueuedPoster({ entry }: { entry: QueuedEntry }) {
     }
 
     return (
-        <div className="queue-poster image-placeholder">
-            <span>{entry.name}</span>
-            {isNoImageKey(entry.imageKey) ? <small>No image</small> : null}
+        <div className="grid aspect-[4/5] w-[54px] content-center place-items-center gap-[0.35rem] overflow-hidden rounded-[5px] border border-line bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-[0.8rem] text-muted">
+            <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
+            {isNoImageKey(entry.imageKey) ? <small className="text-[0.78rem] leading-[1.25] text-muted">No image</small> : null}
         </div>
     );
 }

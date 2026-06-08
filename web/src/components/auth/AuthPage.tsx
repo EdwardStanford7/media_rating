@@ -1,10 +1,10 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { STATUS_CLASS } from "@/components/ui/classes";
 import { signIn, signUp } from "@/lib/auth-client";
 
 type AuthMode = "signin" | "signup" | "reset-request";
 
-const STATUS_CLASS = "rounded-control border-l-4 border-l-gold bg-status px-3 py-[0.6rem] whitespace-pre-line";
 const FORM_CLASS = "grid gap-[0.95rem]";
 const FIELD_CLASS = "grid gap-[0.4rem] text-[0.92rem] font-bold text-muted";
 const FIELD_INPUT_CLASS = "min-h-12 font-medium text-ink";

@@ -7,6 +7,9 @@ import { useFloatingMenu } from "@/hooks/useFloatingMenu";
 import type { DropPlacement } from "@/lib/dragReorder";
 import type { CategoryWithEntries } from "@/lib/types";
 
+const CATEGORY_BUTTON_DRAGGING_CLASS =
+    "cursor-grabbing border-dashed border-accent bg-selected-panel shadow-none [&>*]:opacity-0";
+
 export function CategoryListItem({
     category,
     isActive,
@@ -70,7 +73,7 @@ export function CategoryListItem({
         const row = event.currentTarget;
         const rect = row.getBoundingClientRect();
         const dragImage = row.cloneNode(true) as HTMLElement;
-        dragImage.classList.remove("dragging");
+        dragImage.querySelector("button")?.classList.remove(...CATEGORY_BUTTON_DRAGGING_CLASS.split(" "));
         dragImage.classList.add("category-drag-image");
         dragImage.style.width = `${rect.width}px`;
         dragImage.style.height = `${rect.height}px`;
@@ -91,7 +94,7 @@ export function CategoryListItem({
 
     if (isRenaming) {
         return (
-            <form className="category-rename-form" onSubmit={handleSubmit}>
+            <form className="grid gap-[0.45rem] rounded-control border border-line bg-subtle-panel p-[0.55rem]" onSubmit={handleSubmit}>
                 <input
                     autoFocus
                     aria-label={`Rename ${category.name}`}
@@ -99,7 +102,7 @@ export function CategoryListItem({
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                 />
-                <div className="category-rename-actions">
+                <div className="grid grid-cols-2 gap-[0.45rem]">
                     <button disabled={busy} type="submit">Save</button>
                     <button
                         disabled={busy}
@@ -118,7 +121,7 @@ export function CategoryListItem({
 
     return (
         <div
-            className={`category-row ${isCategoryDraggable ? "draggable" : ""} ${isDragging ? "dragging" : ""}`}
+            className={`relative grid min-w-0 grid-cols-[minmax(0,1fr)] ${isCategoryDraggable ? "cursor-grab" : ""}`.trim()}
             data-category-id={category.id}
             draggable={isCategoryDraggable}
             onDragEnd={onDragEnd}
@@ -174,7 +177,13 @@ export function CategoryListItem({
             }}
         >
             <button
-                className={`category-button ${isActive ? "active" : ""}`}
+                className={`min-w-0 text-left ${
+                    isDragging
+                        ? CATEGORY_BUTTON_DRAGGING_CLASS
+                        : isActive
+                            ? "border-gold bg-selected-panel shadow-[inset_3px_0_0_var(--gold)]"
+                            : ""
+                } ${isCategoryDraggable && !isDragging ? "cursor-grab" : ""}`.trim()}
                 disabled={busy}
                 title="Double-click to rename · Right-click for actions"
                 type="button"
@@ -193,7 +202,7 @@ export function CategoryListItem({
             <div className="context-menu-host" ref={menuRef}>
                 {menuOpen ? (
                     <div
-                        className="category-menu-panel floating-menu-panel"
+                        className="floating-menu-panel min-w-36"
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >

@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
+import { POSTER_CLASS, STATUS_CLASS } from "@/components/ui/classes";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { errorMessage } from "@/lib/format";
 import { hasStoredImage, isNoImageKey, shouldPromptForImage } from "@/lib/images";
 import { getBinarySession, submitBinaryWinner } from "@/server/rankingSessions";
 import type { BinarySessionView, CategoryWithEntries, Entry } from "@/lib/types";
+
+const RANK_PANEL_CLASS =
+    "max-w-full min-w-0 rounded-panel border border-line bg-panel p-4 shadow-panel";
 
 export function BinaryRankPanel({
     sessionId,
@@ -116,29 +120,29 @@ export function BinaryRankPanel({
     }
 
     if (error) {
-        return <div className="status">{error}</div>;
+        return <div className={STATUS_CLASS}>{error}</div>;
     }
 
     if (!session) {
-        return <section className="rank-panel">Loading ranking...</section>;
+        return <section className={RANK_PANEL_CLASS}>Loading ranking...</section>;
     }
 
     return (
-        <section className="rank-panel stack">
-            <div className="toolbar">
+        <section className={`${RANK_PANEL_CLASS} grid content-start gap-[0.9rem]`}>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0">
                 <div>
                     <strong>
                         {session.phase === "local_repair"
                             ? "Local Repair"
                             : "Binary Rank"} · {session.categoryName}
                     </strong>
-                    <p className="muted rank-meta">
+                    <p className="m-0 mt-[0.2rem] text-muted">
                         Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} comparisons
                     </p>
                 </div>
                 {session.source === "new_entry" || session.source === "rerank_entry" ? (
                     <button
-                        className="small-button"
+                        className="px-[0.6rem] py-[0.35rem] text-[0.85rem]"
                         disabled={submitting}
                         type="button"
                         onClick={() => void cancelRanking()}
@@ -149,24 +153,24 @@ export function BinaryRankPanel({
                     </button>
                 ) : null}
             </div>
-            <div className="match-grid">
+            <div className="grid min-w-0 grid-cols-2 gap-4 max-[820px]:grid-cols-1">
                 <button
-                    className="match-choice"
+                    className="overflow-hidden p-0 text-left"
                     disabled={submitting}
                     type="button"
                     onClick={() => void chooseWinner(session.subject.id)}
                 >
                     <MatchPoster entry={session.subject} />
-                    <strong>{session.subject.name}</strong>
+                    <strong className="block p-[0.7rem]">{session.subject.name}</strong>
                 </button>
                 <button
-                    className="match-choice"
+                    className="overflow-hidden p-0 text-left"
                     disabled={submitting}
                     type="button"
                     onClick={() => void chooseWinner(session.opponent.id)}
                 >
                     <MatchPoster entry={session.opponent} />
-                    <strong>{session.opponent.name}</strong>
+                    <strong className="block p-[0.7rem]">{session.opponent.name}</strong>
                 </button>
             </div>
         </section>
@@ -183,7 +187,7 @@ function MatchPoster({ entry }: { entry: Entry }) {
     if (hasStoredImage(entry.imageKey) && !imageFailed) {
         return (
             <img
-                className="match-poster"
+                className={`${POSTER_CLASS} block h-auto w-full max-w-full object-cover`}
                 src={`/api/images/${entry.id}?v=${encodeURIComponent(String(entry.imageKey))}`}
                 alt=""
                 decoding="async"
@@ -193,9 +197,9 @@ function MatchPoster({ entry }: { entry: Entry }) {
     }
 
     return (
-        <div className="match-poster image-placeholder">
-            <span>{entry.name}</span>
-            <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+        <div className={`${POSTER_CLASS} grid content-center place-items-center gap-[0.35rem] p-4`}>
+            <span className="text-[1rem] leading-[1.25]">{entry.name}</span>
+            <small className="text-[0.95rem] leading-[1.25] text-muted">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
         </div>
     );
 }
