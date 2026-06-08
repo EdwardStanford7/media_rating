@@ -1,8 +1,8 @@
-import { Link } from "@tanstack/react-router";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { BinaryRankPanel } from "@/components/ranking/BinaryRankPanel";
+import { BrandLink } from "@/components/ui/BrandLink";
 import { BusyOverlay } from "@/components/ui/BusyOverlay";
 import { CategoryListItem } from "@/components/dashboard/CategoryListItem";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -1158,7 +1158,10 @@ export function Dashboard({
     }
 
     return (
-        <main className="app-shell" aria-busy={busy}>
+        <main
+            className="grid h-dvh min-h-screen w-full max-w-full min-w-0 grid-cols-[clamp(340px,28vw,440px)_minmax(0,1fr)] overflow-hidden max-[820px]:h-auto max-[820px]:grid-cols-1 max-[820px]:overflow-visible"
+            aria-busy={busy}
+        >
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
             <ToastStack toasts={toasts} onDismiss={dismissToast}>
                 {importToastOpen ? (
@@ -1199,16 +1202,17 @@ export function Dashboard({
                     </p>
                 </ConfirmDialog>
             ) : null}
-            <aside className="sidebar">
-                <div className="sidebar-header">
-                    <Link className="brand-link" to="/">
-                        <img src="/favicon.svg" alt="" aria-hidden="true" />
-                        <span>Goldshelf</span>
-                    </Link>
+            <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-line bg-sidebar p-4 max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:overflow-y-visible">
+                <div className="relative flex items-center justify-between gap-3">
+                    <BrandLink />
                 </div>
 
-                <form className="form-row add-form" onSubmit={handleCreateCategory}>
+                <form
+                    className="flex flex-wrap items-center gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0"
+                    onSubmit={handleCreateCategory}
+                >
                     <input
+                        className="flex-[1_1_12rem]"
                         disabled={busy}
                         name="name"
                         placeholder="New category"
@@ -1226,7 +1230,7 @@ export function Dashboard({
                 </form>
 
                 <div
-                    className="category-list"
+                    className="m-0 grid max-h-[min(30vh,22rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[820px]:max-h-none max-[820px]:overflow-y-visible max-[820px]:pr-0"
                     onDragOver={(event) => {
                         if (!draggedCategoryId || !categoryDragPreview) {
                             return;
@@ -1276,8 +1280,8 @@ export function Dashboard({
                 </div>
 
                 {selectedCategory && !activeSessionId ? (
-                    <div className="entry-control-stack sidebar-entry-controls">
-                        <form className="entry-create-form" onSubmit={handleCreateEntry}>
+                    <div className="grid w-full justify-items-stretch gap-[0.7rem]">
+                        <form className="grid max-w-full min-w-0 gap-2" onSubmit={handleCreateEntry}>
                             <input
                                 disabled={busy}
                                 name="name"
@@ -1286,10 +1290,10 @@ export function Dashboard({
                                 value={entryDraftName}
                                 onChange={(event) => setEntryDraftName(event.target.value)}
                             />
-                            <div className="entry-create-row">
+                            <div className="grid min-w-0 grid-cols-[minmax(10.5rem,1fr)_auto] gap-2 max-[820px]:grid-cols-1">
                                 <select
                                     aria-label="Category"
-                                    className="category-select"
+                                    className="w-full min-w-0 flex-none"
                                     defaultValue={selectedCategory.id}
                                     disabled={busy}
                                     key={selectedCategory.id}
@@ -1335,18 +1339,21 @@ export function Dashboard({
 
             </aside>
 
-            <section className="main stack" ref={mainRef}>
-                <div className="topbar main-topbar">
-                    <div className="main-topbar-title">
-                        <h1>{selectedCategory?.name ?? "Categories"}</h1>
-                        <p className="muted">
+            <section
+                className="grid min-h-0 min-w-0 content-start gap-[0.9rem] overflow-x-hidden overflow-y-auto px-[clamp(1rem,3vw,2.25rem)] py-5 max-[820px]:overflow-y-visible"
+                ref={mainRef}
+            >
+                <div className="sticky top-0 z-35 -mt-1 mb-[0.35rem] flex flex-nowrap items-center gap-[0.7rem] border-b border-line bg-app pt-1 pb-[0.95rem] max-[820px]:flex-col max-[820px]:items-stretch [&>*]:max-w-full [&>*]:min-w-0">
+                    <div className="grid max-w-[min(34rem,42vw)] min-w-0 flex-[0_1_auto] gap-[0.15rem]">
+                        <h1 className="m-0 truncate">{selectedCategory?.name ?? "Categories"}</h1>
+                        <p className="m-0 text-muted">
                             {selectedCategory
                                 ? `${displayedEntries.length}${entrySearch.trim() ? ` of ${selectedCategory.entries.length}` : ""} entries`
                                 : "Create a category to start ranking."}
                         </p>
                     </div>
                     {selectedCategory && !activeSessionId ? (
-                        <div className="entry-search-row main-search-row">
+                        <div className="mr-auto grid w-[min(26rem,100%)] max-w-[26rem] min-w-0 flex-[0_1_26rem] gap-2 max-[820px]:w-full max-[820px]:max-w-none">
                             <input
                                 aria-label="Search entries"
                                 value={entrySearch}
@@ -1400,7 +1407,7 @@ export function Dashboard({
                 ) : null}
 
                 <section
-                    className="entries-grid"
+                    className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-4 min-[900px]:grid-cols-[repeat(auto-fill,minmax(min(100%,440px),1fr))]"
                     onDragOver={(event) => {
                         if (!draggedEntryId || !entryDragPreview) {
                             return;

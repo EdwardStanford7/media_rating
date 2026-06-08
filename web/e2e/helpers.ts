@@ -100,6 +100,31 @@ export async function winMatchups(page: Page, winnerName: string, maxRounds = 15
     throw new Error(`Ranking session still offered ${winnerName} after ${maxRounds} matchups`);
 }
 
+/**
+ * Resolves when a TanStack Start server function response arrives. Server fn
+ * URLs encode `{file, export}` as base64url after `/_serverFn/`, so match on
+ * the decoded export name (e.g. "updateQueueSettings").
+ *
+ * Useful for settings saved quietly in the background: optimistic UI updates
+ * (a checked checkbox) don't guarantee the save + dashboard refresh round-trip
+ * has landed, and Playwright can outrun it.
+ */
+export function serverFnResponse(page: Page, exportName: string) {
+    return page.waitForResponse((response) => {
+        const match = response.url().match(/_serverFn\/([A-Za-z0-9_-]+)/);
+        if (!match) {
+            return false;
+        }
+
+        try {
+            const meta = JSON.parse(Buffer.from(match[1], "base64url").toString()) as { export?: string };
+            return meta.export?.startsWith(exportName) ?? false;
+        } catch {
+            return false;
+        }
+    });
+}
+
 /** Polls for an auth URL captured server-side in TEST_MODE (e.g. password reset links). */
 export async function getAuthUrl(email: string, type: "reset-password") {
     for (let attempt = 0; attempt < 20; attempt++) {

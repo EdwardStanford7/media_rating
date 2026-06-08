@@ -14,6 +14,7 @@ import {
     updateUserProfile
 } from "@/server/profiles";
 import { getSession } from "@/server/session";
+import { BrandLink } from "@/components/ui/BrandLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
 import { redirectIfUnauthorized } from "@/lib/errors";
@@ -414,10 +415,7 @@ function ProfileRoute() {
         return (
             <main className="standalone-page">
                 <section className="standalone-panel">
-                    <Link className="brand-link" to="/">
-                        <img alt="" src="/favicon.svg" />
-                        <span>Goldshelf</span>
-                    </Link>
+                    <BrandLink />
                     <h1>Profile</h1>
                     <p className="muted">Sign in to edit your profile.</p>
                     <Link className="primary link-button" to="/">Sign In</Link>
@@ -430,10 +428,7 @@ function ProfileRoute() {
         <main className="profile-page">
             <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <header className="profile-page-header">
-                <Link className="brand-link" to="/">
-                    <img alt="" src="/favicon.svg" />
-                    <span>Goldshelf</span>
-                </Link>
+                <BrandLink />
                 <nav className="profile-page-nav" aria-label="Profile navigation">
                     <Link to="/">Rankings</Link>
                     <Link to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>

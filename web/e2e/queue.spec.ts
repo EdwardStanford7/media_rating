@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./base";
-import { gotoApp, seedUsers, signInViaApi, winMatchups } from "./helpers";
+import { gotoApp, seedUsers, serverFnResponse, signInViaApi, winMatchups } from "./helpers";
 
 const QUINN = {
     email: "quinn@e2e.test",
@@ -19,6 +19,21 @@ async function openQueueSettings(page: Page) {
 async function closeAccountMenu(page: Page) {
     await page.getByRole("heading", { name: "Movies" }).click();
     await expect(page.getByLabel("Queue entries")).toBeHidden();
+}
+
+/**
+ * Queue settings save quietly in the background: the checkbox flips
+ * optimistically, but the dashboard only honors the new settings after the
+ * save + refresh round-trip. Entries added before that round-trip lands are
+ * routed by the OLD settings, and Playwright is fast enough to win that race
+ * (~10ms window). Wrap each settings change so the test waits it out.
+ */
+async function withSettingsSaved(page: Page, change: () => Promise<void>) {
+    const saved = serverFnResponse(page, "updateQueueSettings");
+    const refreshed = serverFnResponse(page, "loadDashboard");
+    await change();
+    await saved;
+    await refreshed;
 }
 
 /**
@@ -44,7 +59,7 @@ test.describe("Queue", () => {
 
         // --- Enable the queue with the default delay (3 days). ---
         await openQueueSettings(page);
-        await page.getByLabel("Queue entries").check();
+        await withSettingsSaved(page, () => page.getByLabel("Queue entries").check());
         await expect(page.getByLabel("Queue entries")).toBeChecked();
         await closeAccountMenu(page);
 
@@ -82,7 +97,7 @@ test.describe("Queue", () => {
 
         // --- With a zero-day delay, queued entries are ready immediately. ---
         await openQueueSettings(page);
-        await page.getByLabel("Delay days").fill("0");
+        await withSettingsSaved(page, () => page.getByLabel("Delay days").fill("0"));
         await closeAccountMenu(page);
 
         await page.getByPlaceholder("New entry").fill("Memento");
@@ -128,7 +143,7 @@ test.describe("Queue", () => {
 
         // --- Disabling the queue routes new entries straight to ranking. ---
         await openQueueSettings(page);
-        await page.getByLabel("Queue entries").uncheck();
+        await withSettingsSaved(page, () => page.getByLabel("Queue entries").uncheck());
         await expect(page.getByLabel("Queue entries")).not.toBeChecked();
         await closeAccountMenu(page);
 

@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BrandLink } from "@/components/ui/BrandLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
 import { redirectIfUnauthorized } from "@/lib/errors";
@@ -222,10 +223,7 @@ function PublicProfileRoute() {
 function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
     return (
         <header className="profile-page-header">
-            <Link className="brand-link" to="/">
-                <img alt="" src="/favicon.svg" />
-                <span>Goldshelf</span>
-            </Link>
+            <BrandLink />
             <nav className="profile-page-nav" aria-label="Public profile navigation">
                 {signedIn ? (
                     <>

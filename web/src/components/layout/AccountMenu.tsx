@@ -9,10 +9,8 @@ import { hasStoredImage } from "@/lib/images";
 import type { ThemeMode } from "@/lib/theme";
 import type { QueueSettings } from "@/lib/types";
 
-// justify-between! beats the unlayered `.topbar button { justify-content: center }`
-// rule; drop the important flag once the dashboard shell converts to utilities.
 const MENU_ITEM_CHROME =
-    "flex w-full items-center justify-between! gap-3 rounded-control border px-[0.8rem] py-[0.55rem] text-left text-ink no-underline focus-visible:border-gold focus-visible:bg-selected-panel";
+    "flex w-full items-center justify-between gap-3 rounded-control border px-[0.8rem] py-[0.55rem] text-left text-ink no-underline focus-visible:border-gold focus-visible:bg-selected-panel";
 const MENU_ITEM_CLASS = `${MENU_ITEM_CHROME} border-line bg-panel`;
 const MENU_ITEM_LINK_CLASS = `${MENU_ITEM_CLASS} hover:border-gold hover:bg-selected-panel`;
 
@@ -304,7 +302,7 @@ export function AccountMenu({
                         ["system", "System"]
                     ] as Array<[ThemeMode, string]>).map(([mode, label]) => (
                         <button
-                            className="flex items-center justify-between! gap-3"
+                            className="flex items-center justify-between gap-3"
                             key={mode}
                             type="button"
                             onClick={() => onThemeChange(mode)}
