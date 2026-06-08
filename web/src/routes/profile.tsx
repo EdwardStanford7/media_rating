@@ -14,6 +14,7 @@ import {
     updateUserProfile
 } from "@/server/profiles";
 import { getSession } from "@/server/session";
+import { AVATAR_CLASS, LINK_BUTTON_CLASS, PAGE_HEADER_CLASS, PAGE_NAV_CLASS, PAGE_NAV_LINK_CLASS, PRIMARY_BUTTON_CLASS, PROFILE_PAGE_CLASS, PROFILE_PANEL_CLASS, SECTION_HEADING_CLASS, STANDALONE_PANEL_CLASS } from "@/components/ui/classes";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
@@ -397,7 +398,7 @@ function ProfileRoute() {
 
     function renderFollowerAction(profile: FollowProfileSummary) {
         if (profile.relationState === "mutual") {
-            return <span className="relation-pill">Mutual</span>;
+            return <span className="inline-flex min-h-[2.35rem] items-center rounded-full border border-line px-3 text-muted">Mutual</span>;
         }
 
         return (
@@ -413,41 +414,42 @@ function ProfileRoute() {
 
     if (!loaderData.session?.user || !settings) {
         return (
-            <main className="standalone-page">
-                <section className="standalone-panel">
+            <main className="grid min-h-screen place-items-center bg-app p-8 text-ink">
+                <section className={STANDALONE_PANEL_CLASS}>
                     <BrandLink />
                     <h1>Profile</h1>
-                    <p className="muted">Sign in to edit your profile.</p>
-                    <Link className="primary link-button" to="/">Sign In</Link>
+                    <p className="text-muted">Sign in to edit your profile.</p>
+                    <Link className="inline-flex items-center justify-center gap-[0.4rem] rounded-control border border-accent bg-accent text-on-accent no-underline" to="/">Sign In</Link>
                 </section>
             </main>
         );
     }
 
     return (
-        <main className="profile-page">
+        <main className={PROFILE_PAGE_CLASS}>
             <ToastStack toasts={toasts} onDismiss={dismissToast} />
-            <header className="profile-page-header">
+            <header className={PAGE_HEADER_CLASS}>
                 <BrandLink />
-                <nav className="profile-page-nav" aria-label="Profile navigation">
-                    <Link to="/">Rankings</Link>
-                    <Link to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>
+                <nav className={PAGE_NAV_CLASS} aria-label="Profile navigation">
+                    <Link className={PAGE_NAV_LINK_CLASS} to="/">Rankings</Link>
+                    <Link className={PAGE_NAV_LINK_CLASS} to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>Public Profile</Link>
                 </nav>
             </header>
 
-            <div className="profile-page-grid">
-                <div className="profile-column profile-account-column">
-                    <section className="profile-panel profile-main-panel">
-                        <div className="profile-title-row">
+            <div className="m-0 grid w-full grid-cols-[minmax(18rem,0.8fr)_minmax(24rem,1fr)_minmax(18rem,0.82fr)] items-start gap-4 max-[1100px]:grid-cols-[minmax(18rem,0.85fr)_minmax(24rem,1fr)] max-[820px]:grid-cols-1">
+                <div className="grid min-w-0 content-start gap-4">
+                    <section className={PROFILE_PANEL_CLASS}>
+                        <div className="mb-4 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-[0.8rem] [&_h1]:m-0 [&_h1]:leading-[1.1]">
                             <ProfileAvatar currentUser imageKey={settings.user.imageKey} userId={settings.user.id} />
                             <div>
                                 <h1>{settings.user.name}</h1>
-                                <p className="muted">@{settings.user.slug}</p>
-                                <div className="profile-avatar-actions profile-page-avatar-actions">
-                                    <label className={`file-button ${savingProfileImage ? "disabled" : ""}`}>
+                                <p className="text-muted">@{settings.user.slug}</p>
+                                <div className="mt-[0.65rem] flex flex-wrap gap-2">
+                                    <label className={`w-fit rounded-control border border-line bg-panel px-[0.8rem] py-[0.55rem] text-ink ${savingProfileImage ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
                                         <span>{savingProfileImage ? "Uploading..." : "Upload Photo"}</span>
                                         <input
                                             accept="image/*"
+                                            className="absolute h-px w-px overflow-hidden [clip:rect(0,0,0,0)]"
                                             disabled={savingProfileImage}
                                             type="file"
                                             onChange={(event) => void handleProfileImageInput(event)}
@@ -464,8 +466,8 @@ function ProfileRoute() {
                             </div>
                         </div>
 
-                        <form className="profile-form" onSubmit={handleProfileSubmit}>
-                            <label>
+                        <form className="grid gap-[0.8rem]" onSubmit={handleProfileSubmit}>
+                            <label className="grid gap-[0.35rem]">
                                 <span>Display Name</span>
                                 <input
                                     required
@@ -474,7 +476,7 @@ function ProfileRoute() {
                                     onChange={(event) => setDisplayName(event.target.value)}
                                 />
                             </label>
-                            <label>
+                            <label className="grid gap-[0.35rem]">
                                 <span>Public Handle</span>
                                 <input
                                     required
@@ -483,16 +485,17 @@ function ProfileRoute() {
                                     onChange={(event) => setProfileSlug(event.target.value)}
                                 />
                             </label>
-                            <label className="switch-row profile-switch-row">
+                            <label className="inline-flex items-center justify-start gap-[0.4rem] text-[0.86rem] text-muted">
                                 <input
                                     checked={profileIsPublic}
+                                    className="w-auto"
                                     type="checkbox"
                                     onChange={(event) => setProfileIsPublic(event.target.checked)}
                                 />
                                 <span>Public profile</span>
                             </label>
-                            <div className="profile-actions">
-                                <button className="primary" disabled={savingProfile} type="submit">
+                            <div className="flex flex-wrap gap-2">
+                                <button className={PRIMARY_BUTTON_CLASS} disabled={savingProfile} type="submit">
                                     {savingProfile ? "Saving..." : "Save Profile"}
                                 </button>
                                 <button disabled={!settings.user.isPublic} type="button" onClick={handleCopyProfileLink}>
@@ -503,13 +506,13 @@ function ProfileRoute() {
                     </section>
                 </div>
 
-                <div className="profile-column profile-follow-column">
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
+                <div className="grid min-w-0 content-start gap-4">
+                    <section className={PROFILE_PANEL_CLASS}>
+                        <div className={SECTION_HEADING_CLASS}>
                             <h2>Find Profiles</h2>
-                            <span className="muted">{followSearchLoading ? "Searching..." : "Public search"}</span>
+                            <span className="text-muted">{followSearchLoading ? "Searching..." : "Public search"}</span>
                         </div>
-                        <form className="follow-add-form" onSubmit={handleRequestFollow}>
+                        <form className="mb-[0.8rem] grid grid-cols-[minmax(0,1fr)_auto] gap-[0.8rem]" onSubmit={handleRequestFollow}>
                             <input
                                 aria-label="Profile handle, name, or profile link"
                                 placeholder="search public profiles or paste a private handle"
@@ -526,18 +529,18 @@ function ProfileRoute() {
                                 renderActions={renderSearchAction}
                             />
                         ) : followInput.trim().length >= 2 && !followSearchLoading ? (
-                            <p className="muted compact-note">No public profiles match that search.</p>
+                            <p className="m-0 text-muted">No public profiles match that search.</p>
                         ) : (
-                            <p className="muted compact-note">
+                            <p className="m-0 text-muted">
                                 Public profiles appear as you type. Exact private handles can still receive follow requests.
                             </p>
                         )}
                     </section>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
+                    <section className={PROFILE_PANEL_CLASS}>
+                        <div className={SECTION_HEADING_CLASS}>
                             <h2>Following</h2>
-                            <span className="muted">{settings.following.length}</span>
+                            <span className="text-muted">{settings.following.length}</span>
                         </div>
                         {settings.following.length > 0 ? (
                             <FollowProfileList
@@ -559,10 +562,10 @@ function ProfileRoute() {
                         )}
                     </section>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
+                    <section className={PROFILE_PANEL_CLASS}>
+                        <div className={SECTION_HEADING_CLASS}>
                             <h2>Followers</h2>
-                            <span className="muted">{settings.followers.length}</span>
+                            <span className="text-muted">{settings.followers.length}</span>
                         </div>
                         {settings.followers.length > 0 ? (
                             <FollowProfileList
@@ -576,16 +579,16 @@ function ProfileRoute() {
                         )}
                     </section>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
+                    <section className={PROFILE_PANEL_CLASS}>
+                        <div className={SECTION_HEADING_CLASS}>
                             <h2>Follow Requests</h2>
-                            <span className="muted">{settings.incomingFollowRequests.length}</span>
+                            <span className="text-muted">{settings.incomingFollowRequests.length}</span>
                         </div>
                         {settings.incomingFollowRequests.length > 0 ? (
                             <FollowProfileList
                                 profiles={settings.incomingFollowRequests}
                                 renderActions={(profile) => (
-                                    <div className="follow-row-actions">
+                                    <div className="flex flex-wrap justify-end gap-[0.4rem]">
                                         <button
                                             disabled={savingFollowId === profile.userId}
                                             type="button"
@@ -610,10 +613,10 @@ function ProfileRoute() {
                         )}
                     </section>
 
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
+                    <section className={PROFILE_PANEL_CLASS}>
+                        <div className={SECTION_HEADING_CLASS}>
                             <h2>Sent Requests</h2>
-                            <span className="muted">{settings.outgoingFollowRequests.length}</span>
+                            <span className="text-muted">{settings.outgoingFollowRequests.length}</span>
                         </div>
                         {settings.outgoingFollowRequests.length > 0 ? (
                             <FollowProfileList
@@ -636,22 +639,23 @@ function ProfileRoute() {
                     </section>
                 </div>
 
-                <div className="profile-column profile-rankings-column">
-                    <section className="profile-panel">
-                        <div className="section-heading-row">
+                <div className="grid min-w-0 content-start gap-4 max-[1100px]:[grid-column:1/-1] max-[820px]:[grid-column:auto]">
+                    <section className={PROFILE_PANEL_CLASS}>
+                        <div className={SECTION_HEADING_CLASS}>
                             <h2>Public Rankings</h2>
-                            <span className="muted">{settings.categories.filter((category) => category.isPublic).length}</span>
+                            <span className="text-muted">{settings.categories.filter((category) => category.isPublic).length}</span>
                         </div>
                         {settings.categories.length > 0 ? (
-                            <div className="profile-category-list">
+                            <div className="grid gap-[0.65rem]">
                                 {settings.categories.map((category) => (
-                                    <label className="profile-category-row" key={category.id}>
+                                    <label className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-panel border border-line bg-subtle-panel p-3" key={category.id}>
                                         <span>
                                             <strong>{category.name}</strong>
-                                            <small className="muted">{category.entryCount} entries</small>
+                                            <small className="m-0 mt-[0.15rem] block text-muted">{category.entryCount} entries</small>
                                         </span>
                                         <input
                                             checked={category.isPublic}
+                                            className="w-auto"
                                             disabled={savingCategoryId === category.id}
                                             type="checkbox"
                                             onChange={(event) => void handleCategoryVisibility(category.id, event.target.checked)}
@@ -679,19 +683,23 @@ function FollowProfileList<TProfile extends FollowProfileSummary>({
     renderActions: (profile: TProfile) => ReactNode;
 }) {
     return (
-        <div className="follow-list">
+        <div className="grid gap-[0.65rem]">
             {profiles.map((profile) => (
-                <div className="follow-row" key={profile.userId}>
+                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-[0.8rem] rounded-panel border border-line bg-subtle-panel p-[0.65rem]" key={profile.userId}>
                     <ProfileAvatar imageKey={profile.imageKey} userId={profile.userId} />
                     <div>
                         {canViewProfile(profile.isPublic, false, profile.relationState) ? (
-                            <Link to="/u/$profileSlug" params={{ profileSlug: profile.slug }}>
+                            <Link
+                                className="font-bold text-ink no-underline hover:text-accent-strong"
+                                to="/u/$profileSlug"
+                                params={{ profileSlug: profile.slug }}
+                            >
                                 {profile.name}
                             </Link>
                         ) : (
-                            <strong>{profile.name}</strong>
+                            <strong className="font-bold text-ink no-underline">{profile.name}</strong>
                         )}
-                        <p className="muted">
+                        <p className="m-0 mt-[0.15rem] text-muted">
                             @{profile.slug} · {profile.publicCategoryCount} public rankings ·{" "}
                             {followRelationLabel(profile.relationState)}
                         </p>
@@ -719,8 +727,8 @@ function ProfileAvatar({
         : null;
 
     return (
-        <span className="profile-avatar" aria-hidden="true">
-            {src ? <img alt="" decoding="async" src={src} /> : null}
+        <span className={`${AVATAR_CLASS} size-12`} aria-hidden="true">
+            {src ? <img alt="" className="block h-full w-full object-cover" decoding="async" src={src} /> : null}
         </span>
     );
 }

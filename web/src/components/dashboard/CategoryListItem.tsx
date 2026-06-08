@@ -1,5 +1,6 @@
 import type { DragEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { CONTEXT_MENU_HOST_CLASS, CONTEXT_MENU_PANEL_CLASS, MENU_BUTTON_CLASS, MENU_DANGER_BUTTON_CLASS } from "@/components/ui/classes";
 import { MenuIconLabel } from "@/components/ui/Icon";
 import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -74,14 +75,16 @@ export function CategoryListItem({
         const rect = row.getBoundingClientRect();
         const dragImage = row.cloneNode(true) as HTMLElement;
         dragImage.querySelector("button")?.classList.remove(...CATEGORY_BUTTON_DRAGGING_CLASS.split(" "));
-        dragImage.classList.add("category-drag-image");
+        dragImage.style.opacity = "0.96";
+        dragImage.style.transform = "rotate(0.5deg)";
+        dragImage.style.boxShadow = "var(--floating-shadow)";
         dragImage.style.width = `${rect.width}px`;
         dragImage.style.height = `${rect.height}px`;
         dragImage.style.position = "fixed";
         dragImage.style.left = "-10000px";
         dragImage.style.top = "-10000px";
         dragImage.style.pointerEvents = "none";
-        dragImage.querySelector(".context-menu-host")?.remove();
+        dragImage.querySelector("[data-context-menu-host]")?.remove();
         document.body.appendChild(dragImage);
 
         const offsetX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
@@ -197,16 +200,17 @@ export function CategoryListItem({
                 }}
             >
                 <strong>{category.name}</strong>
-                <span className="muted"> · {category.entries.length}</span>
+                <span className="text-muted"> · {category.entries.length}</span>
             </button>
-            <div className="context-menu-host" ref={menuRef}>
+            <div className={CONTEXT_MENU_HOST_CLASS} data-context-menu-host="" ref={menuRef}>
                 {menuOpen ? (
                     <div
-                        className="floating-menu-panel min-w-36"
+                        className={CONTEXT_MENU_PANEL_CLASS}
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >
                         <button
+                            className={MENU_BUTTON_CLASS}
                             type="button"
                             onClick={() => {
                                 setMenuOpen(false);
@@ -217,7 +221,7 @@ export function CategoryListItem({
                             <MenuIconLabel icon="edit">Rename</MenuIconLabel>
                         </button>
                         <button
-                            className="danger menu-danger"
+                            className={MENU_DANGER_BUTTON_CLASS}
                             disabled={busy || listLocked}
                             type="button"
                             onClick={() => {

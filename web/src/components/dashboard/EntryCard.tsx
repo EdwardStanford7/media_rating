@@ -1,6 +1,6 @@
 import type { DragEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { METRIC_CLASS, POSTER_CLASS } from "@/components/ui/classes";
+import { CONTEXT_MENU_HOST_CLASS, CONTEXT_MENU_PANEL_CLASS, MENU_BUTTON_CLASS, MENU_DANGER_BUTTON_CLASS, METRIC_CLASS, POSTER_CLASS } from "@/components/ui/classes";
 import { MenuIconLabel } from "@/components/ui/Icon";
 import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -92,14 +92,17 @@ export function EntryCard({
         const rect = card.getBoundingClientRect();
         const dragImage = card.cloneNode(true) as HTMLElement;
         dragImage.classList.remove(...ENTRY_CARD_DRAGGING_CLASS.split(" "));
-        dragImage.classList.add("entry-drag-image");
+        dragImage.style.maxWidth = "none";
+        dragImage.style.opacity = "0.96";
+        dragImage.style.transform = "rotate(0.5deg)";
+        dragImage.style.boxShadow = "var(--floating-shadow)";
         dragImage.style.width = `${rect.width}px`;
         dragImage.style.height = `${rect.height}px`;
         dragImage.style.position = "fixed";
         dragImage.style.left = "-10000px";
         dragImage.style.top = "-10000px";
         dragImage.style.pointerEvents = "none";
-        dragImage.querySelector(".context-menu-host")?.remove();
+        dragImage.querySelector("[data-context-menu-host]")?.remove();
         document.body.appendChild(dragImage);
 
         const offsetX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
@@ -173,7 +176,7 @@ export function EntryCard({
             <div className="grid min-w-0 gap-[0.7rem] p-[0.9rem]">
                 {isRenaming ? (
                     <form className="grid gap-[0.45rem]" onSubmit={handleRenameSubmit}>
-                        <span className="muted">#{entry.rankPosition + 1}</span>
+                        <span className="text-muted">#{entry.rankPosition + 1}</span>
                         <input
                             autoFocus
                             aria-label={`Rename ${entry.name}`}
@@ -248,14 +251,15 @@ export function EntryCard({
                     </div>
                 ) : null}
             </div>
-            <div className="context-menu-host" ref={menuRef}>
+            <div className={CONTEXT_MENU_HOST_CLASS} data-context-menu-host="" ref={menuRef}>
                 {menuOpen ? (
                     <div
-                        className="floating-menu-panel min-w-36"
+                        className={CONTEXT_MENU_PANEL_CLASS}
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >
                         <button
+                            className={MENU_BUTTON_CLASS}
                             disabled={listLocked}
                             type="button"
                             onClick={() => {
@@ -268,6 +272,7 @@ export function EntryCard({
                             <MenuIconLabel icon="edit">Rename</MenuIconLabel>
                         </button>
                         <button
+                            className={MENU_BUTTON_CLASS}
                             disabled={listLocked}
                             type="button"
                             onClick={() => {
@@ -278,6 +283,7 @@ export function EntryCard({
                             <MenuIconLabel icon="rerank">Rerank</MenuIconLabel>
                         </button>
                         <button
+                            className={MENU_BUTTON_CLASS}
                             type="button"
                             onClick={() => {
                                 setMenuOpen(false);
@@ -289,6 +295,7 @@ export function EntryCard({
                             </MenuIconLabel>
                         </button>
                         <button
+                            className={MENU_BUTTON_CLASS}
                             disabled={listLocked}
                             type="button"
                             onClick={() => {
@@ -299,7 +306,7 @@ export function EntryCard({
                             <MenuIconLabel icon="category">Change Category</MenuIconLabel>
                         </button>
                         <button
-                            className="danger menu-danger"
+                            className={MENU_DANGER_BUTTON_CLASS}
                             disabled={listLocked}
                             type="button"
                             onClick={() => {

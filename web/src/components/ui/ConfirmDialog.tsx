@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { DANGER_BUTTON_CLASS, PRIMARY_BUTTON_CLASS } from "@/components/ui/classes";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 export function ConfirmDialog({
@@ -40,7 +41,7 @@ export function ConfirmDialog({
                 <div className="grid grid-cols-2 gap-[0.6rem]">
                     <button type="button" onClick={onCancel}>Cancel</button>
                     <button
-                        className={variant === "danger" ? "danger" : "primary"}
+                        className={variant === "danger" ? DANGER_BUTTON_CLASS : PRIMARY_BUTTON_CLASS}
                         type="button"
                         onClick={onConfirm}
                     >

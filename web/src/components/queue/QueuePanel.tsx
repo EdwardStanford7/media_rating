@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { METRIC_CLASS } from "@/components/ui/classes";
+import { METRIC_CLASS, PRIMARY_BUTTON_CLASS } from "@/components/ui/classes";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
 import { QueuedEntryRow } from "@/components/queue/QueuedEntryRow";
@@ -49,7 +49,7 @@ export function QueuePanel({
             </div>
             <div className="grid">
                 <button
-                    className={`inline-flex items-center justify-center gap-[0.45rem] ${queueRankMode ? "" : "primary"}`.trim()}
+                    className={`inline-flex items-center justify-center gap-[0.45rem] ${queueRankMode ? "" : PRIMARY_BUTTON_CLASS}`.trim()}
                     disabled={queueRankMode ? false : busy || Boolean(activeSessionId) || readyEntries.length === 0}
                     type="button"
                     onClick={() => {

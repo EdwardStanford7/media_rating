@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
+import { AVATAR_CLASS, FLOATING_MENU_CLASS, MENU_BUTTON_CLASS } from "@/components/ui/classes";
 import { MenuIconLabel } from "@/components/ui/Icon";
 import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useFloatingMenu } from "@/hooks/useFloatingMenu";
@@ -10,9 +11,15 @@ import type { ThemeMode } from "@/lib/theme";
 import type { QueueSettings } from "@/lib/types";
 
 const MENU_ITEM_CHROME =
-    "flex w-full items-center justify-between gap-3 rounded-control border px-[0.8rem] py-[0.55rem] text-left text-ink no-underline focus-visible:border-gold focus-visible:bg-selected-panel";
-const MENU_ITEM_CLASS = `${MENU_ITEM_CHROME} border-line bg-panel`;
-const MENU_ITEM_LINK_CLASS = `${MENU_ITEM_CLASS} hover:border-gold hover:bg-selected-panel`;
+    "flex w-full items-center justify-between gap-3 rounded-control border px-[0.8rem] py-[0.55rem] text-left no-underline focus-visible:border-gold focus-visible:bg-selected-panel";
+const MENU_ITEM_CLASS = `${MENU_ITEM_CHROME} border-line bg-panel text-ink enabled:hover:border-gold enabled:hover:bg-selected-panel`;
+const MENU_ITEM_LINK_CLASS = `${MENU_ITEM_CHROME} border-line bg-panel text-ink hover:border-gold hover:bg-selected-panel`;
+const MENU_ITEM_DANGER_CLASS = `${MENU_ITEM_CHROME} border-danger-line bg-panel text-danger enabled:hover:bg-subtle-panel`;
+const SUBMENU_TRIGGER_CLASS = `${MENU_ITEM_CHROME} text-ink enabled:hover:border-gold enabled:hover:bg-selected-panel`;
+const ACCOUNT_MENU_PANEL_CLASS =
+    `${FLOATING_MENU_CLASS} w-[min(13.75rem,calc(100vw-2rem))] max-h-[min(78vh,680px)] gap-[0.35rem] overflow-x-hidden overflow-y-auto p-[0.7rem] max-[820px]:max-h-[calc(100vh-1rem)] max-[820px]:w-[min(15.5rem,calc(100vw-2rem))]`;
+/* The `!` width beats the inline width:auto from submenuStyle() on small screens (was `.account-submenu` @820px). */
+const ACCOUNT_SUBMENU_CLASS = `${FLOATING_MENU_CLASS} p-2 max-[820px]:w-[min(18rem,calc(100vw-2rem))]!`;
 
 export function AccountMenu({
     busy,
@@ -163,7 +170,7 @@ export function AccountMenu({
 
             {menuOpen ? (
                 <div
-                    className="account-menu-panel floating-menu-panel"
+                    className={ACCOUNT_MENU_PANEL_CLASS}
                     ref={floatingMenu.panelRef}
                     style={floatingMenu.style}
                 >
@@ -196,7 +203,7 @@ export function AccountMenu({
                     </Link>
                     <button
                         aria-expanded={activePanel === "settings"}
-                        className={`${MENU_ITEM_CHROME} ${activePanel === "settings" ? "border-gold bg-selected-panel" : "border-line bg-panel"}`}
+                        className={`${SUBMENU_TRIGGER_CLASS} ${activePanel === "settings" ? "border-gold bg-selected-panel" : "border-line bg-panel"}`}
                         type="button"
                         onClick={(event) => showPanel("settings", event)}
                         onFocus={(event) => showPanel("settings", event)}
@@ -207,7 +214,7 @@ export function AccountMenu({
                     </button>
                     <button
                         aria-expanded={activePanel === "appearance"}
-                        className={`${MENU_ITEM_CHROME} ${activePanel === "appearance" ? "border-gold bg-selected-panel" : "border-line bg-panel"}`}
+                        className={`${SUBMENU_TRIGGER_CLASS} ${activePanel === "appearance" ? "border-gold bg-selected-panel" : "border-line bg-panel"}`}
                         type="button"
                         onClick={(event) => showPanel("appearance", event)}
                         onFocus={(event) => showPanel("appearance", event)}
@@ -239,7 +246,7 @@ export function AccountMenu({
                         <MenuIconLabel icon="export">Export xlsx</MenuIconLabel>
                     </button>
                     <button
-                        className={`${MENU_ITEM_CLASS} danger menu-danger`}
+                        className={MENU_ITEM_DANGER_CLASS}
                         type="button"
                         onClick={() => signOut().then(() => window.location.assign("/"))}
                         onMouseEnter={clearPanel}
@@ -250,7 +257,7 @@ export function AccountMenu({
             ) : null}
             {menuOpen && activePanel === "settings" ? (
                 <div
-                    className="account-submenu account-settings-menu floating-menu-panel"
+                    className={`${ACCOUNT_SUBMENU_CLASS} gap-[0.55rem]`}
                     style={submenuStyle(150)}
                     onMouseEnter={() => setActivePanel("settings")}
                 >
@@ -292,7 +299,7 @@ export function AccountMenu({
             ) : null}
             {menuOpen && activePanel === "appearance" ? (
                 <div
-                    className="account-submenu account-appearance-menu floating-menu-panel"
+                    className={`${ACCOUNT_SUBMENU_CLASS} gap-[0.2rem]`}
                     style={submenuStyle(150)}
                     onMouseEnter={() => setActivePanel("appearance")}
                 >
@@ -302,7 +309,7 @@ export function AccountMenu({
                         ["system", "System"]
                     ] as Array<[ThemeMode, string]>).map(([mode, label]) => (
                         <button
-                            className="flex items-center justify-between gap-3"
+                            className={`${MENU_BUTTON_CLASS} flex items-center justify-between gap-3`}
                             key={mode}
                             type="button"
                             onClick={() => onThemeChange(mode)}
@@ -338,9 +345,7 @@ function AccountAvatar({
 
     return (
         <span
-            className={`relative block overflow-hidden rounded-full border border-avatar-line [background:radial-gradient(circle_at_50%_38%,var(--avatar-ink)_0_21%,transparent_22%),radial-gradient(circle_at_50%_110%,var(--avatar-ink)_0_39%,transparent_40%),var(--avatar-bg)] ${
-                large ? "size-[2.2rem]" : "size-[1.45rem]"
-            }`}
+            className={`${AVATAR_CLASS} relative ${large ? "size-[2.2rem]" : "size-[1.45rem]"}`}
             aria-hidden="true"
         >
             {src ? (

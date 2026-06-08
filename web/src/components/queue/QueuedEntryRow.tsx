@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { CONTEXT_MENU_HOST_CLASS, CONTEXT_MENU_PANEL_CLASS, MENU_BUTTON_CLASS, MENU_DANGER_BUTTON_CLASS } from "@/components/ui/classes";
 import { MenuIconLabel } from "@/components/ui/Icon";
 import { useDismissibleMenu } from "@/hooks/useDismissibleMenu";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -105,14 +106,15 @@ export function QueuedEntryRow({
                     </div>
                 )}
             </div>
-            <div className="context-menu-host" ref={menuRef}>
+            <div className={CONTEXT_MENU_HOST_CLASS} data-context-menu-host="" ref={menuRef}>
                 {menuOpen ? (
                     <div
-                        className="floating-menu-panel min-w-36"
+                        className={CONTEXT_MENU_PANEL_CLASS}
                         ref={floatingMenu.panelRef}
                         style={floatingMenu.style}
                     >
                         <button
+                            className={MENU_BUTTON_CLASS}
                             type="button"
                             onClick={() => {
                                 setMenuOpen(false);
@@ -124,6 +126,7 @@ export function QueuedEntryRow({
                             </MenuIconLabel>
                         </button>
                         <button
+                            className={MENU_BUTTON_CLASS}
                             type="button"
                             onClick={() => {
                                 setMenuOpen(false);
@@ -136,6 +139,7 @@ export function QueuedEntryRow({
                             </MenuIconLabel>
                         </button>
                         <button
+                            className={MENU_BUTTON_CLASS}
                             type="button"
                             onClick={() => {
                                 setMenuOpen(false);
@@ -147,7 +151,7 @@ export function QueuedEntryRow({
                             </MenuIconLabel>
                         </button>
                         <button
-                            className="danger menu-danger"
+                            className={MENU_DANGER_BUTTON_CLASS}
                             type="button"
                             onClick={() => {
                                 setMenuOpen(false);

@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AVATAR_CLASS, LINK_BUTTON_CLASS, PAGE_HEADER_CLASS, PAGE_NAV_CLASS, PAGE_NAV_LINK_CLASS, POSTER_CLASS, PROFILE_PAGE_CLASS, PROFILE_PANEL_CLASS, SECTION_HEADING_CLASS, STANDALONE_PANEL_CLASS } from "@/components/ui/classes";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ToastStack, type AppToast } from "@/components/ui/ToastStack";
@@ -129,11 +130,11 @@ function PublicProfileRoute() {
 
     if (!profileData) {
         return (
-            <main className="public-profile-page">
+            <main className={PROFILE_PAGE_CLASS}>
                 <PublicProfileTopbar signedIn={false} />
-                <section className="standalone-panel">
+                <section className={STANDALONE_PANEL_CLASS}>
                     <h1>Profile Not Found</h1>
-                    <p className="muted">This profile is private or does not exist.</p>
+                    <p className="text-muted">This profile is private or does not exist.</p>
                 </section>
             </main>
         );
@@ -142,11 +143,11 @@ function PublicProfileRoute() {
     const { profile, viewer } = profileData;
 
     return (
-        <main className="public-profile-page">
+        <main className={PROFILE_PAGE_CLASS}>
             <ToastStack toasts={toasts} onDismiss={dismissToast} />
             <PublicProfileTopbar signedIn={viewer.isSignedIn} />
 
-            <section className="public-profile-header">
+            <section className={`${PROFILE_PANEL_CLASS} flex items-center justify-end gap-[0.8rem] [&_h1]:m-0 [&_h1]:leading-[1.1]`}>
                 <PublicProfileAvatar
                     imageKey={profile.imageKey}
                     isSelf={viewer.isSelf}
@@ -154,16 +155,16 @@ function PublicProfileRoute() {
                 />
                 <div>
                     <h1>{profile.name}</h1>
-                    <p className="muted">
+                    <p className="text-muted">
                         @{profile.slug}
                         {!viewer.isSelf && viewer.isSignedIn
                             ? ` · ${followRelationLabel(viewer.relationState)}`
                             : null}
                     </p>
                 </div>
-                <div className="public-profile-actions">
+                <div className="flex justify-end">
                     {viewer.isSelf ? (
-                        <Link className="small-button" to="/profile">Edit Profile</Link>
+                        <Link className={LINK_BUTTON_CLASS} to="/profile">Edit Profile</Link>
                     ) : viewer.isSignedIn ? (
                         <button
                             disabled={followSaving}
@@ -173,30 +174,34 @@ function PublicProfileRoute() {
                             {followSaving ? "Saving..." : followButtonLabel(viewer.relationState)}
                         </button>
                     ) : (
-                        <Link className="small-button" to="/">Sign In</Link>
+                        <Link className={LINK_BUTTON_CLASS} to="/">Sign In</Link>
                     )}
                 </div>
             </section>
 
             {profileData.categories.length > 0 ? (
-                <div className="public-profile-body">
-                    <nav className="public-category-sidebar" aria-label="Categories">
+                <div className="m-0 grid w-full grid-cols-[220px_minmax(0,1fr)] items-start overflow-hidden rounded-panel border border-line bg-panel shadow-panel max-[820px]:grid-cols-1">
+                    <nav className="sticky top-0 grid max-h-screen content-start gap-[2px] overflow-y-auto border-r border-line bg-sidebar p-[0.65rem] max-[820px]:static max-[820px]:flex max-[820px]:max-h-none max-[820px]:flex-row max-[820px]:flex-nowrap max-[820px]:gap-[4px] max-[820px]:overflow-x-auto max-[820px]:overflow-y-hidden max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:p-2" aria-label="Categories">
                         {profileData.categories.map((category) => {
                             const isActive = category.id === selectedCategoryId;
                             return (
                                 <button
-                                    className={`public-category-tab${isActive ? " active" : ""}`}
+                                    className={`w-full rounded-control border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-line enabled:hover:bg-panel-alt max-[820px]:w-auto max-[820px]:flex-none ${
+                                        isActive
+                                            ? "border-accent bg-selected-panel font-bold text-accent-strong"
+                                            : "border-transparent bg-transparent"
+                                    }`}
                                     key={category.id}
                                     type="button"
                                     aria-current={isActive ? "true" : undefined}
                                     onClick={() => setSelectedCategoryId(category.id)}
                                 >
-                                    <span className="public-category-tab-name">{category.name}</span>
+                                    <span className="block min-w-0 truncate text-[0.92rem]">{category.name}</span>
                                 </button>
                             );
                         })}
                     </nav>
-                    <div className="public-category-panel">
+                    <div className="min-w-0 p-4">
                         {(() => {
                             const category = profileData.categories.find(
                                 (c) => c.id === selectedCategoryId
@@ -222,16 +227,16 @@ function PublicProfileRoute() {
 
 function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
     return (
-        <header className="profile-page-header">
+        <header className={PAGE_HEADER_CLASS}>
             <BrandLink />
-            <nav className="profile-page-nav" aria-label="Public profile navigation">
+            <nav className={PAGE_NAV_CLASS} aria-label="Public profile navigation">
                 {signedIn ? (
                     <>
-                        <Link to="/">Rankings</Link>
-                        <Link to="/profile">Profile</Link>
+                        <Link className={PAGE_NAV_LINK_CLASS} to="/">Rankings</Link>
+                        <Link className={PAGE_NAV_LINK_CLASS} to="/profile">Profile</Link>
                     </>
                 ) : (
-                    <Link to="/">Sign In</Link>
+                    <Link className={PAGE_NAV_LINK_CLASS} to="/">Sign In</Link>
                 )}
             </nav>
         </header>
@@ -248,12 +253,12 @@ function PublicCategory({
     const entries = useMemo(() => orderEntries(category.entries), [category.entries]);
 
     return (
-        <section className="public-ranking-section">
-            <div className="public-category-panel-heading">
+        <section className="grid gap-[0.8rem]">
+            <div className={SECTION_HEADING_CLASS}>
                 <h2>{category.name}</h2>
-                <span className="muted">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
+                <span className="text-muted">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
             </div>
-            <div className="public-entry-list">
+            <div className="grid gap-[0.65rem]">
                 {entries.map((entry) => (
                     <PublicEntryRow
                         entry={entry}
@@ -274,8 +279,8 @@ function PublicEntryRow({
     usePrivateImages: boolean;
 }) {
     return (
-        <article className="public-entry-row">
-            <span className="public-rank-number">#{entry.rankPosition + 1}</span>
+        <article className="grid grid-cols-[3.2rem_5rem_minmax(0,1fr)] items-center gap-[0.65rem] rounded-panel border border-line bg-subtle-panel px-[0.55rem] py-[0.65rem]">
+            <span className="font-extrabold text-muted">#{entry.rankPosition + 1}</span>
             <PublicEntryPoster entry={entry} usePrivateImages={usePrivateImages} />
             <div>
                 <strong>{entry.name}</strong>
@@ -300,15 +305,15 @@ function PublicEntryPoster({
 
     if (!src) {
         return (
-            <span className="public-entry-poster image-placeholder">
-                <small>{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
+            <span className={`${POSTER_CLASS} grid w-20 content-center place-items-center gap-[0.35rem] overflow-hidden rounded-control border border-line p-1`}>
+                <small className="text-[0.95rem] leading-[1.25] text-muted">{isNoImageKey(entry.imageKey) ? "No image saved" : "No image"}</small>
             </span>
         );
     }
 
     return (
-        <span className="public-entry-poster">
-            <img alt="" decoding="async" loading="lazy" src={src} onError={() => setFailed(true)} />
+        <span className={`${POSTER_CLASS} block w-20 overflow-hidden rounded-control border border-line`}>
+            <img className="block h-full w-full object-cover" alt="" decoding="async" loading="lazy" src={src} onError={() => setFailed(true)} />
         </span>
     );
 }
@@ -330,7 +335,7 @@ function PublicProfileAvatar({
         : null;
 
     return (
-        <span className="profile-avatar public-profile-avatar" aria-hidden="true">
+        <span className={`${AVATAR_CLASS} size-16`} aria-hidden="true">
             {src ? <img alt="" decoding="async" src={src} onError={() => setFailed(true)} /> : null}
         </span>
     );

@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { STATUS_CLASS } from "@/components/ui/classes";
+import { PRIMARY_BUTTON_CLASS, STATUS_CLASS } from "@/components/ui/classes";
 import { signIn, signUp } from "@/lib/auth-client";
 
 type AuthMode = "signin" | "signup" | "reset-request";
@@ -8,7 +8,7 @@ type AuthMode = "signin" | "signup" | "reset-request";
 const FORM_CLASS = "grid gap-[0.95rem]";
 const FIELD_CLASS = "grid gap-[0.4rem] text-[0.92rem] font-bold text-muted";
 const FIELD_INPUT_CLASS = "min-h-12 font-medium text-ink";
-const SUBMIT_CLASS = "primary mt-1 min-h-[3.15rem] font-extrabold";
+const SUBMIT_CLASS = `${PRIMARY_BUTTON_CLASS} mt-1 min-h-[3.15rem] font-extrabold`;
 const LINK_BUTTON_CLASS = "border-0 bg-transparent p-0 font-extrabold text-accent enabled:hover:text-accent-strong enabled:hover:underline";
 
 export function AuthPage({

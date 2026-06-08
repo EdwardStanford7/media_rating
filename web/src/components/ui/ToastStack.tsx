@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { SMALL_BUTTON_CLASS } from "@/components/ui/classes";
 import { IconButton } from "@/components/ui/Icon";
 
 export interface AppToast {
@@ -49,7 +50,7 @@ export function ToastStack({
                     <span className="min-w-0">{toast.message}</span>
                     {toast.actionLabel && toast.onAction ? (
                         <button
-                            className="small-button whitespace-nowrap"
+                            className={`${SMALL_BUTTON_CLASS} whitespace-nowrap`}
                             disabled={activeActionId === toast.id}
                             type="button"
                             onClick={async () => {
