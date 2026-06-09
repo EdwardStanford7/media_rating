@@ -1585,7 +1585,13 @@ export function Dashboard({
                             items={orderedEntries.map((entry) => entry.id)}
                             strategy={rectSortingStrategy}
                         >
-                            <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,16.5rem),1fr))] gap-3">
+                            <section
+                                className={`grid min-w-0 gap-3 ${
+                                    entrySearch.trim()
+                                        ? "grid-cols-[repeat(auto-fill,minmax(min(100%,16.5rem),1fr))]"
+                                        : "grid-cols-[repeat(auto-fit,minmax(min(100%,16.5rem),1fr))]"
+                                }`}
+                            >
                                 {selectedCategory ? orderedEntries.map((entry) => (
                                     <EntryCard
                                         entry={entry}
