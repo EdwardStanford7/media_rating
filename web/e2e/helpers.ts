@@ -13,6 +13,24 @@ export async function gotoApp(page: Page, path = "/") {
     await page.waitForSelector("html[data-hydrated]", { timeout: 15_000 });
 }
 
+/** Opens the account menu and waits for its content to be usable. */
+export async function openAccountMenu(page: Page) {
+    const accountButton = page.getByRole("button", { name: "Account menu" });
+    const signOutItem = page.getByRole("menuitem", { name: "Sign Out", exact: true });
+    if (await signOutItem.isVisible().catch(() => false)) {
+        return;
+    }
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        await accountButton.click();
+        if (await signOutItem.waitFor({ state: "visible", timeout: 1_000 }).then(() => true).catch(() => false)) {
+            return;
+        }
+    }
+
+    await expect(signOutItem).toBeVisible();
+}
+
 export interface SeedEntry {
     name: string;
     imageKey?: string | null;

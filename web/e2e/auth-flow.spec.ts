@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { getAuthUrl, gotoApp, seedUsers, signInViaApi, TEST_PASSWORD } from "./helpers";
+import { getAuthUrl, gotoApp, openAccountMenu, seedUsers, signInViaApi, TEST_PASSWORD } from "./helpers";
 
 test.describe("Auth flows", () => {
     test("marketing landing shows for logged-out visitors at /", async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe("Auth flows", () => {
         await gotoApp(page);
         await expect(page.getByText("Create Your First Category")).toBeVisible();
 
-        await page.getByRole("button", { name: "Account menu" }).click();
+        await openAccountMenu(page);
         await page.getByRole("menuitem", { name: "Sign Out" }).click();
 
         await expect(

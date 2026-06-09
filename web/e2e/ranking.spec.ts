@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { gotoApp, seedUsers, signInViaApi, winMatchups } from "./helpers";
+import { gotoApp, openAccountMenu, seedUsers, signInViaApi, winMatchups } from "./helpers";
 
 const RANKER = {
     email: "ranker@e2e.test",
@@ -106,14 +106,14 @@ test.describe("Ranking", () => {
         await page.getByPlaceholder("New entry").press("Enter");
         await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
 
-        await page.getByRole("button", { name: "Account menu" }).click();
+        await openAccountMenu(page);
         await page.getByRole("menuitem", { name: "Profile" }).click();
         await expect(page.getByRole("heading", { name: "Cancel active ranking?" })).toBeVisible();
         await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
         await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible();
         await expect(page).toHaveURL("/");
 
-        await page.getByRole("button", { name: "Account menu" }).click();
+        await openAccountMenu(page);
         await page.getByRole("menuitem", { name: "Profile" }).click();
         await page.getByRole("button", { name: "Cancel and Open Profile" }).click();
         await expect(page).toHaveURL("/profile");

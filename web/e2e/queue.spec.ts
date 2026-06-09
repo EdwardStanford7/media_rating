@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./base";
-import { gotoApp, seedUsers, serverFnResponse, signInViaApi, TEST_PASSWORD, winMatchups } from "./helpers";
+import { gotoApp, openAccountMenu, seedUsers, serverFnResponse, signInViaApi, TEST_PASSWORD, winMatchups } from "./helpers";
 
 const QUINN = {
     email: "quinn@e2e.test",
@@ -15,20 +15,12 @@ async function openQueueSettings(page: Page) {
         return;
     }
 
-    const accountButton = page.getByRole("button", { name: "Account menu" });
-    const settingsItem = page.getByRole("menuitem", { name: "Settings" });
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-        if (!(await settingsItem.isVisible().catch(() => false))) {
-            await accountButton.click();
-        }
-        if (await settingsItem.isVisible().catch(() => false)) {
-            await settingsItem.click();
-            await expect(queueToggle).toBeVisible();
-            return;
-        }
-    }
-
+    const settingsItem = page.getByRole("menuitem", { name: "Settings", exact: true });
+    await openAccountMenu(page);
     await expect(settingsItem).toBeVisible();
+    await settingsItem.hover();
+    await settingsItem.click();
+    await expect(queueToggle).toBeVisible();
 }
 
 /** Closes the account menu by clicking outside of it. */
@@ -88,7 +80,7 @@ test.describe("Queue", () => {
         await expect(page.getByText(/Queued Dune for ranking on/)).toBeVisible();
         await expect(page.getByText("1 queued")).toBeVisible();
         await expect(page.getByText("1 ready")).toBeVisible();
-        await page.getByRole("button", { name: "Close" }).click();
+        await page.getByRole("button", { name: "Close", exact: true }).click();
 
         await queueItem(page, "Dune").click({ button: "right" });
         await page.getByRole("menuitem", { name: "Rank Now" }).click();
