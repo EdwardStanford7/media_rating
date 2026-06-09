@@ -47,7 +47,13 @@ import {
     type DropPlacement
 } from "@/lib/dragReorder";
 import { redirectIfUnauthorized } from "@/lib/errors";
-import { currentDateTimestamp, dateInputToTimestamp, errorMessage, formatDateTime } from "@/lib/format";
+import {
+    currentDateTimestamp,
+    dateInputToTimestamp,
+    errorMessage,
+    formatDateTime,
+    isRequestLoadFailure
+} from "@/lib/format";
 import { shouldPromptForImage } from "@/lib/images";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type { ImagePickerTarget } from "@/lib/posterImage";
@@ -225,6 +231,9 @@ export function Dashboard({
 
     function setActiveBinarySessionId(sessionId: string | null) {
         activeSessionIdRef.current = sessionId;
+        if (sessionId) {
+            setEntrySearch("");
+        }
         setActiveSessionIdState(sessionId);
     }
 
@@ -299,7 +308,9 @@ export function Dashboard({
             try {
                 await refresh();
             } catch (error) {
-                setErrorMessage(error);
+                if (!redirectIfUnauthorized(error) && !isRequestLoadFailure(error)) {
+                    setErrorMessage(error);
+                }
             } finally {
                 lastResumeRefreshAtRef.current = Date.now();
                 resumeRefreshInFlightRef.current = false;

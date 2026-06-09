@@ -33,6 +33,14 @@ export function formatDateTime(timestamp: number, timeZone?: "UTC") {
     }).format(new Date(timestamp));
 }
 
+export function isRequestLoadFailure(error: unknown) {
+    if (!(error instanceof TypeError)) {
+        return false;
+    }
+
+    return /^(load failed|failed to fetch|networkerror|fetch failed)$/i.test(error.message.trim());
+}
+
 export function errorMessage(error: unknown) {
     if (
         typeof DOMException !== "undefined" &&
@@ -40,6 +48,10 @@ export function errorMessage(error: unknown) {
         error.name === "AbortError"
     ) {
         return "Image search timed out";
+    }
+
+    if (isRequestLoadFailure(error)) {
+        return "Could not reach the server. Please try again.";
     }
 
     return error instanceof Error ? error.message : String(error);
