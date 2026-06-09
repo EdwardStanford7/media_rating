@@ -2,10 +2,27 @@ import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CopyPlus, ListOrdered } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+    AlertDialog,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/input";
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from "@/components/ui/select";
 import { showToast } from "@/lib/toast";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { followButtonLabel, followRelationLabel } from "@/lib/follows";
@@ -23,6 +40,7 @@ import type { CategoryWithEntries, Entry, PublicProfileData } from "@/lib/types"
 
 const POSTER_CLASS =
     "aspect-[4/5] bg-[image:linear-gradient(135deg,var(--poster-start),var(--poster-end))] text-center text-muted-foreground";
+type CopyMode = "new" | "merge";
 
 export const Route = createFileRoute("/u/$profileSlug")({
     loader: async ({ params }) => {
@@ -54,6 +72,10 @@ function PublicProfileRoute() {
     const [profileData, setProfileData] = useState<PublicProfileData | null>(loaderData);
     const [followSaving, setFollowSaving] = useState(false);
     const [copyingCategoryId, setCopyingCategoryId] = useState<string | null>(null);
+    const [copyDialogCategory, setCopyDialogCategory] = useState<CategoryWithEntries | null>(null);
+    const [copyMode, setCopyMode] = useState<CopyMode>("new");
+    const [copyCategoryName, setCopyCategoryName] = useState("");
+    const [copyTargetCategoryId, setCopyTargetCategoryId] = useState("");
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
         loaderData?.categories[0]?.id ?? null
     );
@@ -61,6 +83,7 @@ function PublicProfileRoute() {
     useEffect(() => {
         setProfileData(loaderData);
         setSelectedCategoryId(loaderData?.categories[0]?.id ?? null);
+        setCopyDialogCategory(null);
     }, [loaderData]);
 
     async function handleFollowAction() {
@@ -118,15 +141,68 @@ function PublicProfileRoute() {
         }
     }
 
-    async function handleCopyCategory(category: CategoryWithEntries) {
+    function openCopyDialog(category: CategoryWithEntries) {
         if (!profileData || !profileData.viewer.isSignedIn || profileData.viewer.isSelf) {
             return;
         }
 
-        setCopyingCategoryId(category.id);
+        setCopyDialogCategory(category);
+        setCopyMode("new");
+        setCopyCategoryName(category.name);
+        setCopyTargetCategoryId(profileData.viewer.categories[0]?.id ?? "");
+    }
+
+    async function handleCopyCategory() {
+        if (!profileData || !copyDialogCategory || !profileData.viewer.isSignedIn || profileData.viewer.isSelf) {
+            return;
+        }
+
+        const cleanCategoryName = copyCategoryName.trim();
+        if (copyMode === "new") {
+            if (!cleanCategoryName) {
+                showToast("Category name is required", "danger");
+                return;
+            }
+            if (profileData.viewer.categories.some((category) => category.name === cleanCategoryName)) {
+                showToast("That category name already exists", "danger");
+                return;
+            }
+        }
+
+        if (copyMode === "merge" && !copyTargetCategoryId) {
+            showToast("Choose a category to merge into", "danger");
+            return;
+        }
+
+        setCopyingCategoryId(copyDialogCategory.id);
 
         try {
-            const result = await copyPublicCategoryToQueue({ data: { categoryId: category.id } });
+            const result = await copyPublicCategoryToQueue({
+                data: copyMode === "new"
+                    ? {
+                        sourceCategoryId: copyDialogCategory.id,
+                        mode: "new",
+                        categoryName: cleanCategoryName
+                    }
+                    : {
+                        sourceCategoryId: copyDialogCategory.id,
+                        mode: "merge",
+                        targetCategoryId: copyTargetCategoryId
+                    }
+            });
+            if (copyMode === "new") {
+                setProfileData({
+                    ...profileData,
+                    viewer: {
+                        ...profileData.viewer,
+                        categories: [
+                            ...profileData.viewer.categories,
+                            { id: result.categoryId, name: result.categoryName }
+                        ]
+                    }
+                });
+            }
+            setCopyDialogCategory(null);
             showToast(
                 `Copied ${result.copiedCount} ${result.copiedCount === 1 ? "entry" : "entries"} to ${result.categoryName}.`,
                 "success"
@@ -203,11 +279,10 @@ function PublicProfileRoute() {
                             const isActive = category.id === selectedCategoryId;
                             return (
                                 <button
-                                    className={`w-full rounded-sm border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-border enabled:hover:bg-secondary max-[820px]:w-auto max-[820px]:flex-none ${
-                                        isActive
+                                    className={`w-full rounded-sm border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-border enabled:hover:bg-secondary max-[820px]:w-auto max-[820px]:flex-none ${isActive
                                             ? "border-primary bg-accent font-bold text-accent-strong"
                                             : "border-transparent bg-transparent"
-                                    }`}
+                                        }`}
                                     key={category.id}
                                     type="button"
                                     aria-current={isActive ? "true" : undefined}
@@ -230,7 +305,7 @@ function PublicProfileRoute() {
                                     copyDisabled={copyingCategoryId === category.id}
                                     onCopy={
                                         viewer.isSignedIn && !viewer.isSelf
-                                            ? () => void handleCopyCategory(category)
+                                            ? () => openCopyDialog(category)
                                             : undefined
                                     }
                                     usePrivateImages={viewer.isSelf}
@@ -244,6 +319,25 @@ function PublicProfileRoute() {
                     Shared lists will appear here.
                 </EmptyState>
             )}
+
+            <CopyCategoryDialog
+                category={copyDialogCategory}
+                categoryName={copyCategoryName}
+                mode={copyMode}
+                saving={Boolean(copyingCategoryId)}
+                targetCategories={viewer.categories}
+                targetCategoryId={copyTargetCategoryId}
+                onCancel={() => setCopyDialogCategory(null)}
+                onCategoryNameChange={setCopyCategoryName}
+                onModeChange={(mode) => {
+                    setCopyMode(mode);
+                    if (mode === "merge" && !copyTargetCategoryId) {
+                        setCopyTargetCategoryId(viewer.categories[0]?.id ?? "");
+                    }
+                }}
+                onSubmit={() => void handleCopyCategory()}
+                onTargetCategoryIdChange={setCopyTargetCategoryId}
+            />
         </main>
     );
 }
@@ -263,6 +357,139 @@ function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
                 )}
             </nav>
         </header>
+    );
+}
+
+function CopyCategoryDialog({
+    category,
+    categoryName,
+    mode,
+    saving,
+    targetCategories,
+    targetCategoryId,
+    onCancel,
+    onCategoryNameChange,
+    onModeChange,
+    onSubmit,
+    onTargetCategoryIdChange
+}: {
+    category: CategoryWithEntries | null;
+    categoryName: string;
+    mode: CopyMode;
+    saving: boolean;
+    targetCategories: PublicProfileData["viewer"]["categories"];
+    targetCategoryId: string;
+    onCancel: () => void;
+    onCategoryNameChange: (name: string) => void;
+    onModeChange: (mode: CopyMode) => void;
+    onSubmit: () => void;
+    onTargetCategoryIdChange: (categoryId: string) => void;
+}) {
+    if (!category) {
+        return null;
+    }
+
+    const cleanCategoryName = categoryName.trim();
+    const duplicateCategoryName = targetCategories.some(
+        (targetCategory) => targetCategory.name === cleanCategoryName
+    );
+    const submitDisabled = saving ||
+        (mode === "new" && (!cleanCategoryName || duplicateCategoryName)) ||
+        (mode === "merge" && !targetCategoryId);
+
+    return (
+        <AlertDialog
+            open
+            onOpenChange={(open) => {
+                if (!open && !saving) {
+                    onCancel();
+                }
+            }}
+        >
+            <AlertDialogContent className="max-w-[min(calc(100vw-2rem),30rem)] sm:max-w-[30rem]">
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Copy {category.name}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Queue these entries for your own ranking.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <div className="grid gap-4">
+                    <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-muted p-1">
+                        <button
+                            className={`rounded-sm px-3 py-2 text-sm font-semibold transition-colors ${mode === "new"
+                                    ? "bg-background text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                            type="button"
+                            aria-pressed={mode === "new"}
+                            onClick={() => onModeChange("new")}
+                        >
+                            New category
+                        </button>
+                        <button
+                            className={`rounded-sm px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${mode === "merge"
+                                    ? "bg-background text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                            type="button"
+                            aria-pressed={mode === "merge"}
+                            disabled={targetCategories.length === 0}
+                            onClick={() => onModeChange("merge")}
+                        >
+                            Merge
+                        </button>
+                    </div>
+
+                    {mode === "new" ? (
+                        <label className="grid gap-1.5 text-sm font-semibold">
+                            Category name
+                            <Input
+                                aria-invalid={duplicateCategoryName || !cleanCategoryName}
+                                autoFocus
+                                value={categoryName}
+                                onChange={(event) => onCategoryNameChange(event.currentTarget.value)}
+                            />
+                            {duplicateCategoryName ? (
+                                <span className="text-xs font-medium text-destructive">
+                                    You already have a category with that name.
+                                </span>
+                            ) : null}
+                        </label>
+                    ) : (
+                        <label className="grid gap-1.5 text-sm font-semibold">
+                            Existing category
+                            <Select
+                                value={targetCategoryId}
+                                onValueChange={onTargetCategoryIdChange}
+                            >
+                                <SelectTrigger aria-label="Existing category" className="w-full">
+                                    <SelectValue placeholder="Choose category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        {targetCategories.map((targetCategory) => (
+                                            <SelectItem key={targetCategory.id} value={targetCategory.id}>
+                                                {targetCategory.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </label>
+                    )}
+                </div>
+
+                <AlertDialogFooter>
+                    <Button disabled={saving} variant="outline" type="button" onClick={onCancel}>
+                        Cancel
+                    </Button>
+                    <Button disabled={submitDisabled} type="button" onClick={onSubmit}>
+                        {saving ? "Copying..." : "Copy List"}
+                    </Button>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
     );
 }
 
@@ -294,7 +521,7 @@ function PublicCategory({
                             onClick={onCopy}
                         >
                             <CopyPlus data-icon="inline-start" />
-                            <span>{copyDisabled ? "Copying..." : "Copy to Queue"}</span>
+                            <span>{copyDisabled ? "Copying..." : "Copy List"}</span>
                         </Button>
                     ) : null}
                 </div>

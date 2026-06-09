@@ -56,12 +56,15 @@ test.describe("Profiles", () => {
         await expect(page.getByRole("heading", { name: "Edit Photo" })).toBeHidden();
     });
 
-    test("signed-in viewers can copy a shared category to their queue", async ({
+    test("signed-in viewers can copy a shared category into a new category", async ({
         page: alicePage,
         context: aliceContext,
         browser
     }) => {
-        await seedUsers([ALICE, BOB]);
+        await seedUsers([
+            ALICE,
+            { ...BOB, categories: [{ name: "Movies", entries: [] }] }
+        ]);
         await signInViaApi(aliceContext, ALICE.email);
 
         await gotoApp(alicePage, "/profile");
@@ -77,13 +80,72 @@ test.describe("Profiles", () => {
         await signInViaApi(bobContext, BOB.email);
         await gotoApp(bobPage, `/u/${aliceSlug}`);
 
-        await bobPage.getByRole("button", { name: "Copy to Queue" }).click();
-        await expect(bobPage.getByText("Copied 2 entries to Movies.")).toBeVisible({ timeout: 15_000 });
+        await bobPage.getByRole("button", { name: "Copy List" }).click();
+        const dialog = bobPage.getByRole("alertdialog", { name: "Copy Movies" });
+        await expect(dialog.getByText("You already have a category with that name.")).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "Copy List" })).toBeDisabled();
+        await dialog.getByLabel("Category name").fill("Alice Movies");
+        await dialog.getByRole("button", { name: "Copy List" }).click();
+        await expect(bobPage.getByText("Copied 2 entries to Alice Movies.")).toBeVisible({ timeout: 15_000 });
 
         await gotoApp(bobPage);
-        await expect(bobPage.getByRole("heading", { name: "Movies" })).toBeVisible();
+        await bobPage.getByRole("button", { name: "Alice Movies" }).click();
+        await expect(bobPage.getByRole("heading", { name: "Alice Movies" })).toBeVisible();
         await expect(bobPage.getByText("2 queued")).toBeVisible();
         await expect(bobPage.getByText("2 ready")).toBeVisible();
+        await expect(bobPage.getByText("Arrival").first()).toBeVisible();
+        await expect(bobPage.getByText("Dune").first()).toBeVisible();
+
+        await bobContext.close();
+    });
+
+    test("signed-in viewers can merge a shared category into an existing category", async ({
+        page: alicePage,
+        context: aliceContext,
+        browser
+    }) => {
+        await seedUsers([
+            ALICE,
+            {
+                ...BOB,
+                categories: [
+                    { name: "Watchlist", entries: [] },
+                    { name: "Movies", entries: ["Arrival"] }
+                ]
+            }
+        ]);
+        await signInViaApi(aliceContext, ALICE.email);
+
+        await gotoApp(alicePage, "/profile");
+        const aliceSlug = await readOwnSlug(alicePage);
+        await alicePage.getByLabel("Public profile").check();
+        await alicePage.getByRole("button", { name: "Save Profile" }).click();
+        await expect(alicePage.getByText("Profile saved.")).toBeVisible();
+        await alicePage.getByRole("checkbox", { name: /Movies/ }).click();
+        await expect(alicePage.getByText("Profile sharing saved.").first()).toBeVisible();
+
+        const bobContext = await browser.newContext();
+        const bobPage = await bobContext.newPage();
+        await signInViaApi(bobContext, BOB.email);
+        await gotoApp(bobPage, `/u/${aliceSlug}`);
+
+        await bobPage.getByRole("button", { name: "Copy List" }).click();
+        const dialog = bobPage.getByRole("alertdialog", { name: "Copy Movies" });
+        await dialog.getByRole("button", { name: "Merge" }).click();
+        await dialog.getByLabel("Existing category").click();
+        await bobPage.getByRole("option", { name: "Movies" }).click();
+        await dialog.getByRole("button", { name: "Copy List" }).click();
+        await expect(bobPage.getByText("That entry already exists in this category")).toBeVisible();
+
+        await dialog.getByLabel("Existing category").click();
+        await bobPage.getByRole("option", { name: "Watchlist" }).click();
+        await dialog.getByRole("button", { name: "Copy List" }).click();
+        await expect(bobPage.getByText("Copied 2 entries to Watchlist.")).toBeVisible({ timeout: 15_000 });
+
+        await gotoApp(bobPage);
+        await bobPage.getByRole("button", { name: "Watchlist" }).click();
+        await expect(bobPage.getByRole("heading", { name: "Watchlist" })).toBeVisible();
+        await expect(bobPage.getByText("2 queued")).toBeVisible();
         await expect(bobPage.getByText("Arrival").first()).toBeVisible();
         await expect(bobPage.getByText("Dune").first()).toBeVisible();
 

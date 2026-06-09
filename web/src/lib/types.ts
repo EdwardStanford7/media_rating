@@ -109,6 +109,11 @@ export interface PublicProfileSummary {
     relationState: FollowRelationState;
 }
 
+export interface ProfileCopyTargetCategory {
+    id: string;
+    name: string;
+}
+
 export interface PublicProfileData {
     profile: PublicProfileSummary;
     categories: CategoryWithEntries[];
@@ -116,6 +121,7 @@ export interface PublicProfileData {
         isSignedIn: boolean;
         isSelf: boolean;
         relationState: FollowRelationState;
+        categories: ProfileCopyTargetCategory[];
     };
 }
 
