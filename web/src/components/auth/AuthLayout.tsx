@@ -22,9 +22,9 @@ export function AuthLayout({
       <div className="grid w-[min(1060px,100%)] min-h-[min(720px,calc(100vh-2rem))] grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] overflow-hidden rounded-2xl border border-border bg-card shadow-floating max-[820px]:min-h-screen max-[820px]:grid-cols-1 max-[820px]:rounded-none max-[820px]:border-0">
         <section
           aria-label="Goldshelf"
-          className="relative isolate grid min-h-168 content-between overflow-hidden bg-[linear-gradient(180deg,rgba(19,12,42,0.04),rgba(19,12,42,0.58)),url(/auth-hero.svg)] bg-cover bg-center bg-no-repeat p-[clamp(1.5rem,4vw,3rem)] text-white after:absolute after:inset-0 after:-z-10 after:bg-[linear-gradient(135deg,rgba(87,72,191,0.1),rgba(14,8,30,0.68))] after:content-[''] max-[820px]:min-h-88"
+          className="relative isolate grid min-h-168 content-between overflow-hidden bg-[linear-gradient(180deg,rgba(39,25,8,0.02),rgba(39,25,8,0.58)),url(/auth-hero.svg)] bg-cover bg-center bg-no-repeat p-[clamp(1.5rem,4vw,3rem)] text-white after:absolute after:inset-0 after:-z-10 after:bg-[linear-gradient(135deg,rgba(183,121,23,0.14),rgba(40,27,10,0.7))] after:content-[''] max-[820px]:min-h-88"
         >
-          <h1 className="m-0 self-start text-[clamp(3.25rem,8vw,6.8rem)] leading-[0.9] tracking-normal text-[#f3c65f] [text-shadow:0_10px_30px_rgba(0,0,0,0.28)]">
+          <h1 className="m-0 self-start text-[clamp(3.25rem,8vw,6.8rem)] leading-[0.9] tracking-normal text-gold-strong [text-shadow:0_10px_30px_rgba(0,0,0,0.32)]">
             Goldshelf
           </h1>
           <p className="m-0 max-w-md self-end text-[clamp(1.45rem,3vw,2.1rem)] leading-[1.14] font-bold text-[rgba(255,255,255,0.88)]">

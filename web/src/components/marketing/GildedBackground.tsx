@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 /*
  * A calm WebGL atmosphere for the marketing page: a slow domain-warped field
- * that drifts between deep ink, aubergine, and a soft gold pool. No
+ * that drifts between warm ink, umber, and a soft gold pool. No
  * dependencies (raw WebGL1 for compatibility). Two deliberate choices keep it
  * smooth rather than glitchy: there is no per-frame grain in the shader (a
  * static CSS grain overlay supplies texture instead, so nothing flickers), and
@@ -58,12 +58,12 @@ void main() {
     );
     float n = fbm(p + 1.3 * r + 0.22 * t);
 
-    // Low-contrast palette anchored near the theme's dark aubergine.
-    vec3 base = vec3(0.055, 0.043, 0.094);
-    vec3 plum = vec3(0.140, 0.078, 0.185);
+    // Low-contrast palette anchored near the theme's warm dark shell.
+    vec3 base = vec3(0.065, 0.046, 0.022);
+    vec3 umber = vec3(0.155, 0.092, 0.036);
     vec3 gold = vec3(0.620, 0.460, 0.180);
 
-    vec3 col = mix(base, plum, smoothstep(0.25, 0.82, n));
+    vec3 col = mix(base, umber, smoothstep(0.25, 0.82, n));
 
     // A soft gold light pool toward the top-right corner.
     float g = smoothstep(0.50, 1.0, n) * smoothstep(1.15, 0.15, distance(uv, vec2(0.86, 0.98)));
@@ -74,9 +74,9 @@ void main() {
     sheen = smoothstep(0.55, 1.0, sheen);
     col += gold * sheen * g * 0.14;
 
-    // A faint cool counter-glow lower-left so the field is not one-sided.
+    // A faint purple counter-glow lower-left so the field is not one-sided.
     float c2 = smoothstep(0.55, 1.0, n) * smoothstep(1.0, 0.1, distance(uv, vec2(0.08, 0.05)));
-    col = mix(col, vec3(0.28, 0.22, 0.46), c2 * 0.18);
+    col = mix(col, vec3(0.24, 0.18, 0.40), c2 * 0.16);
 
     // Stable spatial dither (no time term) defeats banding without flicker.
     float d = hash(gl_FragCoord.xy) - 0.5;
