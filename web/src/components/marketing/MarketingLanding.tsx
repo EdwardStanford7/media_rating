@@ -31,21 +31,21 @@ export function MarketingLanding() {
             <div className="gs-grain" aria-hidden="true" />
 
             <div className="gs-content mx-auto flex min-h-screen w-full max-w-352 flex-col px-[clamp(1.25rem,5vw,4.5rem)] pb-16 pt-7">
-                <header className="gs-rise flex items-center justify-between gap-4" style={{ animationDelay: "0ms" }}>
-                    <span className="inline-flex items-center gap-3 text-[2rem] font-bold tracking-tight">
-                        <img alt="" aria-hidden="true" className="h-9 w-9" src="/favicon.svg" />
+                <header className="gs-rise flex flex-wrap items-center justify-between gap-3" style={{ animationDelay: "0ms" }}>
+                    <span className="inline-flex min-w-0 items-center gap-3 text-[1.55rem] font-bold tracking-tight sm:text-[2rem]">
+                        <img alt="" aria-hidden="true" className="h-8 w-8 sm:h-9 sm:w-9" src="/favicon.svg" />
                         <span className="gs-gold font-display">Goldshelf</span>
                     </span>
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex flex-wrap items-center justify-end gap-2.5">
                         <Link
                             to="/signin"
-                            className="gs-ghost inline-flex h-10 items-center rounded-full px-5 text-sm font-medium"
+                            className="gs-ghost inline-flex h-10 items-center rounded-full px-4 text-sm font-medium sm:px-5"
                         >
                             Sign in
                         </Link>
                         <Link
                             to="/signup"
-                            className="gs-cta inline-flex h-10 items-center gap-1.5 rounded-full px-5 text-sm font-semibold"
+                            className="gs-cta inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold sm:px-5"
                         >
                             Start your shelf
                             <ArrowRight className="size-4" aria-hidden="true" />

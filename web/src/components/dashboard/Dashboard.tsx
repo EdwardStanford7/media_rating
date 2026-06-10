@@ -17,7 +17,7 @@ import {
     rectSortingStrategy,
     verticalListSortingStrategy
 } from "@dnd-kit/sortable";
-import { Library, Search, Swords } from "lucide-react";
+import { Library, Menu, Search, Swords } from "lucide-react";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { BinaryRankPanel } from "@/components/ranking/BinaryRankPanel";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,16 @@ import {
     SelectTrigger,
     SelectValue
 } from "@/components/ui/select";
+import {
+    Sheet,
+    SheetBody,
+    SheetCloseButton,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger
+} from "@/components/ui/sheet";
 import { showActionToast, showToast, type ToastVariant } from "@/lib/toast";
 import { isEditableShortcutTarget, nextPaint } from "@/lib/dom";
 import {
@@ -145,6 +155,7 @@ export function Dashboard({
     const lastResumeRefreshAtRef = useRef(Date.now());
     const resumeRefreshInFlightRef = useRef(false);
     const [entrySearch, setEntrySearch] = useState("");
+    const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
     const [activeSessionId, setActiveSessionIdState] = useState<string | null>(initialActiveSessionId);
     const activeSessionIdRef = useRef<string | null>(initialActiveSessionId);
     const closedBinarySessionIdsRef = useRef<Set<string>>(new Set());
@@ -1284,9 +1295,258 @@ export function Dashboard({
         }
     }
 
+    function selectCategory(categoryId: string, closeDrawer = false) {
+        setSelectedCategoryId(categoryId);
+        if (closeDrawer) {
+            setMobileDrawerOpen(false);
+            scrollMainToTop();
+        }
+    }
+
+    async function handleCreateCategoryFromDrawer(event: FormEvent<HTMLFormElement>) {
+        await handleCreateCategory(event);
+        setMobileDrawerOpen(false);
+        scrollMainToTop();
+    }
+
+    async function handleCreateEntryFromDrawer(event: FormEvent<HTMLFormElement>) {
+        await handleCreateEntry(event);
+        setMobileDrawerOpen(false);
+        scrollMainToTop();
+    }
+
+    async function handleStartQueuedEntryFromDrawer(entry: QueuedEntry) {
+        setMobileDrawerOpen(false);
+        await handleStartQueuedEntry(entry);
+        scrollMainToTop();
+    }
+
+    async function handleStartQueueRankFromDrawer() {
+        setMobileDrawerOpen(false);
+        await handleStartQueueRank();
+        scrollMainToTop();
+    }
+
+    function handleStopQueueRankFromDrawer() {
+        setMobileDrawerOpen(false);
+        handleStopQueueRank();
+    }
+
+    const accountMenuProps = {
+        busy,
+        listLocked: Boolean(activeSessionId),
+        settings: dashboard.queueSettings,
+        onExport: handleExport,
+        onOpenImport: () => setImportToastOpen(true),
+        onOpenProfile: handleOpenProfile,
+        onSaveSettings: handleQueueSettings,
+        onThemeChange: setThemeMode,
+        themeMode,
+        userImage: currentUserImage,
+        userImageVersion: currentUserImageVersion,
+        userName: currentUserName
+    };
+
+    function renderNewCategoryPanel(onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>) {
+        return (
+            <section className={SIDEBAR_PANEL_CLASS}>
+                <strong className="min-w-0 max-w-full">New Category</strong>
+                <form
+                    className="grid min-w-0 gap-[0.7rem] *:max-w-full *:min-w-0"
+                    onSubmit={onSubmit}
+                >
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 max-[720px]:grid-cols-1">
+                        <Input
+                            disabled={busy}
+                            name="name"
+                            placeholder="New category"
+                            required
+                            value={categoryDraftName}
+                            onChange={(event) => setCategoryDraftName(event.target.value)}
+                        />
+                        <Button
+                            size="lg"
+                            disabled={busy || !canCreateCategory}
+                            type="submit"
+                        >
+                            Add
+                        </Button>
+                    </div>
+                    <label className="inline-flex w-fit items-center gap-[0.45rem] text-[0.86rem] text-muted-foreground">
+                        <input
+                            className="w-auto"
+                            disabled={busy}
+                            name="isPublic"
+                            type="checkbox"
+                        />
+                        <span>Show on profile</span>
+                    </label>
+                </form>
+            </section>
+        );
+    }
+
+    function renderCategoryList(closeOnSelect = false) {
+        return (
+            <DndContext
+                sensors={sensors}
+                onDragStart={handleCategoryDragStart}
+                onDragEnd={handleCategoryDragEnd}
+                onDragCancel={handleCategoryDragCancel}
+            >
+                <SortableContext
+                    items={orderedCategories.map((category) => category.id)}
+                    strategy={verticalListSortingStrategy}
+                >
+                    <div className="m-0 grid max-h-[min(30vh,22rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[720px]:max-h-none max-[720px]:overflow-y-visible max-[720px]:pr-0">
+                        {orderedCategories.map((category) => (
+                            <CategoryListItem
+                                category={category}
+                                isActive={category.id === selectedCategory?.id}
+                                key={category.id}
+                                busy={busy}
+                                canDragReorder={canDragReorderCategories}
+                                listLocked={Boolean(activeSessionId)}
+                                onDelete={() => setCategoryDeleteTarget(category)}
+                                onRename={(name) => handleRenameCategory(category.id, name)}
+                                onSelect={() => selectCategory(category.id, closeOnSelect)}
+                            />
+                        ))}
+                        {dashboard.categories.length === 0 ? (
+                            <EmptyState
+                                compact
+                                icon={Library}
+                                title="No Categories"
+                            >
+                                Add a category to start building a ranked list.
+                            </EmptyState>
+                        ) : null}
+                    </div>
+                </SortableContext>
+                <DragOverlay>
+                    {activeCategoryId
+                        ? (() => {
+                            const activeCategory = dashboard.categories.find(
+                                (category) => category.id === activeCategoryId
+                            );
+                            return activeCategory ? (
+                                <CategoryDragOverlay
+                                    category={activeCategory}
+                                    isActive={activeCategory.id === selectedCategory?.id}
+                                />
+                            ) : null;
+                        })()
+                        : null}
+                </DragOverlay>
+            </DndContext>
+        );
+    }
+
+    function renderNewEntryPanel(onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>) {
+        if (!selectedCategory || activeSessionId) {
+            return null;
+        }
+
+        return (
+            <section className={SIDEBAR_PANEL_CLASS}>
+                <strong className="min-w-0 max-w-full">New Entry</strong>
+                <form className="grid max-w-full min-w-0 gap-2" onSubmit={onSubmit}>
+                    <Input
+                        disabled={busy}
+                        name="name"
+                        placeholder="New entry"
+                        required
+                        value={entryDraftName}
+                        onChange={(event) => setEntryDraftName(event.target.value)}
+                    />
+                    <div className="grid min-w-0 grid-cols-[minmax(10.5rem,1fr)_auto] gap-2 max-[720px]:grid-cols-1">
+                        <Select
+                            defaultValue={selectedCategory.id}
+                            disabled={busy}
+                            key={selectedCategory.id}
+                            name="categoryId"
+                        >
+                            <SelectTrigger aria-label="Category" className="w-full min-w-0">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectGroup>
+                                    {dashboard.categories.map((category) => (
+                                        <SelectItem key={category.id} value={category.id}>
+                                            {category.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                            </SelectContent>
+                        </Select>
+                        <Button
+                            size="lg"
+                            disabled={busy || !canCreateEntry}
+                            type="submit"
+                        >
+                            Add
+                        </Button>
+                    </div>
+                </form>
+            </section>
+        );
+    }
+
+    function renderQueuePanel(options: { drawer?: boolean } = {}) {
+        const drawer = Boolean(options.drawer);
+        return (
+            <QueuePanel
+                activeSessionId={activeSessionId}
+                busy={busy}
+                queueRankMode={queueRankMode}
+                queuedEntries={dashboard.queuedEntries}
+                onDelete={handleDeleteQueuedEntry}
+                onPickImage={(entry) => setImagePickerTarget({
+                    kind: "queue",
+                    item: entry,
+                    category: {
+                        id: entry.categoryId,
+                        name: entry.categoryName
+                    }
+                })}
+                onStartQueue={drawer ? handleStartQueueRankFromDrawer : handleStartQueueRank}
+                onRename={handleRenameQueuedEntry}
+                onStart={drawer ? handleStartQueuedEntryFromDrawer : handleStartQueuedEntry}
+                onStopQueue={drawer ? handleStopQueueRankFromDrawer : handleStopQueueRank}
+            />
+        );
+    }
+
+    function renderDesktopSidebar() {
+        return (
+            <>
+                <div className="relative flex items-center justify-between gap-3">
+                    <BrandLink />
+                </div>
+
+                {renderNewCategoryPanel(handleCreateCategory)}
+                {renderCategoryList(false)}
+                {renderNewEntryPanel(handleCreateEntry)}
+                {renderQueuePanel()}
+            </>
+        );
+    }
+
+    function renderMobileDrawerTools() {
+        const hasCategories = dashboard.categories.length > 0;
+        return (
+            <>
+                {hasCategories ? renderCategoryList(true) : renderNewCategoryPanel(handleCreateCategoryFromDrawer)}
+                {renderNewEntryPanel(handleCreateEntryFromDrawer)}
+                {renderQueuePanel({ drawer: true })}
+                {hasCategories ? renderNewCategoryPanel(handleCreateCategoryFromDrawer) : renderCategoryList(true)}
+            </>
+        );
+    }
+
     return (
         <main
-            className="grid h-dvh min-h-screen w-full max-w-full min-w-0 grid-cols-[clamp(300px,24vw,360px)_minmax(0,1fr)] overflow-hidden max-[820px]:h-auto max-[820px]:grid-cols-1 max-[820px]:overflow-visible"
+            className="grid h-dvh min-h-screen w-full max-w-full min-w-0 grid-cols-[clamp(300px,24vw,360px)_minmax(0,1fr)] overflow-hidden max-[720px]:h-auto max-[720px]:min-h-dvh max-[720px]:grid-cols-1 max-[720px]:grid-rows-[auto_minmax(0,1fr)] max-[720px]:overflow-visible"
             aria-busy={busy}
         >
             {busy ? <BusyOverlay label={busyLabel ?? "Working..."} /> : null}
@@ -1336,169 +1596,74 @@ export function Dashboard({
                     Opening Profile will cancel the active ranking session. The current item will return to its previous state.
                 </ConfirmDialog>
             ) : null}
-            <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-border bg-sidebar p-4 max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:overflow-y-visible">
-                <div className="relative flex items-center justify-between gap-3">
-                    <BrandLink />
-                </div>
-
-                <section className={SIDEBAR_PANEL_CLASS}>
-                    <strong className="min-w-0 max-w-full">New Category</strong>
-                    <form
-                        className="grid min-w-0 gap-[0.7rem] *:max-w-full *:min-w-0"
-                        onSubmit={handleCreateCategory}
-                    >
-                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 max-[820px]:grid-cols-1">
-                            <Input
-                                disabled={busy}
-                                name="name"
-                                placeholder="New category"
-                                required
-                                value={categoryDraftName}
-                                onChange={(event) => setCategoryDraftName(event.target.value)}
-                            />
-                            <Button
-                                size="lg"
-                                disabled={busy || !canCreateCategory}
-                                type="submit"
-                            >
-                                Add
-                            </Button>
-                        </div>
-                        <label className="inline-flex w-fit items-center gap-[0.45rem] text-[0.86rem] text-muted-foreground">
-                            <input
-                                className="w-auto"
-                                disabled={busy}
-                                name="isPublic"
-                                type="checkbox"
-                            />
-                            <span>Show on profile</span>
-                        </label>
-                    </form>
-                </section>
-
-                <DndContext
-                    sensors={sensors}
-                    onDragStart={handleCategoryDragStart}
-                    onDragEnd={handleCategoryDragEnd}
-                    onDragCancel={handleCategoryDragCancel}
-                >
-                    <SortableContext
-                        items={orderedCategories.map((category) => category.id)}
-                        strategy={verticalListSortingStrategy}
-                    >
-                        <div className="m-0 grid max-h-[min(30vh,22rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[820px]:max-h-none max-[820px]:overflow-y-visible max-[820px]:pr-0">
-                            {orderedCategories.map((category) => (
-                                <CategoryListItem
-                                    category={category}
-                                    isActive={category.id === selectedCategory?.id}
-                                    key={category.id}
-                                    busy={busy}
-                                    canDragReorder={canDragReorderCategories}
-                                    listLocked={Boolean(activeSessionId)}
-                                    onDelete={() => setCategoryDeleteTarget(category)}
-                                    onRename={(name) => handleRenameCategory(category.id, name)}
-                                    onSelect={() => setSelectedCategoryId(category.id)}
-                                />
-                            ))}
-                            {dashboard.categories.length === 0 ? (
-                                <EmptyState
-                                    compact
-                                    icon={Library}
-                                    title="No Categories"
-                                >
-                                    Add a category to start building a ranked list.
-                                </EmptyState>
-                            ) : null}
-                        </div>
-                    </SortableContext>
-                    <DragOverlay>
-                        {activeCategoryId
-                            ? (() => {
-                                const activeCategory = dashboard.categories.find(
-                                    (category) => category.id === activeCategoryId
-                                );
-                                return activeCategory ? (
-                                    <CategoryDragOverlay
-                                        category={activeCategory}
-                                        isActive={activeCategory.id === selectedCategory?.id}
-                                    />
-                                ) : null;
-                            })()
-                            : null}
-                    </DragOverlay>
-                </DndContext>
-
-                {selectedCategory && !activeSessionId ? (
-                    <section className={SIDEBAR_PANEL_CLASS}>
-                        <strong className="min-w-0 max-w-full">New Entry</strong>
-                        <form className="grid max-w-full min-w-0 gap-2" onSubmit={handleCreateEntry}>
-                            <Input
-                                disabled={busy}
-                                name="name"
-                                placeholder="New entry"
-                                required
-                                value={entryDraftName}
-                                onChange={(event) => setEntryDraftName(event.target.value)}
-                            />
-                            <div className="grid min-w-0 grid-cols-[minmax(10.5rem,1fr)_auto] gap-2 max-[820px]:grid-cols-1">
-                                <Select
-                                    defaultValue={selectedCategory.id}
-                                    disabled={busy}
-                                    key={selectedCategory.id}
-                                    name="categoryId"
-                                >
-                                    <SelectTrigger aria-label="Category" className="w-full min-w-0">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectGroup>
-                                            {dashboard.categories.map((category) => (
-                                                <SelectItem key={category.id} value={category.id}>
-                                                    {category.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectGroup>
-                                    </SelectContent>
-                                </Select>
-                                <Button
-                                    size="lg"
-                                    disabled={busy || !canCreateEntry}
-                                    type="submit"
-                                >
-                                    Add
-                                </Button>
-                            </div>
-                        </form>
-                    </section>
-                ) : null}
-
-                <QueuePanel
-                    activeSessionId={activeSessionId}
-                    busy={busy}
-                    queueRankMode={queueRankMode}
-                    queuedEntries={dashboard.queuedEntries}
-                    onDelete={handleDeleteQueuedEntry}
-                    onPickImage={(entry) => setImagePickerTarget({
-                        kind: "queue",
-                        item: entry,
-                        category: {
-                            id: entry.categoryId,
-                            name: entry.categoryName
-                        }
-                    })}
-                    onStartQueue={handleStartQueueRank}
-                    onRename={handleRenameQueuedEntry}
-                    onStart={handleStartQueuedEntry}
-                    onStopQueue={handleStopQueueRank}
-                />
-
+            <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-border bg-sidebar p-4 max-[720px]:hidden">
+                {renderDesktopSidebar()}
             </aside>
 
+            <div
+                className="sticky top-0 z-40 hidden border-b border-border bg-background/95 px-3 pb-3 pt-[max(0.65rem,env(safe-area-inset-top))] shadow-sm backdrop-blur max-[720px]:grid"
+                data-testid="mobile-dashboard-header"
+            >
+                <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+                    <AccountMenu
+                        {...accountMenuProps}
+                        contentAlign="start"
+                        triggerClassName="flex h-10 w-10 flex-none items-center justify-center rounded-full p-0"
+                    />
+                    <div className="grid min-w-0 gap-[0.05rem] text-center">
+                        <h1 className="m-0 truncate text-[1.08rem] font-bold">{selectedCategory?.name ?? "Categories"}</h1>
+                        <p className="m-0 truncate text-[0.82rem] text-muted-foreground">
+                            {selectedCategory
+                                ? `${displayedEntries.length}${entrySearch.trim() ? ` of ${selectedCategory.entries.length}` : ""} entries`
+                                : "Create a category to start ranking."}
+                        </p>
+                    </div>
+                    <Sheet open={mobileDrawerOpen} onOpenChange={setMobileDrawerOpen}>
+                        <SheetTrigger asChild>
+                            <Button
+                                aria-label="Open tools"
+                                data-testid="mobile-tools-trigger"
+                                size="icon-lg"
+                                type="button"
+                                variant="outline"
+                            >
+                                <Menu className="size-5" />
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="right" className="max-[420px]:w-[calc(100vw-0.75rem)]">
+                            <SheetHeader>
+                                <BrandLink />
+                                <SheetTitle className="sr-only">Dashboard tools</SheetTitle>
+                                <SheetDescription className="sr-only">
+                                    Category, entry, and queue controls for the mobile dashboard.
+                                </SheetDescription>
+                                <SheetCloseButton />
+                            </SheetHeader>
+                            <SheetBody>
+                                <div className="grid content-start gap-3">
+                                    {renderMobileDrawerTools()}
+                                </div>
+                            </SheetBody>
+                        </SheetContent>
+                    </Sheet>
+                </div>
+                {selectedCategory && !activeSessionId ? (
+                    <div className="mt-2 grid min-w-0">
+                        <Input
+                            aria-label="Search entries"
+                            value={entrySearch}
+                            placeholder="Search entries"
+                            onChange={(event) => setEntrySearch(event.target.value)}
+                        />
+                    </div>
+                ) : null}
+            </div>
+
             <section
-                className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background max-[820px]:overflow-visible"
+                className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background max-[720px]:block max-[720px]:overflow-visible"
             >
                 <div
-                    className="z-40 flex min-h-0 flex-nowrap items-center gap-[0.7rem] border-b border-border bg-background px-[clamp(0.9rem,2.4vw,1.75rem)] py-[0.8rem] shadow-sm max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0"
+                    className="z-40 flex min-h-0 flex-nowrap items-center gap-[0.7rem] border-b border-border bg-background px-[clamp(0.9rem,2.4vw,1.75rem)] py-[0.8rem] shadow-sm max-[720px]:hidden *:max-w-full *:min-w-0"
                     data-testid="dashboard-topbar"
                 >
                     <div className="grid max-w-[min(34rem,42vw)] min-w-0 flex-[0_1_auto] gap-[0.15rem]">
@@ -1510,7 +1675,7 @@ export function Dashboard({
                         </p>
                     </div>
                     {selectedCategory && !activeSessionId ? (
-                        <div className="mr-auto grid w-[min(26rem,100%)] max-w-104 min-w-0 flex-[0_1_26rem] gap-2 max-[820px]:w-full max-[820px]:max-w-none">
+                        <div className="mr-auto grid w-[min(26rem,100%)] max-w-104 min-w-0 flex-[0_1_26rem] gap-2 max-[720px]:w-full max-[720px]:max-w-none">
                             <Input
                                 aria-label="Search entries"
                                 value={entrySearch}
@@ -1520,23 +1685,12 @@ export function Dashboard({
                         </div>
                     ) : null}
                     <AccountMenu
-                        busy={busy}
-                        listLocked={Boolean(activeSessionId)}
-                        settings={dashboard.queueSettings}
-                        onExport={handleExport}
-                        onOpenImport={() => setImportToastOpen(true)}
-                        onOpenProfile={handleOpenProfile}
-                        onSaveSettings={handleQueueSettings}
-                        onThemeChange={setThemeMode}
-                        themeMode={themeMode}
-                        userImage={currentUserImage}
-                        userImageVersion={currentUserImageVersion}
-                        userName={currentUserName}
+                        {...accountMenuProps}
                     />
                 </div>
 
                 <div
-                    className="grid min-h-0 min-w-0 content-start gap-[0.85rem] overflow-x-hidden overflow-y-auto px-[clamp(0.9rem,2.4vw,1.75rem)] py-4 max-[820px]:overflow-y-visible"
+                    className="grid min-h-0 min-w-0 content-start gap-[0.85rem] overflow-x-hidden overflow-y-auto px-[clamp(0.9rem,2.4vw,1.75rem)] py-4 max-[720px]:gap-3 max-[720px]:overflow-y-visible max-[720px]:px-3 max-[720px]:py-3"
                     data-testid="dashboard-scroll-region"
                     ref={mainRef}
                 >
@@ -1586,11 +1740,10 @@ export function Dashboard({
                             strategy={rectSortingStrategy}
                         >
                             <section
-                                className={`grid min-w-0 gap-3 ${
-                                    entrySearch.trim()
+                                className={`grid min-w-0 gap-3 ${entrySearch.trim()
                                         ? "grid-cols-[repeat(auto-fill,minmax(min(100%,16.5rem),1fr))]"
                                         : "grid-cols-[repeat(auto-fit,minmax(min(100%,16.5rem),1fr))]"
-                                }`}
+                                    }`}
                             >
                                 {selectedCategory ? orderedEntries.map((entry) => (
                                     <EntryCard

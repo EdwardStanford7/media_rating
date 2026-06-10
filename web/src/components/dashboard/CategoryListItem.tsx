@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Pencil, Trash2 } from "lucide-react";
+import { GripVertical, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
@@ -10,16 +10,21 @@ import {
     ContextMenuItem,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { CategoryWithEntries } from "@/lib/types";
 
 function categoryButtonClass(isActive: boolean) {
-    return `block w-full min-w-0 cursor-pointer rounded-sm border px-[0.8rem] py-[0.55rem] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
-        isActive
+    return `block w-full min-w-0 cursor-pointer rounded-sm border px-[0.8rem] py-[0.55rem] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${isActive
             ? "border-gold bg-accent"
             : "border-border bg-card hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--border))]"
-    }`;
+        }`;
 }
 
 export function CategoryListItem({
@@ -67,6 +72,15 @@ export function CategoryListItem({
         setIsRenaming(false);
     }
 
+    function startRename() {
+        setName(category.name);
+        setIsRenaming(true);
+    }
+
+    function stopActionEvent(event: { stopPropagation: () => void }) {
+        event.stopPropagation();
+    }
+
     if (isRenaming) {
         return (
             <form className="grid gap-[0.45rem] rounded-sm border border-border bg-muted p-[0.55rem]" onSubmit={handleSubmit}>
@@ -107,15 +121,14 @@ export function CategoryListItem({
                     {...listeners}
                 >
                     <button
-                        className={`${categoryButtonClass(isActive)} ${canDragReorder ? "pr-9" : ""}`.trim()}
+                        className={`${categoryButtonClass(isActive)} ${canDragReorder ? "pr-9" : ""} max-[720px]:pr-10`.trim()}
                         disabled={busy}
                         title="Double-click to rename · Right-click for actions"
                         type="button"
                         onClick={onSelect}
                         onDoubleClick={() => {
                             if (!busy) {
-                                setName(category.name);
-                                setIsRenaming(true);
+                                startRename();
                             }
                         }}
                     >
@@ -125,20 +138,43 @@ export function CategoryListItem({
                     {canDragReorder ? (
                         <span
                             aria-hidden="true"
-                            className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center justify-center text-muted-foreground"
+                            className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center justify-center text-muted-foreground max-[720px]:hidden"
                         >
                             <GripVertical className="size-4" />
                         </span>
                     ) : null}
+                    <DropdownMenu onOpenChange={setMenuOpen}>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                aria-label={`Actions for ${category.name}`}
+                                className="absolute top-1/2 right-1.5 z-20 hidden -translate-y-1/2 max-[720px]:inline-flex"
+                                disabled={busy}
+                                size="icon-sm"
+                                type="button"
+                                variant="ghost"
+                                onClick={stopActionEvent}
+                                onPointerDown={stopActionEvent}
+                            >
+                                <MoreVertical className="size-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem disabled={busy} onSelect={startRename}>
+                                <Pencil />Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                variant="destructive"
+                                disabled={busy || listLocked}
+                                onSelect={onDelete}
+                            >
+                                <Trash2 />Delete
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
-                <ContextMenuItem
-                    onSelect={() => {
-                        setName(category.name);
-                        setIsRenaming(true);
-                    }}
-                >
+                <ContextMenuItem onSelect={startRename}>
                     <Pencil />Rename
                 </ContextMenuItem>
                 <ContextMenuItem

@@ -453,15 +453,15 @@ function ProfileRoute() {
                     onSave={(blob) => handleProfileImageSave(blob)}
                 />
             ) : null}
-            <header className="m-0 flex w-full items-center justify-between gap-4">
+            <header className="m-0 flex w-full flex-wrap items-center justify-between gap-3">
                 <BrandLink />
-                <nav className="flex items-center gap-[0.8rem]" aria-label="Profile navigation">
+                <nav className="flex flex-wrap items-center justify-end gap-[0.8rem]" aria-label="Profile navigation">
                     <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
                     <Link className="text-foreground no-underline hover:text-accent-strong" to="/u/$profileSlug" params={{ profileSlug: settings.user.slug }}>View Profile</Link>
                 </nav>
             </header>
 
-            <div className="m-0 grid w-full grid-cols-[minmax(18rem,0.8fr)_minmax(24rem,1fr)_minmax(18rem,0.82fr)] items-start gap-4 max-[1100px]:grid-cols-[minmax(18rem,0.85fr)_minmax(24rem,1fr)] max-[820px]:grid-cols-1">
+            <div className="m-0 grid w-full grid-cols-[minmax(18rem,0.8fr)_minmax(24rem,1fr)_minmax(18rem,0.82fr)] items-start gap-4 max-[1100px]:grid-cols-[minmax(18rem,0.85fr)_minmax(24rem,1fr)] max-[720px]:grid-cols-1">
                 <div className="grid min-w-0 content-start gap-4">
                     <Card className="min-w-0 gap-4 px-4 shadow-panel">
                         <div className="mb-4 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-[0.8rem] [&_h1]:m-0 [&_h1]:leading-[1.1]">
@@ -672,7 +672,7 @@ function ProfileRoute() {
                     </Card>
                 </div>
 
-                <div className="grid min-w-0 content-start gap-4 max-[1100px]:col-span-full max-[820px]:col-span-auto">
+                <div className="grid min-w-0 content-start gap-4 max-[1100px]:col-span-full max-[720px]:col-span-auto">
                     <Card className="min-w-0 gap-4 px-4 shadow-panel">
                         <div className="flex items-center justify-between gap-3">
                             <h2 className="text-lg font-semibold">Shared Rankings</h2>

@@ -74,7 +74,7 @@ export function QueuePanel({
             </div>
 
             {queuedEntries.length > 0 ? (
-                <div className="grid max-h-[min(42vh,520px)] min-h-0 min-w-0 gap-[0.55rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[820px]:max-h-none max-[820px]:overflow-y-visible max-[820px]:pr-0">
+                <div className="grid max-h-[min(42vh,520px)] min-h-0 min-w-0 gap-[0.55rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[720px]:max-h-none max-[720px]:overflow-y-visible max-[720px]:pr-0">
                     {readyEntries.map((entry) => (
                         <QueuedEntryRow
                             actionLocked={busy || Boolean(activeSessionId)}

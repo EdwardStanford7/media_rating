@@ -8,6 +8,118 @@ const RANKER = {
 };
 
 test.describe("Ranking", () => {
+    test("mobile dashboard opens on compact app content and drawer tools work", async ({
+        page,
+        context
+    }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await seedUsers([{
+            email: "mobile@e2e.test",
+            name: "Mobile",
+            queueSettings: {
+                enabled: true,
+                delayDays: 0,
+                promptForMissingImages: false
+            },
+            categories: [
+                { name: "Books", entries: ["Dune", "Hyperion", "Foundation"] },
+                { name: "Movies", entries: ["Arrival"] }
+            ]
+        }]);
+        await signInViaApi(context, "mobile@e2e.test");
+        await gotoApp(page);
+
+        const mobileHeader = page.getByTestId("mobile-dashboard-header");
+        await expect(mobileHeader).toBeVisible();
+        await expect(mobileHeader.getByRole("heading", { name: "Books" })).toBeVisible();
+        await expect(page.getByText("New Category")).toBeHidden();
+
+        const avatarBox = await page.getByRole("button", { name: "Account menu" }).boundingBox();
+        const headerBox = await mobileHeader.boundingBox();
+        expect(avatarBox?.x).toBeLessThan(24);
+        expect(avatarBox?.y).toBeLessThan(80);
+        expect(headerBox?.height).toBeLessThan(140);
+
+        const firstCardWidth = await page.locator("[data-entry-id]").first().evaluate((element) => element.getBoundingClientRect().width);
+        await mobileHeader.getByLabel("Search entries").fill("Dune");
+        await expect(page.getByText("#1 Dune")).toBeVisible();
+        const filteredCardWidth = await page.locator("[data-entry-id]").first().evaluate((element) => element.getBoundingClientRect().width);
+        expect(Math.abs(filteredCardWidth - firstCardWidth)).toBeLessThanOrEqual(1);
+        await mobileHeader.getByLabel("Search entries").fill("");
+
+        await page.getByTestId("mobile-tools-trigger").click();
+        let drawer = page.getByRole("dialog", { name: "Dashboard tools" });
+        await expect(drawer.getByText("New Entry")).toBeVisible();
+        await drawer.locator("[data-category-id]").filter({ hasText: "Movies" }).getByRole("button").first().click();
+        await expect(drawer).toBeHidden();
+        await expect(mobileHeader.getByRole("heading", { name: "Movies" })).toBeVisible();
+
+        await page.getByTestId("mobile-tools-trigger").click();
+        drawer = page.getByRole("dialog", { name: "Dashboard tools" });
+        await drawer.getByPlaceholder("New entry").fill("Memento");
+        await drawer.getByPlaceholder("New entry").press("Enter");
+        await expect(drawer).toBeHidden({ timeout: 15_000 });
+
+        await page.getByTestId("mobile-tools-trigger").click();
+        drawer = page.getByRole("dialog", { name: "Dashboard tools" });
+        await expect(drawer.getByText("1 queued")).toBeVisible();
+        await expect(drawer.getByText("1 ready")).toBeVisible();
+        await expect(drawer.getByText("Memento").first()).toBeVisible();
+        await drawer.getByLabel("Actions for queued Memento").click();
+        await expect(page.getByRole("menuitem", { name: "Rank Now" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Pick image" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Remove" })).toBeEnabled();
+    });
+
+    test("mobile tap action menus expose entry, category, queue, and ranking actions", async ({
+        page,
+        context
+    }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await seedUsers([{
+            ...RANKER,
+            queueSettings: {
+                enabled: false,
+                delayDays: 0,
+                promptForMissingImages: false
+            }
+        }]);
+        await signInViaApi(context, RANKER.email);
+        await gotoApp(page);
+
+        await page.getByLabel("Actions for Alpha").click();
+        await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Pick Image" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Rerank" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Change Category" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Delete" })).toBeEnabled();
+        await page.keyboard.press("Escape");
+
+        await page.getByTestId("mobile-tools-trigger").click();
+        let drawer = page.getByRole("dialog", { name: "Dashboard tools" });
+        await drawer.getByLabel("Actions for Movies").click();
+        await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Delete" })).toBeEnabled();
+        await page.keyboard.press("Escape");
+        await drawer.getByRole("button", { name: "Close", exact: true }).click();
+
+        await page.getByTestId("mobile-tools-trigger").click();
+        drawer = page.getByRole("dialog", { name: "Dashboard tools" });
+        await drawer.getByPlaceholder("New entry").fill("Zeta");
+        await drawer.getByPlaceholder("New entry").press("Enter");
+        await expect(drawer).toBeHidden({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+
+        await page.getByLabel("Actions for Zeta").click();
+        await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
+        await expect(page.getByRole("menuitem", { name: "Pick Image" })).toBeEnabled();
+        await page.getByRole("menuitem", { name: "Rename" }).click();
+        await page.getByLabel("Rename Zeta").fill("Zeta Prime");
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(page.getByLabel("Actions for Zeta Prime")).toBeVisible({ timeout: 15_000 });
+    });
+
     test("dashboard topbar stays flush while the entry list scrolls", async ({
         page,
         context

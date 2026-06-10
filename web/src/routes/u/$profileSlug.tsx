@@ -273,15 +273,15 @@ function PublicProfileRoute() {
             </Card>
 
             {profileData.categories.length > 0 ? (
-                <div className="m-0 grid w-full grid-cols-[220px_minmax(0,1fr)] items-start overflow-hidden rounded-md border border-border bg-card shadow-panel max-[820px]:grid-cols-1">
-                    <nav className="sticky top-0 grid max-h-screen content-start gap-0.5 overflow-y-auto border-r border-border bg-sidebar p-[0.65rem] max-[820px]:static max-[820px]:flex max-[820px]:max-h-none max-[820px]:flex-row max-[820px]:flex-nowrap max-[820px]:gap-1 max-[820px]:overflow-x-auto max-[820px]:overflow-y-hidden max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:p-2" aria-label="Categories">
+                <div className="m-0 grid w-full grid-cols-[220px_minmax(0,1fr)] items-start overflow-hidden rounded-md border border-border bg-card shadow-panel max-[720px]:grid-cols-1">
+                    <nav className="sticky top-0 grid max-h-screen content-start gap-0.5 overflow-y-auto border-r border-border bg-sidebar p-[0.65rem] max-[720px]:static max-[720px]:flex max-[720px]:max-h-none max-[720px]:flex-row max-[720px]:flex-nowrap max-[720px]:gap-1 max-[720px]:overflow-x-auto max-[720px]:overflow-y-hidden max-[720px]:border-r-0 max-[720px]:border-b max-[720px]:p-2" aria-label="Categories">
                         {profileData.categories.map((category) => {
                             const isActive = category.id === selectedCategoryId;
                             return (
                                 <button
-                                    className={`w-full rounded-sm border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-border enabled:hover:bg-secondary max-[820px]:w-auto max-[820px]:flex-none ${isActive
-                                            ? "border-primary bg-accent font-bold text-accent-strong"
-                                            : "border-transparent bg-transparent"
+                                    className={`w-full rounded-sm border px-[0.65rem] py-2 text-left shadow-none enabled:hover:border-border enabled:hover:bg-secondary max-[720px]:w-auto max-[720px]:flex-none ${isActive
+                                        ? "border-primary bg-accent font-bold text-accent-strong"
+                                        : "border-transparent bg-transparent"
                                         }`}
                                     key={category.id}
                                     type="button"
@@ -344,9 +344,9 @@ function PublicProfileRoute() {
 
 function PublicProfileTopbar({ signedIn }: { signedIn: boolean }) {
     return (
-        <header className="m-0 flex w-full items-center justify-between gap-4">
+        <header className="m-0 flex w-full flex-wrap items-center justify-between gap-3">
             <BrandLink />
-            <nav className="flex items-center gap-[0.8rem]" aria-label="Profile navigation">
+            <nav className="flex flex-wrap items-center justify-end gap-[0.8rem]" aria-label="Profile navigation">
                 {signedIn ? (
                     <>
                         <Link className="text-foreground no-underline hover:text-accent-strong" to="/">Rankings</Link>
@@ -418,8 +418,8 @@ function CopyCategoryDialog({
                     <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-muted p-1">
                         <button
                             className={`rounded-sm px-3 py-2 text-sm font-semibold transition-colors ${mode === "new"
-                                    ? "bg-background text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground"
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
                                 }`}
                             type="button"
                             aria-pressed={mode === "new"}
@@ -429,8 +429,8 @@ function CopyCategoryDialog({
                         </button>
                         <button
                             className={`rounded-sm px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${mode === "merge"
-                                    ? "bg-background text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground"
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
                                 }`}
                             type="button"
                             aria-pressed={mode === "merge"}

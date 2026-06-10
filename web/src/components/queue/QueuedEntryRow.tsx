@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { Image as ImageIcon, Pencil, Swords, Trash2 } from "lucide-react";
+import { Image as ImageIcon, MoreVertical, Pencil, Swords, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
@@ -8,6 +8,12 @@ import {
     ContextMenuItem,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useHydrated } from "@/hooks/useHydrated";
@@ -52,56 +58,96 @@ export function QueuedEntryRow({
         setIsRenaming(false);
     }
 
+    function startRename() {
+        setName(entry.name);
+        setIsRenaming(true);
+    }
+
+    function stopActionEvent(event: { stopPropagation: () => void }) {
+        event.stopPropagation();
+    }
+
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild disabled={metadataDisabled}>
                 <div
-            className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-sm border p-[0.65rem] ${
-                isReady ? "border-primary bg-ready-panel" : "border-border bg-muted"
-            }`}
-        >
-            <QueuedPoster entry={entry} />
-            <div className="grid min-w-0 gap-[0.55rem]">
-                {isRenaming ? (
-                    <form className="grid gap-[0.45rem]" onSubmit={handleSubmit}>
-                        <Input
-                            autoFocus
-                            aria-label={`Rename ${entry.name}`}
-                            disabled={metadataDisabled}
-                            value={name}
-                            onChange={(event) => setName(event.target.value)}
-                        />
-                        <div className="grid grid-cols-2 gap-[0.45rem]">
-                            <Button size="sm" disabled={metadataDisabled} type="submit">Save</Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={metadataDisabled}
-                                type="button"
-                                onClick={() => {
-                                    setName(entry.name);
-                                    setIsRenaming(false);
+                    className={`relative grid min-w-0 grid-cols-[54px_minmax(0,1fr)] items-start gap-[0.55rem] rounded-sm border p-[0.65rem] max-[720px]:pr-10 ${isReady ? "border-primary bg-ready-panel" : "border-border bg-muted"
+                        }`}
+                >
+                    {!isRenaming ? (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    aria-label={`Actions for queued ${entry.name}`}
+                                    className="absolute top-2 right-1.5 z-20 hidden max-[720px]:inline-flex"
+                                    disabled={metadataDisabled}
+                                    size="icon-sm"
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={stopActionEvent}
+                                    onPointerDown={stopActionEvent}
+                                >
+                                    <MoreVertical className="size-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem disabled={actionLocked} onSelect={() => void onStart(entry)}>
+                                    <Swords />Rank Now
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={metadataDisabled} onSelect={startRename}>
+                                    <Pencil />Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={metadataDisabled} onSelect={() => onPickImage(entry)}>
+                                    <ImageIcon />
+                                    {hasStoredImage(entry.imageKey) ? "Change image" : "Pick image"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" disabled={actionLocked} onSelect={() => void onDelete(entry)}>
+                                    <Trash2 />Remove
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    ) : null}
+                    <QueuedPoster entry={entry} />
+                    <div className="grid min-w-0 gap-[0.55rem]">
+                        {isRenaming ? (
+                            <form className="grid gap-[0.45rem]" onSubmit={handleSubmit}>
+                                <Input
+                                    autoFocus
+                                    aria-label={`Rename ${entry.name}`}
+                                    disabled={metadataDisabled}
+                                    value={name}
+                                    onChange={(event) => setName(event.target.value)}
+                                />
+                                <div className="grid grid-cols-2 gap-[0.45rem]">
+                                    <Button size="sm" disabled={metadataDisabled} type="submit">Save</Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={metadataDisabled}
+                                        type="button"
+                                        onClick={() => {
+                                            setName(entry.name);
+                                            setIsRenaming(false);
+                                        }}
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </form>
+                        ) : (
+                            <div
+                                title="Double-click to rename · Right-click for actions"
+                                onDoubleClick={() => {
+                                    if (!metadataDisabled) {
+                                        startRename();
+                                    }
                                 }}
                             >
-                                Cancel
-                            </Button>
-                        </div>
-                    </form>
-                ) : (
-                    <div
-                        title="Double-click to rename · Right-click for actions"
-                        onDoubleClick={() => {
-                            if (!metadataDisabled) {
-                                setName(entry.name);
-                                setIsRenaming(true);
-                            }
-                        }}
-                    >
-                        <strong>{entry.name}</strong>
-                        <p className="m-0 mt-[0.2rem] text-muted-foreground">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt, hydrated ? undefined : "UTC")}</p>
+                                <strong>{entry.name}</strong>
+                                <p className="m-0 mt-[0.2rem] text-muted-foreground">{entry.categoryName} · {isReady ? "Ready" : formatDateTime(entry.availableAt, hydrated ? undefined : "UTC")}</p>
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
@@ -110,10 +156,7 @@ export function QueuedEntryRow({
                 </ContextMenuItem>
                 <ContextMenuItem
                     disabled={metadataDisabled}
-                    onSelect={() => {
-                        setName(entry.name);
-                        setIsRenaming(true);
-                    }}
+                    onSelect={startRename}
                 >
                     <Pencil />Rename
                 </ContextMenuItem>

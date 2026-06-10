@@ -241,7 +241,7 @@ export function ImagePickerModal({
             }}
         >
             <section className="grid max-h-[min(760px,calc(100vh-2rem))] w-[min(920px,100%)] max-w-[calc(100vw-2rem)] gap-[0.9rem] overflow-x-hidden overflow-y-auto rounded-md border border-border bg-card p-4 shadow-panel [&_h2]:m-0 [&_p]:m-0">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[720px]:flex-col max-[720px]:items-stretch *:max-w-full *:min-w-0">
                     <div>
                         <h2 className="text-lg font-semibold">Pick Image</h2>
                         <p className="text-muted-foreground">{target.item.name} - {target.category.name}</p>
@@ -250,7 +250,7 @@ export function ImagePickerModal({
                 </div>
 
                 <form
-                    className="flex flex-wrap items-center gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0"
+                    className="flex flex-wrap items-center gap-[0.7rem] max-[720px]:flex-col max-[720px]:items-stretch *:max-w-full *:min-w-0"
                     onSubmit={(event) => {
                         event.preventDefault();
                         void search(query);

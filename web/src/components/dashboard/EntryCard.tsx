@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowRightLeft, GripVertical, Image as ImageIcon, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowRightLeft, GripVertical, Image as ImageIcon, MoreVertical, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
@@ -10,6 +10,12 @@ import {
     ContextMenuItem,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
     Select,
@@ -80,6 +86,16 @@ export function EntryCard({
         setIsRenaming(false);
     }
 
+    function startRename() {
+        setMoveControlsOpen(false);
+        setRenameValue(entry.name);
+        setIsRenaming(true);
+    }
+
+    function stopActionEvent(event: { stopPropagation: () => void }) {
+        event.stopPropagation();
+    }
+
     const showDragHandle = canDragReorder && !isRenaming && !moveControlsOpen;
 
     return (
@@ -87,13 +103,11 @@ export function EntryCard({
             <ContextMenuTrigger asChild>
                 <article
                     ref={setNodeRef}
-                    className={`relative max-w-full min-w-0 rounded-md border border-border bg-card shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${
-                        canDragReorder ? "cursor-grab" : ""
-                    } ${
-                        isDragging
+                    className={`relative max-w-full min-w-0 rounded-md border border-border bg-card shadow-panel transition-[border-color,box-shadow,opacity,background-color] duration-150 ease-[ease] ${canDragReorder ? "cursor-grab" : ""
+                        } ${isDragging
                             ? ENTRY_CARD_DRAGGING_CLASS
                             : "motion-safe:hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--border))] motion-safe:hover:shadow-floating"
-                    }`.trim()}
+                        }`.trim()}
                     data-entry-id={entry.id}
                     style={{ transform: CSS.Transform.toString(transform), transition }}
                     {...listeners}
@@ -101,10 +115,45 @@ export function EntryCard({
                     {showDragHandle ? (
                         <span
                             aria-hidden="true"
-                            className="pointer-events-none absolute top-2 right-2 z-10 flex items-center justify-center rounded-sm border border-overlay-button-line bg-overlay-button p-1 text-overlay-button-ink"
+                            className="pointer-events-none absolute top-2 right-2 z-10 flex items-center justify-center rounded-sm border border-overlay-button-line bg-overlay-button p-1 text-overlay-button-ink max-[720px]:hidden"
                         >
                             <GripVertical className="size-4" />
                         </span>
+                    ) : null}
+                    {!isRenaming && !moveControlsOpen ? (
+                        <DropdownMenu onOpenChange={setMenuOpen}>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    aria-label={`Actions for ${entry.name}`}
+                                    className="absolute top-2 right-2 z-20 hidden border-overlay-button-line bg-overlay-button text-overlay-button-ink hover:bg-overlay-button max-[720px]:inline-flex"
+                                    size="icon-sm"
+                                    type="button"
+                                    variant="outline"
+                                    onClick={stopActionEvent}
+                                    onPointerDown={stopActionEvent}
+                                >
+                                    <MoreVertical className="size-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem onSelect={startRename}>
+                                    <Pencil />Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={listLocked} onSelect={onRerank}>
+                                    <RefreshCw />Rerank
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={onPickImage}>
+                                    <ImageIcon />
+                                    {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={listLocked} onSelect={() => setMoveControlsOpen(true)}>
+                                    <ArrowRightLeft />Change Category
+                                </DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" disabled={listLocked} onSelect={onDelete}>
+                                    <Trash2 />Delete
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     ) : null}
                     <EntryPoster entry={entry} />
                     <div className="grid min-w-0 gap-[0.55rem] p-[0.65rem]">
@@ -136,11 +185,7 @@ export function EntryCard({
                             <strong
                                 className="block truncate text-[0.70rem] leading-tight wrap-normal"
                                 title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
-                                onDoubleClick={() => {
-                                    setMoveControlsOpen(false);
-                                    setRenameValue(entry.name);
-                                    setIsRenaming(true);
-                                }}
+                                onDoubleClick={startRename}
                             >
                                 #{entry.rankPosition + 1} {entry.name}
                             </strong>
@@ -194,11 +239,7 @@ export function EntryCard({
             </ContextMenuTrigger>
             <ContextMenuContent>
                 <ContextMenuItem
-                    onSelect={() => {
-                        setMoveControlsOpen(false);
-                        setRenameValue(entry.name);
-                        setIsRenaming(true);
-                    }}
+                    onSelect={startRename}
                 >
                     <Pencil />Rename
                 </ContextMenuItem>

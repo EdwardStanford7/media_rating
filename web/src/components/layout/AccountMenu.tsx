@@ -23,6 +23,7 @@ import type { QueueSettings } from "@/lib/types";
 
 export function AccountMenu({
     busy,
+    contentAlign = "end",
     listLocked,
     settings,
     onExport,
@@ -31,11 +32,13 @@ export function AccountMenu({
     onSaveSettings,
     onThemeChange,
     themeMode,
+    triggerClassName,
     userImage,
     userImageVersion,
     userName
 }: {
     busy: boolean;
+    contentAlign?: "start" | "center" | "end";
     listLocked: boolean;
     settings: QueueSettings;
     onExport: () => Promise<void>;
@@ -44,6 +47,7 @@ export function AccountMenu({
     onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
+    triggerClassName?: string;
     userImage: string | null;
     userImageVersion: number;
     userName: string;
@@ -106,13 +110,13 @@ export function AccountMenu({
             <DropdownMenuTrigger asChild>
                 <button
                     aria-label="Account menu"
-                    className="ml-auto flex h-[2.7rem] w-[2.7rem] flex-none items-center justify-center rounded-full p-0 max-[820px]:self-end"
+                    className={triggerClassName ?? "ml-auto flex h-[2.7rem] w-[2.7rem] flex-none items-center justify-center rounded-full p-0"}
                     type="button"
                 >
                     <AccountAvatar imageKey={userImage} imageVersion={userImageVersion} />
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align={contentAlign} className="w-56">
                 <DropdownMenuLabel className="flex items-center gap-3">
                     <AccountAvatar imageKey={userImage} imageVersion={userImageVersion} large />
                     <div className="min-w-0">

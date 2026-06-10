@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { Image as ImageIcon, Pencil } from "lucide-react";
+import { Image as ImageIcon, MoreVertical, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
@@ -8,6 +8,12 @@ import {
     ContextMenuItem,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { redirectIfUnauthorized } from "@/lib/errors";
 import { errorMessage } from "@/lib/format";
@@ -198,7 +204,7 @@ export function BinaryRankPanel({
 
     return (
         <section className={`${RANK_PANEL_CLASS} grid content-start gap-[0.9rem]`}>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[820px]:flex-col max-[820px]:items-stretch *:max-w-full *:min-w-0">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[720px]:flex-col max-[720px]:items-stretch *:max-w-full *:min-w-0">
                 <div>
                     <strong>
                         {session.phase === "local_repair"
@@ -223,7 +229,7 @@ export function BinaryRankPanel({
                     </Button>
                 ) : null}
             </div>
-            <div className="grid min-w-0 grid-cols-2 gap-4 max-[820px]:grid-cols-1">
+            <div className="grid min-w-0 grid-cols-2 gap-4 max-[720px]:grid-cols-1">
                 {[session.subject, session.opponent].map((entry) => (
                     <MatchCard
                         disabled={submitting}
@@ -278,6 +284,10 @@ function MatchCard({
         onSubmitRename();
     }
 
+    function stopActionEvent(event: { stopPropagation: () => void }) {
+        event.stopPropagation();
+    }
+
     if (isRenaming) {
         return (
             <article className="overflow-hidden rounded-md border border-border bg-card text-left">
@@ -310,15 +320,42 @@ function MatchCard({
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
-                <button
-                    className="cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-55"
-                    disabled={disabled}
-                    type="button"
-                    onClick={onChoose}
-                >
-                    <MatchPoster entry={entry} />
-                    <strong className="block p-[0.7rem]">{entry.name}</strong>
-                </button>
+                <article className="relative overflow-hidden rounded-md border border-border bg-card transition-colors hover:border-primary">
+                    <button
+                        className="block w-full cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-55"
+                        disabled={disabled}
+                        type="button"
+                        onClick={onChoose}
+                    >
+                        <MatchPoster entry={entry} />
+                        <strong className="block p-[0.7rem] pr-11">{entry.name}</strong>
+                    </button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                aria-label={`Actions for ${entry.name}`}
+                                className="absolute top-2 right-2 z-20 hidden border-overlay-button-line bg-overlay-button text-overlay-button-ink hover:bg-overlay-button max-[720px]:inline-flex"
+                                disabled={disabled}
+                                size="icon-sm"
+                                type="button"
+                                variant="outline"
+                                onClick={stopActionEvent}
+                                onPointerDown={stopActionEvent}
+                            >
+                                <MoreVertical className="size-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem disabled={disabled} onSelect={onStartRename}>
+                                <Pencil />Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled={disabled} onSelect={onPickImage}>
+                                <ImageIcon />
+                                {hasStoredImage(entry.imageKey) ? "Change Image" : "Pick Image"}
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </article>
             </ContextMenuTrigger>
             <ContextMenuContent>
                 <ContextMenuItem disabled={disabled} onSelect={onStartRename}>
