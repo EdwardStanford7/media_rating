@@ -67,7 +67,6 @@ export function MarketingLanding() {
                                 className="gs-rise gs-dim font-display text-[clamp(2.75rem,8.5vw,7.25rem)] font-medium leading-[0.94]"
                                 style={{ animationDelay: "200ms" }}
                             >
-                                Scores optional.
                             </span>
                             <p
                                 className="gs-rise max-w-xs pb-2 text-base leading-relaxed text-muted-foreground"
