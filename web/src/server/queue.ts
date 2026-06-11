@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { QueuedEntry } from "@/lib/types";
 import { assertOwned, getDb, newId, now } from "@/server/lib/db";
 import { authMiddleware } from "@/server/middleware/auth";
 import { getOwnedCategory } from "./stores/categoryStore";
@@ -52,7 +53,18 @@ export const createQueuedEntry = createServerFn({ method: "POST" })
             )
             .run();
 
-        return { queuedEntryId: queueId, availableAt };
+        const queuedEntry: QueuedEntry = {
+            id: queueId,
+            categoryId: input.categoryId,
+            categoryName: category.name,
+            name: cleanName,
+            imageKey: null,
+            firstConsumedAt: input.firstConsumedAt,
+            availableAt,
+            createdAt
+        };
+
+        return { queuedEntry, queuedEntryId: queueId, availableAt };
     });
 
 export const updateQueueSettings = createServerFn({ method: "POST" })

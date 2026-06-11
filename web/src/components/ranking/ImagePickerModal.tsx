@@ -40,6 +40,7 @@ export function ImagePickerModal({
     const displayedQueryRef = useRef<string | null>(null);
     const searchRequestIdRef = useRef(0);
     const activeSearchControllerRef = useRef<AbortController | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
     useEscapeKey(true, onClose);
 
     function interruptSearch() {
@@ -47,6 +48,12 @@ export function ImagePickerModal({
         activeSearchControllerRef.current?.abort();
         activeSearchControllerRef.current = null;
         setLoading(false);
+    }
+
+    function resetFileInput() {
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     }
 
     const search = useCallback(async (searchQuery: string) => {
@@ -174,6 +181,7 @@ export function ImagePickerModal({
         } catch (saveError) {
             setError(errorMessage(saveError));
         } finally {
+            resetFileInput();
             setSavingCandidateId(null);
         }
     }
@@ -205,6 +213,7 @@ export function ImagePickerModal({
         } catch (saveError) {
             setError(errorMessage(saveError));
         } finally {
+            resetFileInput();
             setSavingCandidateId(null);
         }
     }
@@ -288,12 +297,17 @@ export function ImagePickerModal({
                             accept="image/*"
                             className="absolute h-px w-px overflow-hidden [clip:rect(0,0,0,0)]"
                             disabled={Boolean(savingCandidateId)}
+                            ref={fileInputRef}
                             type="file"
+                            onClick={(event) => {
+                                event.currentTarget.value = "";
+                            }}
                             onChange={(event) => {
                                 const file = event.currentTarget.files?.[0];
                                 if (file) {
                                     void uploadLocalFile(file);
                                 }
+                                event.currentTarget.value = "";
                             }}
                         />
                     </label>

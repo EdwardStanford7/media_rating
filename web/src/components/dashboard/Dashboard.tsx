@@ -136,6 +136,14 @@ function applyDragOrder<T extends { id: string }>(items: T[], order: string[] | 
     return ordered.length === items.length ? ordered : items;
 }
 
+function orderQueuedEntries(entries: QueuedEntry[]) {
+    return [...entries].sort((left, right) =>
+        left.availableAt - right.availableAt ||
+        left.createdAt - right.createdAt ||
+        left.name.localeCompare(right.name)
+    );
+}
+
 export function Dashboard({
     initialDashboard,
     userImage,
@@ -750,18 +758,24 @@ export function Dashboard({
                 formElement.reset();
                 setEntryDraftName("");
                 setMessage(`Queued ${cleanName} for ranking on ${formatDateTime(result.availableAt)}.`);
+                setDashboard((currentDashboard) => ({
+                    ...currentDashboard,
+                    queuedEntries: orderQueuedEntries([
+                        ...currentDashboard.queuedEntries.filter((entry) => entry.id !== result.queuedEntry.id),
+                        result.queuedEntry
+                    ])
+                }));
                 if (queueSettings.promptForMissingImages) {
                     setImagePickerTarget({
                         kind: "queue",
                         item: {
-                            id: result.queuedEntryId,
-                            name: cleanName,
-                            imageKey: null
+                            id: result.queuedEntry.id,
+                            name: result.queuedEntry.name,
+                            imageKey: result.queuedEntry.imageKey
                         },
                         category: targetCategory
                     });
                 }
-                await refresh();
                 return;
             }
 
