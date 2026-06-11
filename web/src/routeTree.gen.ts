@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UProfileSlugRouteImport } from './routes/u/$profileSlug'
 import { Route as ApiProfileImageRouteImport } from './routes/api/profile-image'
@@ -21,6 +22,7 @@ import { Route as ApiTestSeedRouteImport } from './routes/api/test/seed'
 import { Route as ApiTestResetRouteImport } from './routes/api/test/reset'
 import { Route as ApiTestHealthRouteImport } from './routes/api/test/health'
 import { Route as ApiTestAuthUrlRouteImport } from './routes/api/test/auth-url'
+import { Route as ApiTestAdminAuditRouteImport } from './routes/api/test/admin-audit'
 import { Route as ApiQueuedImagesQueuedEntryIdRouteImport } from './routes/api/queued-images/$queuedEntryId'
 import { Route as ApiPublicProfileImageUserIdRouteImport } from './routes/api/public-profile-image/$userId'
 import { Route as ApiPublicImagesEntryIdRouteImport } from './routes/api/public-images/$entryId'
@@ -40,6 +42,11 @@ const SigninRoute = SigninRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -87,6 +94,11 @@ const ApiTestAuthUrlRoute = ApiTestAuthUrlRouteImport.update({
   path: '/api/test/auth-url',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTestAdminAuditRoute = ApiTestAdminAuditRouteImport.update({
+  id: '/api/test/admin-audit',
+  path: '/api/test/admin-audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiQueuedImagesQueuedEntryIdRoute =
   ApiQueuedImagesQueuedEntryIdRouteImport.update({
     id: '/api/queued-images/$queuedEntryId',
@@ -117,6 +129,7 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/profile': typeof ProfileRoute
   '/signin': typeof SigninRoute
   '/signup': typeof SignupRoute
@@ -129,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
   '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
+  '/api/test/admin-audit': typeof ApiTestAdminAuditRoute
   '/api/test/auth-url': typeof ApiTestAuthUrlRoute
   '/api/test/health': typeof ApiTestHealthRoute
   '/api/test/reset': typeof ApiTestResetRoute
@@ -136,6 +150,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/profile': typeof ProfileRoute
   '/signin': typeof SigninRoute
   '/signup': typeof SignupRoute
@@ -148,6 +163,7 @@ export interface FileRoutesByTo {
   '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
   '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
+  '/api/test/admin-audit': typeof ApiTestAdminAuditRoute
   '/api/test/auth-url': typeof ApiTestAuthUrlRoute
   '/api/test/health': typeof ApiTestHealthRoute
   '/api/test/reset': typeof ApiTestResetRoute
@@ -156,6 +172,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/profile': typeof ProfileRoute
   '/signin': typeof SigninRoute
   '/signup': typeof SignupRoute
@@ -168,6 +185,7 @@ export interface FileRoutesById {
   '/api/public-images/$entryId': typeof ApiPublicImagesEntryIdRoute
   '/api/public-profile-image/$userId': typeof ApiPublicProfileImageUserIdRoute
   '/api/queued-images/$queuedEntryId': typeof ApiQueuedImagesQueuedEntryIdRoute
+  '/api/test/admin-audit': typeof ApiTestAdminAuditRoute
   '/api/test/auth-url': typeof ApiTestAuthUrlRoute
   '/api/test/health': typeof ApiTestHealthRoute
   '/api/test/reset': typeof ApiTestResetRoute
@@ -177,6 +195,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/profile'
     | '/signin'
     | '/signup'
@@ -189,6 +208,7 @@ export interface FileRouteTypes {
     | '/api/public-images/$entryId'
     | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
+    | '/api/test/admin-audit'
     | '/api/test/auth-url'
     | '/api/test/health'
     | '/api/test/reset'
@@ -196,6 +216,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
     | '/profile'
     | '/signin'
     | '/signup'
@@ -208,6 +229,7 @@ export interface FileRouteTypes {
     | '/api/public-images/$entryId'
     | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
+    | '/api/test/admin-audit'
     | '/api/test/auth-url'
     | '/api/test/health'
     | '/api/test/reset'
@@ -215,6 +237,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/profile'
     | '/signin'
     | '/signup'
@@ -227,6 +250,7 @@ export interface FileRouteTypes {
     | '/api/public-images/$entryId'
     | '/api/public-profile-image/$userId'
     | '/api/queued-images/$queuedEntryId'
+    | '/api/test/admin-audit'
     | '/api/test/auth-url'
     | '/api/test/health'
     | '/api/test/reset'
@@ -235,6 +259,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
   ProfileRoute: typeof ProfileRoute
   SigninRoute: typeof SigninRoute
   SignupRoute: typeof SignupRoute
@@ -247,6 +272,7 @@ export interface RootRouteChildren {
   ApiPublicImagesEntryIdRoute: typeof ApiPublicImagesEntryIdRoute
   ApiPublicProfileImageUserIdRoute: typeof ApiPublicProfileImageUserIdRoute
   ApiQueuedImagesQueuedEntryIdRoute: typeof ApiQueuedImagesQueuedEntryIdRoute
+  ApiTestAdminAuditRoute: typeof ApiTestAdminAuditRoute
   ApiTestAuthUrlRoute: typeof ApiTestAuthUrlRoute
   ApiTestHealthRoute: typeof ApiTestHealthRoute
   ApiTestResetRoute: typeof ApiTestResetRoute
@@ -274,6 +300,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -339,6 +372,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTestAuthUrlRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/test/admin-audit': {
+      id: '/api/test/admin-audit'
+      path: '/api/test/admin-audit'
+      fullPath: '/api/test/admin-audit'
+      preLoaderRoute: typeof ApiTestAdminAuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/queued-images/$queuedEntryId': {
       id: '/api/queued-images/$queuedEntryId'
       path: '/api/queued-images/$queuedEntryId'
@@ -379,6 +419,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
   ProfileRoute: ProfileRoute,
   SigninRoute: SigninRoute,
   SignupRoute: SignupRoute,
@@ -391,6 +432,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicImagesEntryIdRoute: ApiPublicImagesEntryIdRoute,
   ApiPublicProfileImageUserIdRoute: ApiPublicProfileImageUserIdRoute,
   ApiQueuedImagesQueuedEntryIdRoute: ApiQueuedImagesQueuedEntryIdRoute,
+  ApiTestAdminAuditRoute: ApiTestAdminAuditRoute,
   ApiTestAuthUrlRoute: ApiTestAuthUrlRoute,
   ApiTestHealthRoute: ApiTestHealthRoute,
   ApiTestResetRoute: ApiTestResetRoute,

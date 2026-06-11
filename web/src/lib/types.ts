@@ -158,3 +158,49 @@ export interface ParsedImportEntry {
 export interface ParsedImport {
     entries: ParsedImportEntry[];
 }
+
+export type AdminUserSearchField = "all" | "email" | "name";
+
+export interface AdminUserSummary {
+    id: string;
+    name: string;
+    email: string;
+    emailVerified: boolean;
+    imageKey: string | null;
+    role: string;
+    banned: boolean;
+    banReason: string | null;
+    banExpires: number | null;
+    createdAt: number;
+    updatedAt: number;
+    profileSlug: string | null;
+    profileIsPublic: boolean | null;
+    categoryCount: number;
+    entryCount: number;
+    queuedEntryCount: number;
+    activeSessionCount: number;
+}
+
+export interface AdminUserListData {
+    users: AdminUserSummary[];
+    total: number;
+    limit: number;
+    offset: number;
+    search: string;
+    searchField: AdminUserSearchField;
+}
+
+export interface AdminSessionSummary {
+    id: string;
+    expiresAt: number;
+    ipAddress: string | null;
+    userAgent: string | null;
+    createdAt: number;
+    updatedAt: number;
+    impersonatedBy: string | null;
+}
+
+export interface AdminUserDetailData {
+    user: AdminUserSummary;
+    sessions: AdminSessionSummary[];
+}

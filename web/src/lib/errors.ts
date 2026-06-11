@@ -7,6 +7,7 @@
 // user-facing copy.
 
 const UNAUTHORIZED_MESSAGE = "Your session has expired. Please sign in again.";
+const FORBIDDEN_MESSAGE = "You do not have access to admin tools.";
 
 export class UnauthorizedError extends Error {
     constructor() {
@@ -15,8 +16,19 @@ export class UnauthorizedError extends Error {
     }
 }
 
+export class ForbiddenError extends Error {
+    constructor() {
+        super(FORBIDDEN_MESSAGE);
+        this.name = "ForbiddenError";
+    }
+}
+
 export function isUnauthorizedError(error: unknown) {
     return error instanceof Error && error.message === UNAUTHORIZED_MESSAGE;
+}
+
+export function isForbiddenError(error: unknown) {
+    return error instanceof Error && error.message === FORBIDDEN_MESSAGE;
 }
 
 /**

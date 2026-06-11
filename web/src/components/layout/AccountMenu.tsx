@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, LogOut, Palette, Settings, Upload, User } from "lucide-react";
+import { Download, LogOut, Palette, Settings, Shield, Upload, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -33,6 +33,7 @@ export function AccountMenu({
     onThemeChange,
     themeMode,
     triggerClassName,
+    userIsAdmin,
     userImage,
     userImageVersion,
     userName
@@ -48,6 +49,7 @@ export function AccountMenu({
     onThemeChange: (themeMode: ThemeMode) => void;
     themeMode: ThemeMode;
     triggerClassName?: string;
+    userIsAdmin: boolean;
     userImage: string | null;
     userImageVersion: number;
     userName: string;
@@ -128,6 +130,11 @@ export function AccountMenu({
                 <DropdownMenuItem onSelect={onOpenProfile}>
                     <User />Profile
                 </DropdownMenuItem>
+                {userIsAdmin ? (
+                    <DropdownMenuItem onSelect={() => window.location.assign("/admin")}>
+                        <Shield />Admin
+                    </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
                         <Settings />Settings

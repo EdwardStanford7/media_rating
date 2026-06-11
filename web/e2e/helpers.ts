@@ -45,6 +45,8 @@ export interface SeedUser {
     email: string;
     password?: string;
     name: string;
+    role?: string;
+    direct?: boolean;
     queueSettings?: {
         enabled?: boolean;
         delayDays?: number;
@@ -68,6 +70,35 @@ export async function seedUsers(users: SeedUser[]) {
 
     const body = (await response.json()) as { users: Array<{ id: string; email: string }> };
     return body.users;
+}
+
+export async function getAdminAuditRows(filters: { targetUserId?: string; action?: string }) {
+    const params = new URLSearchParams();
+    if (filters.targetUserId) {
+        params.set("targetUserId", filters.targetUserId);
+    }
+    if (filters.action) {
+        params.set("action", filters.action);
+    }
+
+    const response = await fetch(`${BASE_URL}/api/test/admin-audit?${params.toString()}`);
+    if (!response.ok) {
+        throw new Error(`Audit fetch failed: ${response.status} ${await response.text()}`);
+    }
+
+    const body = (await response.json()) as {
+        rows: Array<{
+            id: string;
+            actor_user_id: string | null;
+            actor_label: string;
+            target_user_id: string;
+            action: string;
+            reason: string | null;
+            metadata_json: string;
+            created_at: number;
+        }>;
+    };
+    return body.rows;
 }
 
 /**

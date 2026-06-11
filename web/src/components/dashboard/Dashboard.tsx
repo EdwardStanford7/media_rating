@@ -146,10 +146,12 @@ function orderQueuedEntries(entries: QueuedEntry[]) {
 
 export function Dashboard({
     initialDashboard,
+    userIsAdmin,
     userImage,
     userName
 }: {
     initialDashboard: DashboardData;
+    userIsAdmin: boolean;
     userImage: string | null;
     userName: string;
 }) {
@@ -1356,6 +1358,7 @@ export function Dashboard({
         onSaveSettings: handleQueueSettings,
         onThemeChange: setThemeMode,
         themeMode,
+        userIsAdmin,
         userImage: currentUserImage,
         userImageVersion: currentUserImageVersion,
         userName: currentUserName

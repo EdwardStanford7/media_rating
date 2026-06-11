@@ -1,7 +1,8 @@
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequestHeaders, setResponseStatus } from "@tanstack/react-start/server";
+import { hasAdminRole } from "@/lib/admin";
 import { auth } from "@/server/lib/auth";
-import { UnauthorizedError } from "@/lib/errors";
+import { ForbiddenError, UnauthorizedError } from "@/lib/errors";
 
 export type AuthSession = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
 export type AuthUser = AuthSession["user"];
@@ -36,4 +37,24 @@ export const optionalAuthMiddleware = createMiddleware().server(async ({ next })
             session: session ?? null
         }
     });
+});
+
+/**
+ * Requires a signed-in admin. The route being hidden is not a security
+ * boundary; all admin server functions must use this middleware.
+ */
+export const adminMiddleware = createMiddleware().server(async ({ next }) => {
+    const session = await auth.api.getSession({ headers: getRequestHeaders() });
+
+    if (!session?.user) {
+        setResponseStatus(401);
+        throw new UnauthorizedError();
+    }
+
+    if (!hasAdminRole(session.user)) {
+        setResponseStatus(403);
+        throw new ForbiddenError();
+    }
+
+    return next({ context: { user: session.user, session } });
 });

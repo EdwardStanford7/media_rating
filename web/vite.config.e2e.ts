@@ -10,6 +10,7 @@ import { defineConfig } from "vite";
 // the regular dev server.
 export default defineConfig({
   server: {
+    host: "127.0.0.1",
     port: 3100,
     strictPort: true
   },

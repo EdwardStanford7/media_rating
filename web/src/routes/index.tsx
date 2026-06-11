@@ -29,6 +29,7 @@ function Home() {
     return (
         <Dashboard
             initialDashboard={dashboard}
+            userIsAdmin={user.isAdmin}
             userImage={user.image}
             userName={user.name}
         />

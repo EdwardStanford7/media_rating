@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
+import { hasAdminRole } from "@/lib/admin";
 import type { DashboardData } from "@/lib/types";
 import { auth, requestHasSessionCookie } from "@/server/lib/auth";
 import { authMiddleware } from "@/server/middleware/auth";
@@ -11,7 +12,7 @@ export const loadDashboard = createServerFn({ method: "GET" })
 
 export interface HomeData {
     dashboard: DashboardData | null;
-    user: { name: string; image: string | null } | null;
+    user: { name: string; image: string | null; isAdmin: boolean } | null;
 }
 
 /**
@@ -34,6 +35,10 @@ export const loadHome = createServerFn({ method: "GET" }).handler(async (): Prom
 
     return {
         dashboard: await buildDashboard(session.user.id),
-        user: { name: session.user.name, image: session.user.image ?? null }
+        user: {
+            name: session.user.name,
+            image: session.user.image ?? null,
+            isAdmin: hasAdminRole(session.user)
+        }
     };
 });

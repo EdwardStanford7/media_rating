@@ -3,6 +3,7 @@ D1_NAME = media-rating
 R2_BUCKET = media-rating-images
 
 .PHONY: help install check test e2e typecheck build dev preview audit password-reset-link password-reset-link-local \
+	admin-promote admin-promote-local admin-demote admin-demote-local \
 	auth-clear-rate-limits auth-clear-rate-limits-local \
 	cf-login cf-whoami cf-create-d1 cf-create-r2 cf-secret-auth \
 	cf-secret-password-reset \
@@ -20,6 +21,10 @@ help:
 	@echo "  make cf-migrate-local     Apply D1 migrations to local Wrangler D1"
 	@echo "  make password-reset-link EMAIL=user@example.com Generate a one-hour remote reset link"
 	@echo "  make password-reset-link-local EMAIL=user@example.com Generate a local D1 reset link"
+	@echo "  make admin-promote EMAIL=user@example.com Promote a remote user to admin"
+	@echo "  make admin-promote-local EMAIL=user@example.com Promote a local user to admin"
+	@echo "  make admin-demote EMAIL=user@example.com Demote a remote admin user"
+	@echo "  make admin-demote-local EMAIL=user@example.com Demote a local admin user"
 	@echo "  make auth-clear-rate-limits Clear remote auth rate-limit lockouts"
 	@echo "  make auth-clear-rate-limits-local Clear local auth rate-limit lockouts"
 	@echo ""
@@ -74,6 +79,22 @@ password-reset-link-local:
 	@test -n "$(EMAIL)" || (echo "Usage: make password-reset-link-local EMAIL=user@example.com"; exit 1)
 	node scripts/create-password-reset-link.mjs "$(EMAIL)" http://localhost:5173 --local
 
+admin-promote:
+	@test -n "$(EMAIL)" || (echo "Usage: make admin-promote EMAIL=user@example.com"; exit 1)
+	node scripts/admin-role.mjs promote "$(EMAIL)"
+
+admin-promote-local:
+	@test -n "$(EMAIL)" || (echo "Usage: make admin-promote-local EMAIL=user@example.com"; exit 1)
+	node scripts/admin-role.mjs promote "$(EMAIL)" --local
+
+admin-demote:
+	@test -n "$(EMAIL)" || (echo "Usage: make admin-demote EMAIL=user@example.com"; exit 1)
+	node scripts/admin-role.mjs demote "$(EMAIL)"
+
+admin-demote-local:
+	@test -n "$(EMAIL)" || (echo "Usage: make admin-demote-local EMAIL=user@example.com"; exit 1)
+	node scripts/admin-role.mjs demote "$(EMAIL)" --local
+
 auth-clear-rate-limits:
 	node scripts/clear-auth-rate-limits.mjs
 
@@ -111,9 +132,8 @@ cf-migrate-remote:
 verify-deploy-config:
 	node scripts/verify-deploy-config.mjs
 
-deploy: verify-deploy-config check
+deploy: verify-deploy-config check cf-migrate-remote
 	pnpm run deploy
-	$(MAKE) cf-migrate-remote
 
 deploy-first: install cf-login cf-create-d1 cf-create-r2 cf-secret-auth
 	@echo ""

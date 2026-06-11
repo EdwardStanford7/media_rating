@@ -24,6 +24,8 @@ interface SeedUser {
     email: string;
     password: string;
     name: string;
+    role?: string;
+    direct?: boolean;
     queueSettings?: SeedQueueSettings;
     categories?: SeedCategory[];
 }
@@ -50,17 +52,41 @@ export const Route = createFileRoute("/api/test/seed")({
                 const createdUsers: Array<{ id: string; email: string }> = [];
 
                 for (const seedUser of body.users) {
-                    const signUp = await auth.api.signUpEmail({
-                        body: {
-                            email: seedUser.email,
-                            password: seedUser.password,
-                            name: seedUser.name
-                        }
-                    });
-                    const userId = signUp.user.id;
+                    const timestamp = now();
+                    let userId: string;
+                    if (seedUser.direct) {
+                        userId = newId("user");
+                        await db
+                            .prepare(
+                                `INSERT INTO "user" (
+                     id, name, email, emailVerified, image, createdAt, updatedAt,
+                     role, banned, banReason, banExpires
+                   )
+                   VALUES (?, ?, ?, 0, NULL, ?, ?, ?, 0, NULL, NULL)`
+                            )
+                            .bind(userId, seedUser.name, seedUser.email, timestamp, timestamp, seedUser.role ?? "user")
+                            .run();
+                    } else {
+                        const signUp = await auth.api.signUpEmail({
+                            body: {
+                                email: seedUser.email,
+                                password: seedUser.password,
+                                name: seedUser.name
+                            }
+                        });
+                        userId = signUp.user.id;
+                        await db.prepare(`DELETE FROM session WHERE userId = ?`).bind(userId).run();
+                    }
+
                     createdUsers.push({ id: userId, email: seedUser.email });
 
-                    const timestamp = now();
+                    if (seedUser.role && !seedUser.direct) {
+                        await db
+                            .prepare(`UPDATE "user" SET role = ?, updatedAt = ? WHERE id = ?`)
+                            .bind(seedUser.role, timestamp, userId)
+                            .run();
+                    }
+
                     const queueSettings = seedUser.queueSettings ?? {};
                     await db
                         .prepare(

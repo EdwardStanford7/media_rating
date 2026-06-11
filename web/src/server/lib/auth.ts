@@ -1,6 +1,9 @@
 import { betterAuth } from "better-auth";
+import { admin } from "better-auth/plugins";
+import { defaultAc, userAc } from "better-auth/plugins/admin/access";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { env } from "cloudflare:workers";
+import { ADMIN_ROLE, USER_ROLE } from "@/lib/admin";
 import { captureAuthUrl, isTestMode } from "./testMode";
 
 export const MIN_PASSWORD_LENGTH = 12;
@@ -11,6 +14,10 @@ const MAX_PASSWORD_LENGTH = 128;
 // know whether a session cookie is present to decide if a DB session lookup
 // is worth attempting, so a substring check on the opaque name is enough.
 const SESSION_COOKIE_HINT = "better-auth.session_token";
+const supportAdminRole = defaultAc.newRole({
+    user: ["list", "get", "ban"],
+    session: ["list", "revoke"]
+});
 
 /** True when the request carries a better-auth session cookie. */
 export function requestHasSessionCookie(headers: Headers) {
@@ -101,7 +108,7 @@ export const auth = betterAuth({
     // - the production origin, because the app sends it as the password-reset
     //   redirectTo; the reset request is rejected without it.
     trustedOrigins: isTestMode()
-        ? [env.BETTER_AUTH_URL, "http://localhost:3100", "https://goldshelf.net"]
+        ? [env.BETTER_AUTH_URL, "http://localhost:3100", "http://127.0.0.1:3100", "https://goldshelf.net"]
         : [env.BETTER_AUTH_URL],
     emailAndPassword: {
         enabled: true,
@@ -150,5 +157,15 @@ export const auth = betterAuth({
         },
         useSecureCookies: env.BETTER_AUTH_URL.startsWith("https://")
     },
-    plugins: [tanstackStartCookies()]
+    plugins: [
+        admin({
+            defaultRole: USER_ROLE,
+            adminRoles: [ADMIN_ROLE],
+            roles: {
+                [ADMIN_ROLE]: supportAdminRole,
+                [USER_ROLE]: userAc
+            }
+        }),
+        tanstackStartCookies()
+    ]
 });
