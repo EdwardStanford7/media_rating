@@ -57,6 +57,7 @@ export function AccountMenu({
     const [enabled, setEnabled] = useState(settings.enabled);
     const [delayDays, setDelayDays] = useState(settings.delayDays);
     const [promptForMissingImages, setPromptForMissingImages] = useState(settings.promptForMissingImages);
+    const [randomizeReadyEntries, setRandomizeReadyEntries] = useState(settings.randomizeReadyEntries);
     const [quickSaving, setQuickSaving] = useState(false);
     const importDisabled = busy || listLocked;
 
@@ -64,10 +65,12 @@ export function AccountMenu({
         setEnabled(settings.enabled);
         setDelayDays(settings.delayDays);
         setPromptForMissingImages(settings.promptForMissingImages);
+        setRandomizeReadyEntries(settings.randomizeReadyEntries);
     }, [
         settings.delayDays,
         settings.enabled,
-        settings.promptForMissingImages
+        settings.promptForMissingImages,
+        settings.randomizeReadyEntries
     ]);
 
     async function saveSettingsImmediately(nextSettings: QueueSettings) {
@@ -79,21 +82,24 @@ export function AccountMenu({
         }
     }
 
-    async function updateToggle<K extends "enabled" | "promptForMissingImages">(
+    async function updateToggle<K extends "enabled" | "promptForMissingImages" | "randomizeReadyEntries">(
         key: K,
         value: QueueSettings[K]
     ) {
         if (key === "enabled") {
             setEnabled(Boolean(value));
-        } else {
+        } else if (key === "promptForMissingImages") {
             setPromptForMissingImages(Boolean(value));
+        } else {
+            setRandomizeReadyEntries(Boolean(value));
         }
 
         await saveSettingsImmediately({
             ...settings,
             enabled: key === "enabled" ? Boolean(value) : enabled,
             delayDays,
-            promptForMissingImages: key === "promptForMissingImages" ? Boolean(value) : promptForMissingImages
+            promptForMissingImages: key === "promptForMissingImages" ? Boolean(value) : promptForMissingImages,
+            randomizeReadyEntries: key === "randomizeReadyEntries" ? Boolean(value) : randomizeReadyEntries
         });
     }
 
@@ -103,7 +109,8 @@ export function AccountMenu({
             ...settings,
             enabled,
             delayDays: nextDelayDays,
-            promptForMissingImages
+            promptForMissingImages,
+            randomizeReadyEntries
         });
     }
 
@@ -155,6 +162,14 @@ export function AccountMenu({
                             onSelect={(event) => event.preventDefault()}
                         >
                             Queue entries
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuCheckboxItem
+                            checked={randomizeReadyEntries}
+                            disabled={busy || quickSaving}
+                            onCheckedChange={(value) => void updateToggle("randomizeReadyEntries", value)}
+                            onSelect={(event) => event.preventDefault()}
+                        >
+                            Randomize ready queue
                         </DropdownMenuCheckboxItem>
                         <DropdownMenuSeparator />
                         <label className="grid gap-[0.35rem] px-2 py-1.5" onKeyDown={(event) => event.stopPropagation()}>

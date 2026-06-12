@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "react";
 import { Ban, RotateCcw, Search, Shield, ShieldOff, XCircle } from "lucide-react";
 import { BrandLink } from "@/components/ui/BrandLink";
 import { Button } from "@/components/ui/button";
@@ -258,7 +258,7 @@ function AdminContent({
                 </Button>
             </header>
 
-            <div className="mx-auto grid w-full max-w-[82rem] gap-4 px-[clamp(1rem,3vw,2rem)] py-4">
+            <div className="grid w-full gap-4 px-[clamp(1rem,3vw,2rem)] py-4">
                 <Card className="gap-3 rounded-lg px-4 shadow-panel">
                     <form className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_auto]" onSubmit={handleSearchSubmit}>
                         <label className="grid gap-1">
@@ -295,7 +295,7 @@ function AdminContent({
                     ) : null}
                 </Card>
 
-                <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.75fr)]">
+                <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.7fr)]">
                     <Card className="min-w-0 gap-0 rounded-lg shadow-panel">
                         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-border px-4 pb-3">
                             <div>
@@ -326,16 +326,15 @@ function AdminContent({
                                 </Button>
                             </div>
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[56rem] border-collapse text-left text-sm">
+                        <div className="min-w-0 overflow-hidden">
+                            <table className="w-full table-fixed border-collapse text-left text-sm">
                                 <thead className="bg-muted/55 text-muted-foreground">
                                     <tr>
-                                        <th className="px-4 py-2 font-medium">User</th>
-                                        <th className="px-4 py-2 font-medium">Status</th>
-                                        <th className="px-4 py-2 font-medium">Profile</th>
-                                        <th className="px-4 py-2 font-medium">Data</th>
-                                        <th className="px-4 py-2 font-medium">Sessions</th>
-                                        <th className="px-4 py-2 font-medium"></th>
+                                        <th className="w-[34%] px-4 py-2 font-medium">User</th>
+                                        <th className="w-[21%] px-4 py-2 font-medium">Status</th>
+                                        <th className="w-[20%] px-4 py-2 font-medium">Profile</th>
+                                        <th className="w-[16%] px-4 py-2 font-medium">Data</th>
+                                        <th className="w-[9%] px-4 py-2 font-medium">Sessions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -350,7 +349,7 @@ function AdminContent({
                                     ))}
                                     {listData.users.length === 0 ? (
                                         <tr>
-                                            <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                                            <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
                                                 No users found.
                                             </td>
                                         </tr>
@@ -407,14 +406,29 @@ function UserRow({
     selected: boolean;
     user: AdminUserSummary;
 }) {
+    function handleKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect();
+        }
+    }
+
     return (
-        <tr className={selected ? "bg-accent/35" : "border-t border-border"}>
-            <td className="px-4 py-3 align-top">
-                <strong className="block">{user.email}</strong>
-                <span className="block text-muted-foreground">{user.name}</span>
-                <span className="block font-mono text-xs text-muted-foreground">{user.id}</span>
+        <tr
+            aria-busy={loading}
+            aria-selected={selected}
+            className={`${selected ? "bg-accent/35" : "border-t border-border"} cursor-pointer outline-none transition-colors hover:bg-muted/55 focus-visible:bg-muted/70`}
+            role="button"
+            tabIndex={0}
+            onClick={onSelect}
+            onKeyDown={handleKeyDown}
+        >
+            <td className="min-w-0 px-4 py-3 align-top">
+                <strong className="block truncate">{user.email}</strong>
+                <span className="block truncate text-muted-foreground">{user.name}</span>
+                <span className="block truncate font-mono text-xs text-muted-foreground">{user.id}</span>
             </td>
-            <td className="px-4 py-3 align-top">
+            <td className="min-w-0 px-4 py-3 align-top">
                 <div className="flex flex-wrap gap-1.5">
                     <StatusPill tone={user.banned ? "danger" : "default"}>
                         {user.banned ? "Banned" : "Active"}
@@ -425,11 +439,11 @@ function UserRow({
                     {user.emailVerified ? <StatusPill tone="muted">Verified</StatusPill> : null}
                 </div>
             </td>
-            <td className="px-4 py-3 align-top">
+            <td className="min-w-0 px-4 py-3 align-top">
                 {user.profileSlug ? (
-                    <div>
-                        <span className="block">{user.profileSlug}</span>
-                        <span className="text-muted-foreground">
+                    <div className="min-w-0">
+                        <span className="block truncate">{user.profileSlug}</span>
+                        <span className="block truncate text-muted-foreground">
                             {user.profileIsPublic ? "Public" : "Private"}
                         </span>
                     </div>
@@ -442,12 +456,7 @@ function UserRow({
                 {user.entryCount} entries<br />
                 {user.queuedEntryCount} queued
             </td>
-            <td className="px-4 py-3 align-top">{user.activeSessionCount}</td>
-            <td className="px-4 py-3 align-top text-right">
-                <Button disabled={loading} size="sm" type="button" variant="outline" onClick={onSelect}>
-                    {loading ? "Loading" : "View"}
-                </Button>
-            </td>
+            <td className="px-4 py-3 align-top">{loading ? "..." : user.activeSessionCount}</td>
         </tr>
     );
 }

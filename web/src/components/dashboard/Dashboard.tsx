@@ -116,7 +116,7 @@ interface ReversibleAction {
 const UNDO_STACK_LIMIT = 20;
 const RESUME_REFRESH_AFTER_MS = 5 * 60 * 1000;
 const SIDEBAR_PANEL_CLASS =
-    "grid min-h-0 min-w-0 max-w-full content-start gap-[0.75rem] rounded-md border border-border bg-card p-4 shadow-panel";
+    "grid min-h-0 min-w-0 max-w-full content-start gap-[0.75rem] rounded-md border border-primary/30 bg-card p-4 shadow-floating ring-1 ring-primary/10";
 
 /**
  * Apply an optimistic drag ordering (a list of ids) on top of the canonical
@@ -142,6 +142,31 @@ function orderQueuedEntries(entries: QueuedEntry[]) {
         left.createdAt - right.createdAt ||
         left.name.localeCompare(right.name)
     );
+}
+
+function importResultMessage(result: {
+    importedCount: number;
+    skippedCount: number;
+    rankedImportedCount: number;
+    rankedSkippedCount: number;
+    queuedImportedCount: number;
+    queuedSkippedCount: number;
+}) {
+    const importedParts = [
+        result.rankedImportedCount > 0 ? `${result.rankedImportedCount} ranked` : "",
+        result.queuedImportedCount > 0 ? `${result.queuedImportedCount} queued` : ""
+    ].filter(Boolean);
+    const skippedParts = [
+        result.rankedSkippedCount > 0 ? `${result.rankedSkippedCount} ranked` : "",
+        result.queuedSkippedCount > 0 ? `${result.queuedSkippedCount} queued` : ""
+    ].filter(Boolean);
+    const importedMessage = importedParts.length > 0
+        ? `Imported ${importedParts.join(" and ")} entries.`
+        : "No new entries imported.";
+
+    return skippedParts.length > 0
+        ? `${importedMessage} Skipped ${skippedParts.join(" and ")} duplicates.`
+        : importedMessage;
 }
 
 export function Dashboard({
@@ -173,6 +198,9 @@ export function Dashboard({
     const queueRankModeRef = useRef(false);
     const [categoryDraftName, setCategoryDraftName] = useState("");
     const [entryDraftName, setEntryDraftName] = useState("");
+    const [entryCategoryId, setEntryCategoryId] = useState(
+        initialDashboard.activeBinarySession?.categoryId ?? initialDashboard.categories[0]?.id ?? ""
+    );
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const [busyLabel, setBusyLabel] = useState<string | null>(null);
@@ -237,6 +265,10 @@ export function Dashboard({
     const canDragReorderCategories = !busy && !activeSessionId && dashboard.categories.length > 1;
     const canCreateCategory = categoryDraftName.trim().length > 0;
     const canCreateEntry = entryDraftName.trim().length > 0;
+
+    useEffect(() => {
+        setEntryCategoryId(selectedCategory?.id ?? "");
+    }, [selectedCategory?.id]);
 
     useEffect(() => {
         setActiveEntryId(null);
@@ -315,6 +347,35 @@ export function Dashboard({
         return nextDashboard;
     }
 
+    function reconcileActiveRankingAfterResume(nextDashboard: DashboardData) {
+        const currentSessionId = activeSessionIdRef.current;
+        const serverSession = nextDashboard.activeBinarySession;
+        if (!currentSessionId) {
+            if (serverSession && !closedBinarySessionIdsRef.current.has(serverSession.id)) {
+                setActiveBinarySessionId(serverSession.id);
+                setSelectedCategoryId(serverSession.categoryId);
+            }
+            return;
+        }
+
+        if (serverSession?.id === currentSessionId) {
+            setSelectedCategoryId(serverSession.categoryId);
+            return;
+        }
+
+        markBinarySessionClosed(currentSessionId);
+        setActiveBinarySessionId(null);
+        setQueueRankingActive(false);
+
+        if (serverSession && !closedBinarySessionIdsRef.current.has(serverSession.id)) {
+            setActiveBinarySessionId(serverSession.id);
+            setSelectedCategoryId(serverSession.categoryId);
+            return;
+        }
+
+        setMessage("That ranking is no longer active.", "danger");
+    }
+
     useEffect(() => {
         async function refreshAfterResume(force = false) {
             if (
@@ -327,7 +388,8 @@ export function Dashboard({
 
             resumeRefreshInFlightRef.current = true;
             try {
-                await refresh();
+                const nextDashboard = await refresh();
+                reconcileActiveRankingAfterResume(nextDashboard);
             } catch (error) {
                 if (!redirectIfUnauthorized(error) && !isRequestLoadFailure(error)) {
                     setErrorMessage(error);
@@ -737,7 +799,7 @@ export function Dashboard({
         const form = new FormData(formElement);
         const name = String(form.get("name") ?? "");
         const cleanName = name.trim();
-        const targetCategoryId = String(form.get("categoryId") ?? selectedCategory?.id ?? "");
+        const targetCategoryId = entryCategoryId || selectedCategory?.id || "";
         const targetCategory = dashboard.categories.find((category) => category.id === targetCategoryId);
         if (!cleanName || !targetCategory) {
             setMessage("Choose a category and enter a name.", "danger");
@@ -745,7 +807,7 @@ export function Dashboard({
         }
 
         startBusy("Adding entry...");
-        const firstConsumedAt = currentDateTimestamp();
+        const addedAt = currentDateTimestamp();
         const queueSettings = queueSettingsRef.current;
 
         try {
@@ -754,11 +816,12 @@ export function Dashboard({
                     data: {
                         categoryId: targetCategory.id,
                         name: cleanName,
-                        firstConsumedAt
+                        createdAt: addedAt
                     }
                 });
                 formElement.reset();
                 setEntryDraftName("");
+                setEntryCategoryId(targetCategory.id);
                 setMessage(`Queued ${cleanName} for ranking on ${formatDateTime(result.availableAt)}.`);
                 setDashboard((currentDashboard) => ({
                     ...currentDashboard,
@@ -785,11 +848,12 @@ export function Dashboard({
                 data: {
                     categoryId: targetCategory.id,
                     name: cleanName,
-                    firstConsumedAt
+                    createdAt: addedAt
                 }
             });
             formElement.reset();
             setEntryDraftName("");
+            setEntryCategoryId(targetCategory.id);
 
             setSelectedCategoryId(targetCategory.id);
             if (result.kind === "session") {
@@ -838,11 +902,24 @@ export function Dashboard({
         }
     }
 
-    function getNextReadyQueuedEntry(queuedEntries: QueuedEntry[]) {
+    function getReadyQueuedEntries(queuedEntries: QueuedEntry[]) {
         const currentTime = Date.now();
         return queuedEntries
             .filter((entry) => entry.availableAt <= currentTime)
-            .sort((left, right) => left.availableAt - right.availableAt || left.createdAt - right.createdAt)[0] ?? null;
+            .sort((left, right) => left.availableAt - right.availableAt || left.createdAt - right.createdAt);
+    }
+
+    function getNextReadyQueuedEntry(queuedEntries: QueuedEntry[]) {
+        const readyEntries = getReadyQueuedEntries(queuedEntries);
+        if (readyEntries.length === 0) {
+            return null;
+        }
+
+        if (!queueSettingsRef.current.randomizeReadyEntries) {
+            return readyEntries[0] ?? null;
+        }
+
+        return readyEntries[Math.floor(Math.random() * readyEntries.length)] ?? null;
     }
 
     async function beginQueuedEntryRanking(entry: QueuedEntry, overrideDelay: boolean) {
@@ -1243,22 +1320,21 @@ export function Dashboard({
 
         try {
             await nextPaint();
-            const firstConsumedAt = dateInputToTimestamp(String(form.get("firstConsumedAt") ?? ""));
+            const addedAt = dateInputToTimestamp(String(form.get("addedAt") ?? ""));
             const buffer = await file.arrayBuffer();
             setBusyLabel("Parsing spreadsheet...");
             await nextPaint();
-            const parsed = await parseLegacyWorkbook(buffer, firstConsumedAt);
-            if (parsed.entries.length === 0) {
+            const parsed = await parseLegacyWorkbook(buffer, addedAt);
+            const parsedCount = parsed.entries.length + parsed.queuedEntries.length;
+            if (parsedCount === 0) {
                 throw new Error("Spreadsheet contains no importable entries. Put category names in the first row and entries below them.");
             }
-            setBusyLabel(`Importing ${parsed.entries.length} entries...`);
+            setBusyLabel(`Importing ${parsedCount} entries...`);
             await nextPaint();
             const result = await importLegacyEntries({ data: parsed });
             setBusyLabel("Refreshing dashboard...");
             pushToast({
-                message: result.skippedCount > 0
-                    ? `Imported ${result.importedCount} entries. Skipped ${result.skippedCount} duplicates.`
-                    : `Imported ${result.importedCount} entries.`,
+                message: importResultMessage(result),
                 variant: "success"
             });
             formElement.reset();
@@ -1284,13 +1360,14 @@ export function Dashboard({
                 (count, category) => count + category.entries.length,
                 0
             );
-            if (entryCount === 0) {
+            const exportCount = entryCount + dashboard.queuedEntries.length;
+            if (exportCount === 0) {
                 pushToast({
                     message: "Nothing to export yet. Add or import entries first."
                 });
                 return;
             }
-            const blob = await writeExportWorkbook(dashboard.categories);
+            const blob = await writeExportWorkbook(dashboard.categories, dashboard.queuedEntries);
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement("a");
             anchor.href = url;
@@ -1415,7 +1492,7 @@ export function Dashboard({
                     items={orderedCategories.map((category) => category.id)}
                     strategy={verticalListSortingStrategy}
                 >
-                    <div className="m-0 grid max-h-[min(30vh,22rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[720px]:max-h-none max-[720px]:overflow-y-visible max-[720px]:pr-0">
+                    <div className="m-0 grid max-h-[min(26vh,18rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[720px]:max-h-none max-[720px]:overflow-y-visible max-[720px]:pr-0">
                         {orderedCategories.map((category) => (
                             <CategoryListItem
                                 category={category}
@@ -1478,10 +1555,9 @@ export function Dashboard({
                     />
                     <div className="grid min-w-0 grid-cols-[minmax(10.5rem,1fr)_auto] gap-2 max-[720px]:grid-cols-1">
                         <Select
-                            defaultValue={selectedCategory.id}
                             disabled={busy}
-                            key={selectedCategory.id}
-                            name="categoryId"
+                            value={entryCategoryId || selectedCategory.id}
+                            onValueChange={setEntryCategoryId}
                         >
                             <SelectTrigger aria-label="Category" className="w-full min-w-0">
                                 <SelectValue />

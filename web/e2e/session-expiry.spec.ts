@@ -1,4 +1,5 @@
 import { test, expect } from "./base";
+import { BASE_URL } from "./constants";
 import { gotoApp, seedUsers, signInViaApi } from "./helpers";
 
 const USER = {
@@ -53,5 +54,39 @@ test.describe("Session expiry", () => {
         await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible({
             timeout: 15_000
         });
+    });
+
+    test("restored ranking tab recovers when the active ranking disappeared", async ({
+        page,
+        context
+    }) => {
+        await seedUsers([{
+            ...USER,
+            email: "stale-ranking@e2e.test"
+        }]);
+        await signInViaApi(context, "stale-ranking@e2e.test");
+        await gotoApp(page);
+        await expect(page.getByText("#1 Alpha")).toBeVisible();
+
+        await page.getByPlaceholder("New entry").fill("Gamma");
+        await page.getByPlaceholder("New entry").press("Enter");
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+
+        const staleResponse = await page.request.post(`${BASE_URL}/api/test/stale-ranking`, {
+            data: { email: "stale-ranking@e2e.test" }
+        });
+        expect(staleResponse.ok()).toBe(true);
+
+        await page.evaluate(() => {
+            const event = new Event("pageshow") as PageTransitionEvent;
+            Object.defineProperty(event, "persisted", { value: true });
+            window.dispatchEvent(event);
+        });
+
+        await expect(page.getByText("That ranking is no longer active.")).toBeVisible({
+            timeout: 15_000
+        });
+        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeHidden();
+        await expect(page.getByText("#1 Alpha")).toBeVisible();
     });
 });

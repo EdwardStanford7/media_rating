@@ -46,8 +46,7 @@ export async function buildDashboard(userId: string): Promise<DashboardData> {
     const entryRows = await all<EntryRow>(
         db
             .prepare(
-                `SELECT id, category_id, name, rank_position, image_key, created_at,
-                    first_consumed_at
+                `SELECT id, category_id, name, rank_position, image_key, created_at
              FROM entries
              WHERE user_id = ? AND status = 'active'
              ORDER BY category_id ASC, rank_position ASC`

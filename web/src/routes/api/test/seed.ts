@@ -18,6 +18,15 @@ interface SeedQueueSettings {
     enabled?: boolean;
     delayDays?: number;
     promptForMissingImages?: boolean;
+    randomizeReadyEntries?: boolean;
+}
+
+interface SeedQueuedEntry {
+    categoryName: string;
+    name: string;
+    imageKey?: string | null;
+    availableAt?: number;
+    createdAt?: number;
 }
 
 interface SeedUser {
@@ -28,6 +37,7 @@ interface SeedUser {
     direct?: boolean;
     queueSettings?: SeedQueueSettings;
     categories?: SeedCategory[];
+    queuedEntries?: SeedQueuedEntry[];
 }
 
 interface SeedBody {
@@ -91,13 +101,14 @@ export const Route = createFileRoute("/api/test/seed")({
                     await db
                         .prepare(
                             `INSERT INTO queue_settings (
-                 user_id, enabled, delay_days, prompt_missing_images, created_at, updated_at
+                 user_id, enabled, delay_days, prompt_missing_images, randomize_ready_entries, created_at, updated_at
                )
-               VALUES (?, ?, ?, ?, ?, ?)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET
                  enabled = excluded.enabled,
                  delay_days = excluded.delay_days,
                  prompt_missing_images = excluded.prompt_missing_images,
+                 randomize_ready_entries = excluded.randomize_ready_entries,
                  updated_at = excluded.updated_at`
                         )
                         .bind(
@@ -105,14 +116,17 @@ export const Route = createFileRoute("/api/test/seed")({
                             queueSettings.enabled ? 1 : 0,
                             queueSettings.delayDays ?? 3,
                             queueSettings.promptForMissingImages ? 1 : 0,
+                            queueSettings.randomizeReadyEntries ? 1 : 0,
                             timestamp,
                             timestamp
                         )
                         .run();
 
                     const categories = seedUser.categories ?? [];
+                    const categoryIdsByName = new Map<string, string>();
                     for (const [categoryIndex, category] of categories.entries()) {
                         const categoryId = newId("cat");
+                        categoryIdsByName.set(category.name, categoryId);
                         await db
                             .prepare(
                                 `INSERT INTO categories (id, user_id, name, sort_order, created_at, updated_at)
@@ -129,9 +143,9 @@ export const Route = createFileRoute("/api/test/seed")({
                                 .prepare(
                                     `INSERT INTO entries (
                      id, user_id, category_id, name, rank_position, status, image_key,
-                     created_at, first_consumed_at, updated_at
+                     created_at, updated_at
                    )
-                   VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
+                   VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`
                                 )
                                 .bind(
                                     newId("entry"),
@@ -141,11 +155,41 @@ export const Route = createFileRoute("/api/test/seed")({
                                     entryIndex,
                                     entry.imageKey === undefined ? NO_IMAGE_KEY : entry.imageKey,
                                     timestamp,
-                                    timestamp,
                                     timestamp
                                 )
                                 .run();
                         }
+                    }
+
+                    const queuedEntries = seedUser.queuedEntries ?? [];
+                    for (const [queueIndex, queuedEntry] of queuedEntries.entries()) {
+                        const categoryId = categoryIdsByName.get(queuedEntry.categoryName);
+                        if (!categoryId) {
+                            return Response.json({
+                                message: `queued category not found: ${queuedEntry.categoryName}`
+                            }, { status: 400 });
+                        }
+
+                        const queuedCreatedAt = queuedEntry.createdAt ?? timestamp + queueIndex;
+                        await db
+                            .prepare(
+                                `INSERT INTO entry_queue (
+                     id, user_id, category_id, name, image_key, available_at,
+                     status, created_at, updated_at
+                   )
+                   VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`
+                            )
+                            .bind(
+                                newId("queue"),
+                                userId,
+                                categoryId,
+                                queuedEntry.name,
+                                queuedEntry.imageKey ?? null,
+                                queuedEntry.availableAt ?? queuedCreatedAt,
+                                queuedCreatedAt,
+                                timestamp
+                            )
+                            .run();
                     }
                 }
 

@@ -8,7 +8,6 @@ export interface EntryRow {
     rank_position: number;
     image_key: string | null;
     created_at: number;
-    first_consumed_at: number | null;
 }
 
 export interface EntryStatusRow extends EntryRow {
@@ -19,8 +18,7 @@ export async function getOwnedEntry(userId: string, entryId: string) {
     const row = await first<EntryRow>(
         getDb()
             .prepare(
-                `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at
+                `SELECT id, category_id, name, rank_position, image_key, created_at
          FROM entries
          WHERE user_id = ? AND id = ? AND status != 'deleted'`
             )
@@ -34,8 +32,7 @@ export async function getOwnedEntryWithStatus(userId: string, entryId: string) {
     return first<EntryStatusRow>(
         getDb()
             .prepare(
-                `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at, status
+                `SELECT id, category_id, name, rank_position, image_key, created_at, status
          FROM entries
          WHERE user_id = ? AND id = ?`
             )
@@ -47,8 +44,7 @@ export async function getOwnedActiveEntry(userId: string, entryId: string) {
     const row = await first<EntryRow>(
         getDb()
             .prepare(
-                `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at
+                `SELECT id, category_id, name, rank_position, image_key, created_at
          FROM entries
          WHERE user_id = ? AND id = ? AND status = 'active'`
             )
@@ -62,8 +58,7 @@ export async function listActiveEntries(userId: string, categoryId: string, excl
     const rows = await all<EntryRow>(
         getDb()
             .prepare(
-                `SELECT id, category_id, name, rank_position, image_key, created_at,
-                first_consumed_at
+                `SELECT id, category_id, name, rank_position, image_key, created_at
          FROM entries
          WHERE user_id = ? AND category_id = ? AND status = 'active'
            AND (? IS NULL OR id != ?)
@@ -156,7 +151,6 @@ export function mapEntry(row: EntryRow): Entry {
         name: row.name,
         rankPosition: row.rank_position,
         imageKey: row.image_key,
-        createdAt: row.created_at,
-        firstConsumedAt: row.first_consumed_at
+        createdAt: row.created_at
     };
 }

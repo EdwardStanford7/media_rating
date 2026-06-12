@@ -8,13 +8,13 @@ export interface Entry {
     rankPosition: number;
     imageKey: string | null;
     createdAt: number;
-    firstConsumedAt: number | null;
 }
 
 export interface QueueSettings {
     enabled: boolean;
     delayDays: number;
     promptForMissingImages: boolean;
+    randomizeReadyEntries: boolean;
 }
 
 export interface QueuedEntry {
@@ -23,7 +23,6 @@ export interface QueuedEntry {
     categoryName: string;
     name: string;
     imageKey: string | null;
-    firstConsumedAt: number | null;
     availableAt: number;
     createdAt: number;
 }
@@ -152,11 +151,19 @@ export interface ParsedImportEntry {
     categoryName: string;
     name: string;
     rankPosition: number;
-    firstConsumedAt: number | null;
+    createdAt: number | null;
+}
+
+export interface ParsedImportQueuedEntry {
+    categoryName: string;
+    name: string;
+    availableAt: number | null;
+    createdAt: number | null;
 }
 
 export interface ParsedImport {
     entries: ParsedImportEntry[];
+    queuedEntries: ParsedImportQueuedEntry[];
 }
 
 export type AdminUserSearchField = "all" | "email" | "name";

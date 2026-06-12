@@ -19,8 +19,11 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
         const db = getDb();
         await assertNoActiveBinarySession(userId);
         const createdAt = now();
+        const rankedImportEntries = parsedImport.entries ?? [];
+        const queuedImportEntries = parsedImport.queuedEntries ?? [];
         const categoriesByName = new Map<string, string>();
-        const importedByCategory = new Map<string, typeof parsedImport.entries>();
+        const importedByCategory = new Map<string, typeof rankedImportEntries>();
+        const queuedByCategory = new Map<string, typeof queuedImportEntries>();
         const existingCategories = await all<CategoryRow>(
             db
                 .prepare(
@@ -35,7 +38,7 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
             categoriesByName.set(category.name, category.id);
         }
 
-        for (const entry of parsedImport.entries) {
+        for (const entry of rankedImportEntries) {
             const categoryName = entry.categoryName.trim();
             const name = entry.name.trim();
             if (!categoryName || !name) {
@@ -47,10 +50,22 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
             importedByCategory.set(categoryName, bucket);
         }
 
+        for (const entry of queuedImportEntries) {
+            const categoryName = entry.categoryName.trim();
+            const name = entry.name.trim();
+            if (!categoryName || !name) {
+                continue;
+            }
+
+            const bucket = queuedByCategory.get(categoryName) ?? [];
+            bucket.push({ ...entry, categoryName, name });
+            queuedByCategory.set(categoryName, bucket);
+        }
+
         let sortOrder = Math.max(-1, ...existingCategories.map((category) => category.sort_order)) + 1;
         const categoryInsertStatements: D1PreparedStatement[] = [];
 
-        for (const categoryName of importedByCategory.keys()) {
+        for (const categoryName of new Set([...importedByCategory.keys(), ...queuedByCategory.keys()])) {
             if (!categoriesByName.has(categoryName)) {
                 const categoryId = newId("cat");
                 categoriesByName.set(categoryName, categoryId);
@@ -107,8 +122,12 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
         }
 
         const entryInsertStatements: D1PreparedStatement[] = [];
-        let importedCount = 0;
-        let skippedCount = 0;
+        const queueInsertStatements: D1PreparedStatement[] = [];
+        let rankedImportedCount = 0;
+        let rankedSkippedCount = 0;
+        let queuedImportedCount = 0;
+        let queuedSkippedCount = 0;
+        let queuedInsertIndex = 0;
 
         for (const [categoryName, entries] of importedByCategory) {
             const categoryId = categoriesByName.get(categoryName);
@@ -122,7 +141,7 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
             let rankPosition = activeCountsByCategory.get(categoryId) ?? 0;
             const insertableEntries = entries.filter((entry) => {
                 if (knownNames.has(entry.name)) {
-                    skippedCount += 1;
+                    rankedSkippedCount += 1;
                     return false;
                 }
 
@@ -131,13 +150,14 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
             });
             for (const entry of insertableEntries) {
                 const entryId = newId("entry");
+                const entryCreatedAt = normalizeImportedTimestamp(entry.createdAt) ?? createdAt;
                 entryInsertStatements.push(
                     db.prepare(
                         `INSERT OR IGNORE INTO entries (
                  id, user_id, category_id, name, rank_position, status, image_key,
-                 created_at, first_consumed_at, updated_at
+                 created_at, updated_at
                )
-               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`
                     )
                         .bind(
                             entryId,
@@ -146,19 +166,71 @@ export const importLegacyEntries = createServerFn({ method: "POST" })
                             entry.name,
                             rankPosition,
                             null,
-                            createdAt,
-                            entry.firstConsumedAt,
+                            entryCreatedAt,
                             createdAt
                         )
                 );
-                importedCount += 1;
+                rankedImportedCount += 1;
                 rankPosition += 1;
             }
 
             activeCountsByCategory.set(categoryId, rankPosition);
         }
 
-        await runBatches(db, entryInsertStatements);
+        for (const [categoryName, entries] of queuedByCategory) {
+            const categoryId = categoriesByName.get(categoryName);
+            if (!categoryId) {
+                continue;
+            }
 
-        return { importedCount, skippedCount };
+            const knownNames = namesByCategory.get(categoryId) ?? new Set<string>();
+            namesByCategory.set(categoryId, knownNames);
+
+            for (const entry of entries) {
+                if (knownNames.has(entry.name)) {
+                    queuedSkippedCount += 1;
+                    continue;
+                }
+
+                knownNames.add(entry.name);
+                const queueId = newId("queue");
+                const rowCreatedAt = normalizeImportedTimestamp(entry.createdAt) ?? createdAt + queuedInsertIndex;
+                const availableAt = normalizeImportedTimestamp(entry.availableAt) ?? rowCreatedAt;
+                queueInsertStatements.push(
+                    db.prepare(
+                        `INSERT OR IGNORE INTO entry_queue (
+                 id, user_id, category_id, name, image_key, available_at,
+                 status, created_at, updated_at
+               )
+               VALUES (?, ?, ?, ?, NULL, ?, 'queued', ?, ?)`
+                    )
+                        .bind(
+                            queueId,
+                            userId,
+                            categoryId,
+                            entry.name,
+                            availableAt,
+                            rowCreatedAt,
+                            createdAt
+                        )
+                );
+                queuedImportedCount += 1;
+                queuedInsertIndex += 1;
+            }
+        }
+
+        await runBatches(db, [...entryInsertStatements, ...queueInsertStatements]);
+
+        return {
+            importedCount: rankedImportedCount + queuedImportedCount,
+            skippedCount: rankedSkippedCount + queuedSkippedCount,
+            rankedImportedCount,
+            rankedSkippedCount,
+            queuedImportedCount,
+            queuedSkippedCount
+        };
     });
+
+function normalizeImportedTimestamp(value: number | null | undefined) {
+    return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : null;
+}

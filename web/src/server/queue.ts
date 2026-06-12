@@ -15,7 +15,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const createQueuedEntry = createServerFn({ method: "POST" })
     .middleware([authMiddleware])
-    .inputValidator((data: { categoryId: string; name: string; firstConsumedAt: number | null; }) => data)
+    .inputValidator((data: { categoryId: string; name: string; createdAt?: number | null; }) => data)
     .handler(async ({ context, data: input }) => {
         const userId = context.user.id;
         const category = await getOwnedCategory(userId, input.categoryId);
@@ -29,27 +29,27 @@ export const createQueuedEntry = createServerFn({ method: "POST" })
         await assertEntryNameAvailable(userId, input.categoryId, cleanName);
 
         const settings = await getQueueSettings(userId);
-        const createdAt = now();
-        const availableAt = createdAt + settings.delayDays * DAY_MS;
+        const updatedAt = now();
+        const createdAt = normalizeCreatedAt(input.createdAt) ?? updatedAt;
+        const availableAt = updatedAt + settings.delayDays * DAY_MS;
         const queueId = newId("queue");
 
         await getDb()
             .prepare(
                 `INSERT INTO entry_queue (
-             id, user_id, category_id, name, first_consumed_at, available_at,
+             id, user_id, category_id, name, available_at,
              status, created_at, updated_at
            )
-           VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`
+           VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`
             )
             .bind(
                 queueId,
                 userId,
                 input.categoryId,
                 cleanName,
-                input.firstConsumedAt,
                 availableAt,
                 createdAt,
-                createdAt
+                updatedAt
             )
             .run();
 
@@ -59,7 +59,6 @@ export const createQueuedEntry = createServerFn({ method: "POST" })
             categoryName: category.name,
             name: cleanName,
             imageKey: null,
-            firstConsumedAt: input.firstConsumedAt,
             availableAt,
             createdAt
         };
@@ -67,9 +66,18 @@ export const createQueuedEntry = createServerFn({ method: "POST" })
         return { queuedEntry, queuedEntryId: queueId, availableAt };
     });
 
+function normalizeCreatedAt(value: number | null | undefined) {
+    return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : null;
+}
+
 export const updateQueueSettings = createServerFn({ method: "POST" })
     .middleware([authMiddleware])
-    .inputValidator((data: { enabled: boolean; delayDays: number; promptForMissingImages: boolean; }) => data)
+    .inputValidator((data: {
+        enabled: boolean;
+        delayDays: number;
+        promptForMissingImages: boolean;
+        randomizeReadyEntries: boolean;
+    }) => data)
     .handler(async ({ context, data: input }) => {
         const userId = context.user.id;
         const delayDays = normalizeQueueDelayDays(input.delayDays);
@@ -78,13 +86,14 @@ export const updateQueueSettings = createServerFn({ method: "POST" })
         await getDb()
             .prepare(
                 `INSERT INTO queue_settings (
-             user_id, enabled, delay_days, prompt_missing_images, created_at, updated_at
+             user_id, enabled, delay_days, prompt_missing_images, randomize_ready_entries, created_at, updated_at
            )
-           VALUES (?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(user_id) DO UPDATE SET
              enabled = excluded.enabled,
              delay_days = excluded.delay_days,
              prompt_missing_images = excluded.prompt_missing_images,
+             randomize_ready_entries = excluded.randomize_ready_entries,
              updated_at = excluded.updated_at`
             )
             .bind(
@@ -92,6 +101,7 @@ export const updateQueueSettings = createServerFn({ method: "POST" })
                 input.enabled ? 1 : 0,
                 delayDays,
                 input.promptForMissingImages ? 1 : 0,
+                input.randomizeReadyEntries ? 1 : 0,
                 updatedAt,
                 updatedAt
             )
@@ -118,7 +128,7 @@ export const startQueuedEntryRanking = createServerFn({ method: "POST" })
         const result = await createEntryWithBinaryRankingForUser(userId, {
             categoryId: queuedEntry.categoryId,
             name: queuedEntry.name,
-            firstConsumedAt: queuedEntry.firstConsumedAt,
+            createdAt: queuedEntry.createdAt,
             ignoredQueuedEntryId: queuedEntry.id,
             imageKey: queuedEntry.imageKey,
             queuedEntryId: queuedEntry.id,

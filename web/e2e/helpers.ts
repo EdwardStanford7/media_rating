@@ -51,8 +51,16 @@ export interface SeedUser {
         enabled?: boolean;
         delayDays?: number;
         promptForMissingImages?: boolean;
+        randomizeReadyEntries?: boolean;
     };
     categories?: SeedCategory[];
+    queuedEntries?: Array<{
+        categoryName: string;
+        name: string;
+        imageKey?: string | null;
+        availableAt?: number;
+        createdAt?: number;
+    }>;
 }
 
 export async function seedUsers(users: SeedUser[]) {

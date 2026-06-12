@@ -21,7 +21,7 @@ export async function createEntryWithBinaryRankingForUser(
     input: {
         categoryId: string;
         name: string;
-        firstConsumedAt: number | null;
+        createdAt?: number | null;
         ignoredQueuedEntryId?: string;
         imageKey?: string | null;
         queuedEntryId?: string;
@@ -81,7 +81,8 @@ export async function createEntryWithBinaryRankingForUser(
     await assertEntryNameAvailable(userId, input.categoryId, cleanName, input.ignoredQueuedEntryId);
 
     const activeCount = await getActiveEntryCount(userId, input.categoryId);
-    const createdAt = now();
+    const operationCreatedAt = now();
+    const entryCreatedAt = normalizeCreatedAt(input.createdAt) ?? operationCreatedAt;
     const entryId = newId("entry");
     const status = activeCount === 0 ? "active" : "ranking";
     const statements = [
@@ -89,9 +90,9 @@ export async function createEntryWithBinaryRankingForUser(
             .prepare(
                 `INSERT INTO entries (
            id, user_id, category_id, name, rank_position, status, image_key,
-           created_at, first_consumed_at, updated_at
+           created_at, updated_at
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .bind(
                 entryId,
@@ -101,9 +102,8 @@ export async function createEntryWithBinaryRankingForUser(
                 activeCount,
                 status,
                 input.imageKey ?? null,
-                createdAt,
-                input.firstConsumedAt,
-                createdAt
+                entryCreatedAt,
+                operationCreatedAt
             )
     ];
 
@@ -118,7 +118,7 @@ export async function createEntryWithBinaryRankingForUser(
             source: "new_entry",
             opponentCount: activeCount,
             operationState: serializeRankingOperationState(operationState),
-            createdAt
+            createdAt: operationCreatedAt
         });
         sessionId = session.sessionId;
         statements.push(session.statement);
@@ -132,7 +132,7 @@ export async function createEntryWithBinaryRankingForUser(
                     db,
                     userId,
                     input.queuedEntryId,
-                    input.queueStartedAt ?? createdAt
+                    input.queueStartedAt ?? operationCreatedAt
                 )
         );
     }
@@ -148,6 +148,10 @@ export async function createEntryWithBinaryRankingForUser(
     }
 
     return { kind: "session" as const, entryId, sessionId };
+}
+
+function normalizeCreatedAt(value: number | null | undefined) {
+    return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : null;
 }
 
 export async function assertEntryNameAvailable(

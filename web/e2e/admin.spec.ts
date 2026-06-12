@@ -36,6 +36,7 @@ test.describe("Admin user support", () => {
 
         await gotoAdmin(page);
         await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+        await expectNoHorizontalOverflow(page);
         await expect(page.getByText("24 total")).toBeVisible();
         await expect(page.getByText("Page 1 of 2")).toBeVisible();
 
@@ -152,6 +153,13 @@ async function openTargetUser(page: Page, email: string) {
     await page.getByLabel("Search users").fill(email);
     await page.getByRole("button", { name: "Search" }).click();
     await expect(page.getByText("1 total")).toBeVisible();
-    await page.getByRole("button", { name: "View" }).click();
+    await page.locator("tbody tr").filter({ hasText: email }).click();
     await expect(page.getByText(email)).toBeVisible();
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+    const hasHorizontalOverflow = await page.evaluate(() =>
+        document.documentElement.scrollWidth > document.documentElement.clientWidth
+    );
+    expect(hasHorizontalOverflow).toBe(false);
 }

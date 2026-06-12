@@ -1,6 +1,6 @@
-// Calendar dates (e.g. firstConsumedAt) are stored as UTC-midnight timestamps
-// and always formatted in UTC, so server and client render the same day
-// regardless of timezone (avoids SSR hydration mismatches).
+// User-facing calendar dates are stored as UTC-midnight timestamps and always
+// formatted in UTC, so server and client render the same day regardless of
+// timezone (avoids SSR hydration mismatches).
 export function dateInputToTimestamp(value: string) {
     return value ? new Date(`${value}T00:00:00Z`).getTime() : null;
 }

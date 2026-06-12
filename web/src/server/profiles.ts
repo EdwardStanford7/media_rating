@@ -479,8 +479,7 @@ export const copyPublicCategoryToQueue = createServerFn({ method: "POST" })
         const entries = await all<EntryRow>(
             getDb()
                 .prepare(
-                    `SELECT id, category_id, name, rank_position, image_key, created_at,
-                    first_consumed_at
+                    `SELECT id, category_id, name, rank_position, image_key, created_at
              FROM entries
              WHERE user_id = ? AND category_id = ? AND status = 'active'
              ORDER BY rank_position ASC, name ASC`
@@ -564,10 +563,10 @@ export const copyPublicCategoryToQueue = createServerFn({ method: "POST" })
                 db
                     .prepare(
                         `INSERT INTO entry_queue (
-                   id, user_id, category_id, name, image_key, first_consumed_at,
-                   available_at, status, created_at, updated_at
+                   id, user_id, category_id, name, image_key, available_at,
+                   status, created_at, updated_at
                  )
-                 VALUES (?, ?, ?, ?, ?, NULL, ?, 'queued', ?, ?)`
+                 VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`
                     )
                     .bind(
                         entry.id,
@@ -687,7 +686,7 @@ async function loadPublicCategories(userId: string): Promise<CategoryWithEntries
         getDb()
             .prepare(
                 `SELECT entries.id, entries.category_id, entries.name, entries.rank_position,
-                entries.image_key, entries.created_at, entries.first_consumed_at
+                entries.image_key, entries.created_at
          FROM entries
          INNER JOIN categories ON categories.id = entries.category_id
          WHERE entries.user_id = ? AND entries.status = 'active'

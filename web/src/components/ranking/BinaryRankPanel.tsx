@@ -72,6 +72,11 @@ export function BinaryRankPanel({
             })
             .catch((loadError) => {
                 if (isCurrent && !redirectIfUnauthorized(loadError)) {
+                    if (isUnavailableSessionError(loadError)) {
+                        void onUnavailable(sessionId);
+                        return;
+                    }
+
                     setError(errorMessage(loadError));
                 }
             });
@@ -130,6 +135,11 @@ export function BinaryRankPanel({
             setSession(nextSession);
         } catch (submitError) {
             if (!redirectIfUnauthorized(submitError)) {
+                if (isUnavailableSessionError(submitError)) {
+                    await onUnavailable(sessionId);
+                    return;
+                }
+
                 setError(errorMessage(submitError));
             }
         } finally {
@@ -148,6 +158,11 @@ export function BinaryRankPanel({
             await onCancel(session);
         } catch (cancelError) {
             if (!redirectIfUnauthorized(cancelError)) {
+                if (isUnavailableSessionError(cancelError)) {
+                    await onUnavailable(sessionId);
+                    return;
+                }
+
                 setError(errorMessage(cancelError));
             }
         } finally {
@@ -182,6 +197,11 @@ export function BinaryRankPanel({
             setRenamingEntryId(null);
         } catch (renameError) {
             if (!redirectIfUnauthorized(renameError)) {
+                if (isUnavailableSessionError(renameError)) {
+                    await onUnavailable(sessionId);
+                    return;
+                }
+
                 setError(errorMessage(renameError));
             }
         } finally {
@@ -254,6 +274,10 @@ export function BinaryRankPanel({
             </div>
         </section>
     );
+}
+
+function isUnavailableSessionError(error: unknown) {
+    return error instanceof Error && /^Ranking session (not found|has no active matchup)/.test(error.message);
 }
 
 function MatchCard({

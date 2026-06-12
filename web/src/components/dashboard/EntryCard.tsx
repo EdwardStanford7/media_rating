@@ -190,11 +190,9 @@ export function EntryCard({
                                 #{entry.rankPosition + 1} {entry.name}
                             </strong>
                         )}
-                        {entry.firstConsumedAt ? (
-                            <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
-                                <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.4rem] py-[0.12rem] text-[0.68rem] text-muted-foreground">{formatDate(entry.firstConsumedAt)}</span>
-                            </div>
-                        ) : null}
+                        <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
+                            <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.4rem] py-[0.12rem] text-[0.68rem] text-muted-foreground">{formatDate(entry.createdAt)}</span>
+                        </div>
                         {moveControlsOpen ? (
                             <div className="grid gap-[0.55rem] rounded-sm border border-border bg-muted p-[0.65rem]">
                                 <strong>Change Category</strong>

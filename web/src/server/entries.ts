@@ -22,7 +22,7 @@ import { assertEntryNameAvailable, createEntryWithBinaryRankingForUser } from ".
 
 export const createEntryWithBinaryRanking = createServerFn({ method: "POST" })
     .middleware([authMiddleware])
-    .inputValidator((data: { categoryId: string; name: string; firstConsumedAt: number | null }) => data)
+    .inputValidator((data: { categoryId: string; name: string; createdAt?: number | null }) => data)
     .handler(async ({ context, data }) =>
         createEntryWithBinaryRankingForUser(context.user.id, data));
 

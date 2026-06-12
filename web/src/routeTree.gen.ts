@@ -18,6 +18,7 @@ import { Route as UProfileSlugRouteImport } from './routes/u/$profileSlug'
 import { Route as ApiProfileImageRouteImport } from './routes/api/profile-image'
 import { Route as ApiImageSearchRouteImport } from './routes/api/image-search'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
+import { Route as ApiTestStaleRankingRouteImport } from './routes/api/test/stale-ranking'
 import { Route as ApiTestSeedRouteImport } from './routes/api/test/seed'
 import { Route as ApiTestResetRouteImport } from './routes/api/test/reset'
 import { Route as ApiTestHealthRouteImport } from './routes/api/test/health'
@@ -72,6 +73,11 @@ const ApiImageSearchRoute = ApiImageSearchRouteImport.update({
 const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
   id: '/api/image-proxy',
   path: '/api/image-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTestStaleRankingRoute = ApiTestStaleRankingRouteImport.update({
+  id: '/api/test/stale-ranking',
+  path: '/api/test/stale-ranking',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTestSeedRoute = ApiTestSeedRouteImport.update({
@@ -147,6 +153,7 @@ export interface FileRoutesByFullPath {
   '/api/test/health': typeof ApiTestHealthRoute
   '/api/test/reset': typeof ApiTestResetRoute
   '/api/test/seed': typeof ApiTestSeedRoute
+  '/api/test/stale-ranking': typeof ApiTestStaleRankingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -168,6 +175,7 @@ export interface FileRoutesByTo {
   '/api/test/health': typeof ApiTestHealthRoute
   '/api/test/reset': typeof ApiTestResetRoute
   '/api/test/seed': typeof ApiTestSeedRoute
+  '/api/test/stale-ranking': typeof ApiTestStaleRankingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -190,6 +198,7 @@ export interface FileRoutesById {
   '/api/test/health': typeof ApiTestHealthRoute
   '/api/test/reset': typeof ApiTestResetRoute
   '/api/test/seed': typeof ApiTestSeedRoute
+  '/api/test/stale-ranking': typeof ApiTestStaleRankingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -213,6 +222,7 @@ export interface FileRouteTypes {
     | '/api/test/health'
     | '/api/test/reset'
     | '/api/test/seed'
+    | '/api/test/stale-ranking'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
     | '/api/test/health'
     | '/api/test/reset'
     | '/api/test/seed'
+    | '/api/test/stale-ranking'
   id:
     | '__root__'
     | '/'
@@ -255,6 +266,7 @@ export interface FileRouteTypes {
     | '/api/test/health'
     | '/api/test/reset'
     | '/api/test/seed'
+    | '/api/test/stale-ranking'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -277,6 +289,7 @@ export interface RootRouteChildren {
   ApiTestHealthRoute: typeof ApiTestHealthRoute
   ApiTestResetRoute: typeof ApiTestResetRoute
   ApiTestSeedRoute: typeof ApiTestSeedRoute
+  ApiTestStaleRankingRoute: typeof ApiTestStaleRankingRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -342,6 +355,13 @@ declare module '@tanstack/react-router' {
       path: '/api/image-proxy'
       fullPath: '/api/image-proxy'
       preLoaderRoute: typeof ApiImageProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test/stale-ranking': {
+      id: '/api/test/stale-ranking'
+      path: '/api/test/stale-ranking'
+      fullPath: '/api/test/stale-ranking'
+      preLoaderRoute: typeof ApiTestStaleRankingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/test/seed': {
@@ -437,6 +457,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTestHealthRoute: ApiTestHealthRoute,
   ApiTestResetRoute: ApiTestResetRoute,
   ApiTestSeedRoute: ApiTestSeedRoute,
+  ApiTestStaleRankingRoute: ApiTestStaleRankingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

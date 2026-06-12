@@ -36,8 +36,8 @@ export function ImportSpreadsheetToast({
                 </Button>
             </div>
             <label className="grid min-w-0 content-start gap-[0.35rem]">
-                <span className="text-muted-foreground">First consumed date</span>
-                <Input disabled={disabled} name="firstConsumedAt" type="date" />
+                <span className="text-muted-foreground">Added date</span>
+                <Input disabled={disabled} name="addedAt" type="date" />
             </label>
             <label className="grid min-w-0 content-start gap-[0.35rem]">
                 <span className="text-muted-foreground">Workbook</span>

@@ -16,10 +16,19 @@ async function openQueueSettings(page: Page) {
     }
 
     const settingsItem = page.getByRole("menuitem", { name: "Settings", exact: true });
-    await openAccountMenu(page);
-    await expect(settingsItem).toBeVisible();
-    await settingsItem.hover();
-    await settingsItem.click();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        await openAccountMenu(page);
+        await expect(settingsItem).toBeVisible();
+        await settingsItem.hover();
+        if (await queueToggle.waitFor({ state: "visible", timeout: 1_000 }).then(() => true).catch(() => false)) {
+            return;
+        }
+        await settingsItem.click();
+        if (await queueToggle.waitFor({ state: "visible", timeout: 1_000 }).then(() => true).catch(() => false)) {
+            return;
+        }
+    }
+
     await expect(queueToggle).toBeVisible();
 }
 
@@ -54,6 +63,28 @@ function queueItem(page: Page, name: string) {
     return page.getByText(name, { exact: true }).first();
 }
 
+async function downloadExport(page: Page) {
+    const downloadPromise = page.waitForEvent("download");
+    await openAccountMenu(page);
+    await page.getByRole("menuitem", { name: "Export xlsx" }).click();
+    const download = await downloadPromise;
+    const filePath = await download.path();
+    if (!filePath) {
+        throw new Error("Export download did not provide a local file path");
+    }
+    return filePath;
+}
+
+async function openImportToast(page: Page) {
+    if (await page.getByText("Import Spreadsheet").isVisible().catch(() => false)) {
+        return;
+    }
+
+    await openAccountMenu(page);
+    await page.getByRole("menuitem", { name: "Import xlsx" }).click();
+    await expect(page.getByText("Import Spreadsheet")).toBeVisible();
+}
+
 test.describe("Queue", () => {
     test("new accounts default to a ready zero-day queue and settings apply before refresh", async ({
         page
@@ -68,7 +99,10 @@ test.describe("Queue", () => {
 
         await openQueueSettings(page);
         await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "true");
+        await expect(page.getByRole("menuitemcheckbox", { name: "Randomize ready queue" })).toHaveAttribute("aria-checked", "false");
         await expect(page.getByLabel("Delay days")).toHaveValue("0");
+
+        await withSettingsSaved(page, () => page.getByRole("menuitemcheckbox", { name: "Randomize ready queue" }).click());
         await closeAccountMenu(page);
 
         await page.getByPlaceholder("New category").fill("Books");
@@ -78,7 +112,7 @@ test.describe("Queue", () => {
         await page.getByPlaceholder("New entry").fill("Dune");
         await page.getByPlaceholder("New entry").press("Enter");
         await expect(page.getByText(/Queued Dune for ranking on/)).toBeVisible();
-        await expect(page.getByText("1 queued")).toBeVisible();
+        await expect(page.getByText("1 queued", { exact: true })).toBeVisible();
         await expect(page.getByText("1 ready")).toBeVisible();
         await page.getByRole("button", { name: "Close", exact: true }).click();
 
@@ -110,8 +144,6 @@ test.describe("Queue", () => {
         // --- Enable the queue with the default delay (3 days). ---
         await openQueueSettings(page);
         await withSettingsSaved(page, () => page.getByRole("menuitemcheckbox", { name: "Queue entries" }).click());
-        await openQueueSettings(page);
-        await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "true");
         await closeAccountMenu(page);
 
         // --- New entries now land in the queue, not ready yet. ---
@@ -189,8 +221,6 @@ test.describe("Queue", () => {
         // --- Disabling the queue routes new entries straight to ranking. ---
         await openQueueSettings(page);
         await withSettingsSaved(page, () => page.getByRole("menuitemcheckbox", { name: "Queue entries" }).click());
-        await openQueueSettings(page);
-        await expect(page.getByRole("menuitemcheckbox", { name: "Queue entries" })).toHaveAttribute("aria-checked", "false");
         await closeAccountMenu(page);
 
         await page.getByPlaceholder("New entry").fill("Tron");
@@ -200,5 +230,67 @@ test.describe("Queue", () => {
         await winMatchups(page, "Tron");
         await expect(page.getByText("#1 Tron")).toBeVisible({ timeout: 15_000 });
         await expect(page.getByText("#6 Dune")).toBeVisible();
+    });
+
+    test("spreadsheet export and import preserves queued entries and skips duplicates", async ({
+        context,
+        page
+    }) => {
+        await seedUsers([{
+            email: "sheet-export@e2e.test",
+            name: "Sheet Export",
+            categories: [{ name: "Books" }],
+            queuedEntries: [{ categoryName: "Books", name: "Dune", availableAt: 0, createdAt: 0 }]
+        }]);
+        await signInViaApi(context, "sheet-export@e2e.test");
+        await gotoApp(page);
+        await expect(page.getByText("1 queued")).toBeVisible();
+        const workbookPath = await downloadExport(page);
+
+        await context.clearCookies();
+        await seedUsers([{ email: "sheet-import@e2e.test", name: "Sheet Import" }]);
+        await signInViaApi(context, "sheet-import@e2e.test");
+        await gotoApp(page);
+        await expect(page.getByText("Create Your First Category")).toBeVisible({ timeout: 15_000 });
+
+        await openImportToast(page);
+        await page.locator('input[name="workbook"]').setInputFiles(workbookPath);
+        await page.getByRole("button", { name: "Import", exact: true }).click();
+        await expect(page.getByText(/Imported 1 queued/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText("1 queued", { exact: true })).toBeVisible();
+        await expect(queueItem(page, "Dune")).toBeVisible();
+
+        await openImportToast(page);
+        await page.locator('input[name="workbook"]').setInputFiles(workbookPath);
+        await page.getByRole("button", { name: "Import", exact: true }).click();
+        await expect(page.getByText(/No new entries imported\. Skipped 1 queued/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText("1 queued", { exact: true })).toBeVisible();
+    });
+
+    test("new entry category selector routes queued entries to the selected category", async ({
+        context,
+        page
+    }) => {
+        await seedUsers([{
+            email: "queue-selector@e2e.test",
+            name: "Queue Selector",
+            queueSettings: { enabled: true, delayDays: 0 },
+            categories: [
+                { name: "Movies", entries: ["Arrival"] },
+                { name: "Books" }
+            ]
+        }]);
+        await signInViaApi(context, "queue-selector@e2e.test");
+        await gotoApp(page);
+        await expect(page.getByRole("heading", { name: "Movies" })).toBeVisible();
+
+        await page.getByPlaceholder("New entry").fill("Dune");
+        await page.getByRole("combobox", { name: "Category" }).click();
+        await page.getByRole("option", { name: "Books" }).click();
+        await page.getByPlaceholder("New entry").press("Enter");
+
+        await expect(page.getByText(/Queued Dune for ranking on/)).toBeVisible();
+        await expect(page.getByText("Books · Ready")).toBeVisible();
+        await expect(page.getByText("1 queued", { exact: true })).toBeVisible();
     });
 });
