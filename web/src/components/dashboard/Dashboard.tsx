@@ -116,7 +116,7 @@ interface ReversibleAction {
 const UNDO_STACK_LIMIT = 20;
 const RESUME_REFRESH_AFTER_MS = 5 * 60 * 1000;
 const SIDEBAR_PANEL_CLASS =
-    "grid min-h-0 min-w-0 max-w-full content-start gap-[0.75rem] rounded-md border border-primary/30 bg-card p-4 shadow-floating ring-1 ring-primary/10";
+    "grid min-h-0 min-w-0 max-w-full content-start gap-[0.75rem] rounded-md border-2 border-primary/35 bg-card p-4 shadow-floating ring-1 ring-primary/15";
 
 /**
  * Apply an optimistic drag ordering (a list of ids) on top of the canonical
@@ -1482,57 +1482,60 @@ export function Dashboard({
 
     function renderCategoryList(closeOnSelect = false) {
         return (
-            <DndContext
-                sensors={sensors}
-                onDragStart={handleCategoryDragStart}
-                onDragEnd={handleCategoryDragEnd}
-                onDragCancel={handleCategoryDragCancel}
-            >
-                <SortableContext
-                    items={orderedCategories.map((category) => category.id)}
-                    strategy={verticalListSortingStrategy}
+            <section className={SIDEBAR_PANEL_CLASS}>
+                <strong className="min-w-0 max-w-full">Categories</strong>
+                <DndContext
+                    sensors={sensors}
+                    onDragStart={handleCategoryDragStart}
+                    onDragEnd={handleCategoryDragEnd}
+                    onDragCancel={handleCategoryDragCancel}
                 >
-                    <div className="m-0 grid max-h-[min(26vh,18rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[720px]:max-h-none max-[720px]:overflow-y-visible max-[720px]:pr-0">
-                        {orderedCategories.map((category) => (
-                            <CategoryListItem
-                                category={category}
-                                isActive={category.id === selectedCategory?.id}
-                                key={category.id}
-                                busy={busy}
-                                canDragReorder={canDragReorderCategories}
-                                listLocked={Boolean(activeSessionId)}
-                                onDelete={() => setCategoryDeleteTarget(category)}
-                                onRename={(name) => handleRenameCategory(category.id, name)}
-                                onSelect={() => selectCategory(category.id, closeOnSelect)}
-                            />
-                        ))}
-                        {dashboard.categories.length === 0 ? (
-                            <EmptyState
-                                compact
-                                icon={Library}
-                                title="No Categories"
-                            >
-                                Add a category to start building a ranked list.
-                            </EmptyState>
-                        ) : null}
-                    </div>
-                </SortableContext>
-                <DragOverlay>
-                    {activeCategoryId
-                        ? (() => {
-                            const activeCategory = dashboard.categories.find(
-                                (category) => category.id === activeCategoryId
-                            );
-                            return activeCategory ? (
-                                <CategoryDragOverlay
-                                    category={activeCategory}
-                                    isActive={activeCategory.id === selectedCategory?.id}
+                    <SortableContext
+                        items={orderedCategories.map((category) => category.id)}
+                        strategy={verticalListSortingStrategy}
+                    >
+                        <div className="m-0 grid max-h-[min(26vh,18rem)] min-h-0 min-w-0 gap-[0.45rem] overflow-x-hidden overflow-y-auto pr-[0.15rem] max-[720px]:max-h-none max-[720px]:overflow-y-visible max-[720px]:pr-0">
+                            {orderedCategories.map((category) => (
+                                <CategoryListItem
+                                    category={category}
+                                    isActive={category.id === selectedCategory?.id}
+                                    key={category.id}
+                                    busy={busy}
+                                    canDragReorder={canDragReorderCategories}
+                                    listLocked={Boolean(activeSessionId)}
+                                    onDelete={() => setCategoryDeleteTarget(category)}
+                                    onRename={(name) => handleRenameCategory(category.id, name)}
+                                    onSelect={() => selectCategory(category.id, closeOnSelect)}
                                 />
-                            ) : null;
-                        })()
-                        : null}
-                </DragOverlay>
-            </DndContext>
+                            ))}
+                            {dashboard.categories.length === 0 ? (
+                                <EmptyState
+                                    compact
+                                    icon={Library}
+                                    title="No Categories"
+                                >
+                                    Add a category to start building a ranked list.
+                                </EmptyState>
+                            ) : null}
+                        </div>
+                    </SortableContext>
+                    <DragOverlay>
+                        {activeCategoryId
+                            ? (() => {
+                                const activeCategory = dashboard.categories.find(
+                                    (category) => category.id === activeCategoryId
+                                );
+                                return activeCategory ? (
+                                    <CategoryDragOverlay
+                                        category={activeCategory}
+                                        isActive={activeCategory.id === selectedCategory?.id}
+                                    />
+                                ) : null;
+                            })()
+                            : null}
+                    </DragOverlay>
+                </DndContext>
+            </section>
         );
     }
 
@@ -1845,6 +1848,7 @@ export function Dashboard({
                                         key={entry.id}
                                         canDragReorder={canDragReorderEntries}
                                         listLocked={Boolean(activeSessionId)}
+                                        listSize={selectedCategory.entries.length}
                                         selectedCategoryId={selectedCategory.id}
                                         onDelete={() => handleDelete(entry)}
                                         onPickImage={() => setImagePickerTarget({

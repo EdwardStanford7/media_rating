@@ -2,18 +2,24 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowRightLeft, GripVertical, Image as ImageIcon, MoreVertical, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowRightLeft, GripVertical, Image as ImageIcon, Info, MoreVertical, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuSub,
+    ContextMenuSubContent,
+    ContextMenuSubTrigger,
     ContextMenuTrigger
 } from "@/components/ui/context-menu";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -40,6 +46,7 @@ export function EntryCard({
     categories,
     canDragReorder,
     listLocked,
+    listSize,
     selectedCategoryId,
     onDelete,
     onPickImage,
@@ -51,6 +58,7 @@ export function EntryCard({
     categories: CategoryWithEntries[];
     canDragReorder: boolean;
     listLocked: boolean;
+    listSize: number;
     selectedCategoryId: string;
     onDelete: () => void;
     onPickImage: () => void;
@@ -97,6 +105,19 @@ export function EntryCard({
     }
 
     const showDragHandle = canDragReorder && !isRenaming && !moveControlsOpen;
+    const position = entry.rankPosition + 1;
+    const percentileLabel = percentileForPosition(position, listSize);
+
+    function renderInfoContent() {
+        return (
+            <EntryInfo
+                addedAt={entry.createdAt}
+                percentileLabel={percentileLabel}
+                position={position}
+                total={listSize}
+            />
+        );
+    }
 
     return (
         <ContextMenu onOpenChange={setMenuOpen}>
@@ -136,6 +157,14 @@ export function EntryCard({
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuSub>
+                                    <DropdownMenuSubTrigger>
+                                        <Info />Get Info
+                                    </DropdownMenuSubTrigger>
+                                    <DropdownMenuSubContent className="w-52">
+                                        {renderInfoContent()}
+                                    </DropdownMenuSubContent>
+                                </DropdownMenuSub>
                                 <DropdownMenuItem onSelect={startRename}>
                                     <Pencil />Rename
                                 </DropdownMenuItem>
@@ -182,17 +211,22 @@ export function EntryCard({
                                 </div>
                             </form>
                         ) : (
-                            <strong
-                                className="block truncate text-[0.70rem] leading-tight wrap-normal"
-                                title={`#${entry.rankPosition + 1} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
-                                onDoubleClick={startRename}
-                            >
-                                #{entry.rankPosition + 1} {entry.name}
-                            </strong>
+                            <div className="flex min-w-0 items-center gap-[0.45rem]">
+                                <strong
+                                    className="block min-w-0 flex-1 truncate text-[0.70rem] leading-tight wrap-normal"
+                                    title={`#${position} ${entry.name} · Double-click to rename · Right-click for actions${canDragReorder ? " · Drag to reorder" : ""}`}
+                                    onDoubleClick={startRename}
+                                >
+                                    #{position} {entry.name}
+                                </strong>
+                                <span
+                                    className="shrink-0 whitespace-nowrap rounded-full border border-primary/35 px-[0.36rem] py-[0.08rem] text-[0.62rem] leading-tight text-primary"
+                                    title={`${position} of ${listSize}`}
+                                >
+                                    {percentileLabel}
+                                </span>
+                            </div>
                         )}
-                        <div className="flex min-w-0 flex-wrap gap-[0.4rem]">
-                            <span className="max-w-full min-w-0 whitespace-nowrap rounded-full border border-border px-[0.4rem] py-[0.12rem] text-[0.68rem] text-muted-foreground">{formatDate(entry.createdAt)}</span>
-                        </div>
                         {moveControlsOpen ? (
                             <div className="grid gap-[0.55rem] rounded-sm border border-border bg-muted p-[0.65rem]">
                                 <strong>Change Category</strong>
@@ -236,6 +270,14 @@ export function EntryCard({
                 </article>
             </ContextMenuTrigger>
             <ContextMenuContent>
+                <ContextMenuSub>
+                    <ContextMenuSubTrigger>
+                        <Info />Get Info
+                    </ContextMenuSubTrigger>
+                    <ContextMenuSubContent className="w-52">
+                        {renderInfoContent()}
+                    </ContextMenuSubContent>
+                </ContextMenuSub>
                 <ContextMenuItem
                     onSelect={startRename}
                 >
@@ -256,6 +298,46 @@ export function EntryCard({
                 </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>
+    );
+}
+
+function percentileForPosition(position: number, total: number) {
+    if (total <= 0) {
+        return "Top 100%";
+    }
+
+    const percentile = Math.max(1, Math.min(100, Math.ceil((position / total) * 100)));
+    return `Top ${percentile}%`;
+}
+
+function EntryInfo({
+    addedAt,
+    percentileLabel,
+    position,
+    total
+}: {
+    addedAt: number;
+    percentileLabel: string;
+    position: number;
+    total: number;
+}) {
+    const totalLabel = total > 0 ? String(total) : "0";
+
+    return (
+        <div className="grid gap-[0.4rem] px-2 py-1.5 text-xs">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="text-muted-foreground">Added</span>
+                <span className="min-w-0 truncate text-right">{formatDate(addedAt)}</span>
+            </div>
+            <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="text-muted-foreground">Position</span>
+                <span className="min-w-0 truncate text-right">#{position} of {totalLabel}</span>
+            </div>
+            <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="text-muted-foreground">Percentile</span>
+                <span className="min-w-0 truncate text-right">{percentileLabel}</span>
+            </div>
+        </div>
     );
 }
 
