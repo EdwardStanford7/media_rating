@@ -208,7 +208,6 @@ export function Dashboard({
     const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null);
     const [importToastOpen, setImportToastOpen] = useState(false);
     const [categoryDeleteTarget, setCategoryDeleteTarget] = useState<CategoryWithEntries | null>(null);
-    const [profileNavigationPending, setProfileNavigationPending] = useState(false);
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialThemeMode());
@@ -1249,38 +1248,7 @@ export function Dashboard({
     }
 
     function handleOpenProfile() {
-        if (!activeSessionIdRef.current) {
-            void navigate({ to: "/profile" });
-            return;
-        }
-
-        setProfileNavigationPending(true);
-    }
-
-    async function handleConfirmProfileNavigation() {
-        const sessionId = activeSessionIdRef.current;
-        setProfileNavigationPending(false);
-        setQueueRankingActive(false);
-
-        if (!sessionId) {
-            await navigate({ to: "/profile" });
-            return;
-        }
-
-        startBusy("Cancelling ranking...");
-        setMessage(null);
-
-        try {
-            await cancelBinarySession({ data: { sessionId } });
-            markBinarySessionClosed(sessionId);
-            setActiveBinarySessionId(null);
-            await refresh();
-            await navigate({ to: "/profile" });
-        } catch (error) {
-            setErrorMessage(error);
-        } finally {
-            finishBusy();
-        }
+        void navigate({ to: "/profile" });
     }
 
     async function handleMissingBinarySession(sessionId: string) {
@@ -1687,17 +1655,6 @@ export function Dashboard({
                     {" "}
                     {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length} queued {dashboard.queuedEntries.filter((entry) => entry.categoryId === categoryDeleteTarget.id).length === 1 ? "entry" : "entries"},
                     {" "}and stored images for this category.
-                </ConfirmDialog>
-            ) : null}
-            {profileNavigationPending ? (
-                <ConfirmDialog
-                    confirmLabel="Cancel and Open Profile"
-                    title="Cancel active ranking?"
-                    variant="danger"
-                    onCancel={() => setProfileNavigationPending(false)}
-                    onConfirm={() => void handleConfirmProfileNavigation()}
-                >
-                    Opening Profile will cancel the active ranking session. The current item will return to its previous state.
                 </ConfirmDialog>
             ) : null}
             <aside className="grid min-h-0 min-w-0 content-start gap-[1.15rem] overflow-x-hidden overflow-y-auto border-r border-border bg-sidebar p-4 max-[720px]:hidden">

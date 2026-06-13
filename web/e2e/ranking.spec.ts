@@ -262,7 +262,7 @@ test.describe("Ranking", () => {
         await expect(repairPanel.getByText(/Range \d+-\d+/)).toBeHidden();
     });
 
-    test("profile navigation during ranking requires confirm cancel", async ({
+    test("profile navigation during ranking preserves the active session", async ({
         page,
         context
     }) => {
@@ -274,18 +274,16 @@ test.describe("Ranking", () => {
         await page.getByPlaceholder("New entry").press("Enter");
         await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible({ timeout: 15_000 });
 
-        let accountMenu = await openAccountMenu(page);
+        const accountMenu = await openAccountMenu(page);
         await accountMenu.getByRole("menuitem", { name: "Profile" }).click();
-        await expect(page.getByRole("heading", { name: "Cancel active ranking?" })).toBeVisible();
-        await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
-        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible();
-        await expect(page).toHaveURL("/");
-
-        accountMenu = await openAccountMenu(page);
-        await accountMenu.getByRole("menuitem", { name: "Profile" }).click();
-        await page.getByRole("button", { name: "Cancel and Open Profile" }).click();
         await expect(page).toHaveURL("/profile");
         await expect(page.getByRole("heading", { name: "Ranker" })).toBeVisible();
+
+        await gotoApp(page);
+        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole("button", { name: "Zeta" })).toBeVisible();
+        await winMatchups(page, "Zeta");
+        await expect(page.getByText("#1 Zeta")).toBeVisible({ timeout: 15_000 });
     });
 
     test("entry metadata actions stay available while ranking but order actions stay locked", async ({
