@@ -70,7 +70,7 @@ test.describe("Session expiry", () => {
 
         await page.getByPlaceholder("New entry").fill("Gamma");
         await page.getByPlaceholder("New entry").press("Enter");
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
 
         const staleResponse = await page.request.post(`${BASE_URL}/api/test/stale-ranking`, {
             data: { email: "stale-ranking@e2e.test" }
@@ -86,7 +86,7 @@ test.describe("Session expiry", () => {
         await expect(page.getByText("That ranking is no longer active.")).toBeVisible({
             timeout: 15_000
         });
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeHidden();
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeHidden();
         await expect(page.getByText("#1 Alpha")).toBeVisible();
     });
 });

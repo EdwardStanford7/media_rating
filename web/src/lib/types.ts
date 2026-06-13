@@ -133,13 +133,15 @@ export interface ActiveBinarySession {
     operationKind: RankingOperationKind;
 }
 
+export type RankingDisplayPhase = "binary" | "placement_check" | "local_repair";
+
 export interface BinarySessionView {
     id: string;
     categoryId: string;
     categoryName: string;
     source: RankingSource;
     operationKind: RankingOperationKind;
-    phase: "binary" | "local_repair";
+    phase: RankingDisplayPhase;
     subject: Entry;
     opponent: Entry;
     lowerBound: number;

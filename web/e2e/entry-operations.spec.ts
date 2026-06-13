@@ -25,7 +25,7 @@ test.describe("Entry operations", () => {
         // --- Reranking the last entry to the top reorders everything below it. ---
         await page.getByText("#4 Solaris").click({ button: "right" });
         await page.getByRole("menuitem", { name: "Rerank" }).click();
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await winMatchups(page, "Solaris");
 
         await expect(page.getByText("#1 Solaris")).toBeVisible({ timeout: 15_000 });
@@ -41,7 +41,7 @@ test.describe("Entry operations", () => {
         // --- Cancelling a rerank restores the entry to its old position. ---
         await page.getByText("#2 Arrival").click({ button: "right" });
         await page.getByRole("menuitem", { name: "Rerank" }).click();
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await page.getByRole("button", { name: "Cancel Rerank" }).click();
         await expect(page.getByText("Cancelled reranking Arrival.")).toBeVisible();
         await expect(page.getByText("#1 Solaris")).toBeVisible();
@@ -71,7 +71,7 @@ test.describe("Entry operations", () => {
         await page.getByRole("option", { name: "Books" }).click();
         await page.getByRole("button", { name: "Move", exact: true }).click();
 
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await winMatchups(page, "Heat");
 
         await expect(page.getByRole("heading", { name: "Books" })).toBeVisible();

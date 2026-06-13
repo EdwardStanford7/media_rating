@@ -1,11 +1,32 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./base";
 import { gotoApp, openAccountMenu, seedUsers, signInViaApi, winMatchups } from "./helpers";
+import { BASE_URL } from "./constants";
 
 const RANKER = {
     email: "ranker@e2e.test",
     name: "Ranker",
     categories: [{ name: "Movies", entries: ["Alpha", "Beta", "Gamma"] }]
 };
+
+const ACTIVE_RANKING_LABEL = /Binary Rank|Placement Check|Local Repair/;
+
+async function forceRankingDisplayPhase(
+    page: Page,
+    email: string,
+    phase: "binary" | "placement_check" | "local_repair"
+) {
+    const response = await page.request.post(`${BASE_URL}/api/test/ranking-display-phase`, {
+        data: { email, phase }
+    });
+    if (!response.ok()) {
+        throw new Error(`Failed to force ranking display phase: ${response.status()} ${await response.text()}`);
+    }
+}
+
+function rankingPanel(page: Page, label: string) {
+    return page.locator("section", { hasText: `${label} · Movies` }).first();
+}
 
 test.describe("Ranking", () => {
     test("mobile dashboard opens on compact app content and drawer tools work", async ({
@@ -109,7 +130,7 @@ test.describe("Ranking", () => {
         await drawer.getByPlaceholder("New entry").fill("Zeta");
         await drawer.getByPlaceholder("New entry").press("Enter");
         await expect(drawer).toBeHidden({ timeout: 15_000 });
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible({ timeout: 15_000 });
 
         await page.getByLabel("Actions for Zeta").click();
         await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
@@ -198,12 +219,47 @@ test.describe("Ranking", () => {
         await page.getByPlaceholder("New entry").fill("Zeta");
         await page.getByPlaceholder("New entry").press("Enter");
 
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible({ timeout: 15_000 });
         await winMatchups(page, "Zeta");
 
         await expect(page.getByText("#1 Zeta")).toBeVisible({ timeout: 15_000 });
         await expect(page.getByText("#2 Alpha")).toBeVisible();
         await expect(page.getByText("#4 Gamma")).toBeVisible();
+    });
+
+    test("ranking panel labels placement checks before local repair", async ({
+        page,
+        context
+    }) => {
+        const email = "phase-display@e2e.test";
+        await seedUsers([{
+            email,
+            name: "Phase Display",
+            categories: [{ name: "Movies", entries: ["Alpha", "Beta", "Gamma"] }]
+        }]);
+        await signInViaApi(context, email);
+        await gotoApp(page);
+
+        await page.getByPlaceholder("New entry").fill("Zeta");
+        await page.getByPlaceholder("New entry").press("Enter");
+
+        const binaryPanel = rankingPanel(page, "Binary Rank");
+        await expect(binaryPanel).toBeVisible({ timeout: 15_000 });
+        await expect(binaryPanel.getByText(/Range \d+-\d+ · \d+ comparisons/)).toBeVisible();
+
+        await forceRankingDisplayPhase(page, email, "placement_check");
+        await gotoApp(page);
+        const placementPanel = rankingPanel(page, "Placement Check");
+        await expect(placementPanel).toBeVisible();
+        await expect(placementPanel.getByText(/\d+ comparisons/)).toBeVisible();
+        await expect(placementPanel.getByText(/Range \d+-\d+/)).toBeHidden();
+
+        await forceRankingDisplayPhase(page, email, "local_repair");
+        await gotoApp(page);
+        const repairPanel = rankingPanel(page, "Local Repair");
+        await expect(repairPanel).toBeVisible();
+        await expect(repairPanel.getByText(/\d+ comparisons/)).toBeVisible();
+        await expect(repairPanel.getByText(/Range \d+-\d+/)).toBeHidden();
     });
 
     test("profile navigation during ranking requires confirm cancel", async ({
@@ -216,13 +272,13 @@ test.describe("Ranking", () => {
 
         await page.getByPlaceholder("New entry").fill("Zeta");
         await page.getByPlaceholder("New entry").press("Enter");
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible({ timeout: 15_000 });
 
         let accountMenu = await openAccountMenu(page);
         await accountMenu.getByRole("menuitem", { name: "Profile" }).click();
         await expect(page.getByRole("heading", { name: "Cancel active ranking?" })).toBeVisible();
         await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible();
+        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible();
         await expect(page).toHaveURL("/");
 
         accountMenu = await openAccountMenu(page);
@@ -242,7 +298,7 @@ test.describe("Ranking", () => {
 
         await page.getByPlaceholder("New entry").fill("Zeta");
         await page.getByPlaceholder("New entry").press("Enter");
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible({ timeout: 15_000 });
 
         await page.getByRole("button", { name: "Zeta" }).click({ button: "right" });
         await expect(page.getByRole("menuitem", { name: "Rename" })).toBeEnabled();
@@ -264,7 +320,7 @@ test.describe("Ranking", () => {
         await page.getByRole("button", { name: "Save", exact: true }).click();
 
         await expect(page.getByText("#1 Alpha Prime")).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible();
+        await expect(page.getByText(ACTIVE_RANKING_LABEL)).toBeVisible();
     });
 
     test("deleted entry can be restored via the undo toast", async ({ page, context }) => {

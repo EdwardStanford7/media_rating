@@ -2,12 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
     chooseBinaryPivot,
     advanceBubbleRepairState,
+    rankingDisplayPhase,
     recordBinaryChoice,
     recordLocalRepairChoice,
     startBinaryState,
     startBubbleRepairState,
     startLocalRepairState
 } from "../src/lib/ranking";
+import {
+    addCachedComparison,
+    emptyRankingOperationState,
+    parseRankingOperationState,
+    serializeRankingOperationState
+} from "../src/server/engine/rankingState";
 
 describe("pure binary ranking", () => {
     it("places a new entry at the top", () => {
@@ -172,5 +179,46 @@ describe("bubble repair ranking", () => {
             { winnerId: "b-", loserId: "d" }
         ]);
         expect(secondStep.state.currentComparison).not.toEqual(firstStep.state.currentComparison);
+    });
+});
+
+describe("ranking display phases", () => {
+    it("keeps binary phases separate from placement checks and local repair", () => {
+        expect(rankingDisplayPhase(null)).toBe("binary");
+        expect(rankingDisplayPhase("binary")).toBe("binary");
+        expect(rankingDisplayPhase("bubble_repair", "left_check")).toBe("placement_check");
+        expect(rankingDisplayPhase("bubble_repair", "right_check")).toBe("placement_check");
+        expect(rankingDisplayPhase("bubble_repair", "bubble_b_left")).toBe("local_repair");
+        expect(rankingDisplayPhase("repair_up")).toBe("local_repair");
+        expect(rankingDisplayPhase("repair_down")).toBe("local_repair");
+    });
+});
+
+describe("ranking comparison cache", () => {
+    it("starts each operation state with an empty comparison cache", () => {
+        const firstOperation = emptyRankingOperationState();
+        const secondOperation = emptyRankingOperationState();
+
+        expect(firstOperation.comparisons).toEqual([]);
+        expect(secondOperation.comparisons).toEqual([]);
+        expect(secondOperation).not.toBe(firstOperation);
+    });
+
+    it("replaces duplicate inverse pairs instead of keeping stale answers", () => {
+        const initialState = emptyRankingOperationState();
+        const firstState = addCachedComparison(initialState, "a", "b");
+        const replacementState = addCachedComparison(firstState, "b", "a");
+
+        expect(firstState.comparisons).toEqual([{ winnerId: "a", loserId: "b" }]);
+        expect(replacementState.comparisons).toEqual([{ winnerId: "b", loserId: "a" }]);
+    });
+
+    it("serializes comparison cache only inside the current operation state", () => {
+        const state = addCachedComparison(emptyRankingOperationState(), "winner", "loser");
+        const parsedState = parseRankingOperationState(serializeRankingOperationState(state));
+        const freshState = parseRankingOperationState(null);
+
+        expect(parsedState.comparisons).toEqual([{ winnerId: "winner", loserId: "loser" }]);
+        expect(freshState.comparisons).toEqual([]);
     });
 });

@@ -127,7 +127,7 @@ test.describe("Queue", () => {
 
         await page.getByPlaceholder("New entry").fill("Hyperion");
         await page.getByPlaceholder("New entry").press("Enter");
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
     });
 
     test("full queue lifecycle: enable, delay, rename, rank now, undo delete, rank queue, disable", async ({
@@ -170,7 +170,7 @@ test.describe("Queue", () => {
         // --- "Rank Now" overrides the delay and starts a binary session. ---
         await queueItem(page, "Stalker").click({ button: "right" });
         await page.getByRole("menuitem", { name: "Rank Now" }).click();
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await winMatchups(page, "Stalker");
 
         await expect(page.getByText("#1 Stalker")).toBeVisible({ timeout: 15_000 });
@@ -205,7 +205,7 @@ test.describe("Queue", () => {
 
         // --- "Rank Queue" chains ranking sessions for every ready entry. ---
         await page.getByRole("button", { name: "Rank Queue" }).click();
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await winMatchups(page, "Memento");
         // The second session starts automatically once the first finishes.
         await winMatchups(page, "Klute");
@@ -225,7 +225,7 @@ test.describe("Queue", () => {
 
         await page.getByPlaceholder("New entry").fill("Tron");
         await page.getByPlaceholder("New entry").press("Enter");
-        await expect(page.getByText(/Binary Rank|Local Repair/)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Binary Rank|Placement Check|Local Repair/)).toBeVisible({ timeout: 15_000 });
         await expect(page.getByText("Queue Empty")).toBeVisible();
         await winMatchups(page, "Tron");
         await expect(page.getByText("#1 Tron")).toBeVisible({ timeout: 15_000 });

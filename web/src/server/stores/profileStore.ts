@@ -67,6 +67,11 @@ export async function ensureUserProfile(userId: string): Promise<ProfileRow> {
                 updated_at: createdAt
             };
         } catch (error) {
+            const racedProfile = await getProfileByUserId(userId);
+            if (racedProfile) {
+                return racedProfile;
+            }
+
             if (attempt === 7) {
                 throw error;
             }

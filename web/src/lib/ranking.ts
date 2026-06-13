@@ -1,4 +1,4 @@
-import type { Entry } from "./types";
+import type { Entry, RankingDisplayPhase } from "./types";
 
 export interface BinaryComparison {
     opponentIndex: number;
@@ -367,6 +367,23 @@ export function getCachedWinner(
     );
 
     return comparison?.winnerId ?? null;
+}
+
+export function rankingDisplayPhase(
+    internalPhase: string | null | undefined,
+    bubbleRepairStage?: BubbleRepairStage | null
+): RankingDisplayPhase {
+    if (!internalPhase || internalPhase === "binary") {
+        return "binary";
+    }
+
+    if (internalPhase === "bubble_repair") {
+        return bubbleRepairStage === "left_check" || bubbleRepairStage === "right_check"
+            ? "placement_check"
+            : "local_repair";
+    }
+
+    return "local_repair";
 }
 
 function bubbleLeftUntilStopped(

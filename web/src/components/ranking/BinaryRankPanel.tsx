@@ -227,12 +227,12 @@ export function BinaryRankPanel({
             <div className="mb-4 flex flex-wrap items-center justify-between gap-[0.7rem] max-[720px]:flex-col max-[720px]:items-stretch *:max-w-full *:min-w-0">
                 <div>
                     <strong>
-                        {session.phase === "local_repair"
-                            ? "Local Repair"
-                            : "Binary Rank"} · {session.categoryName}
+                        {rankPhaseLabel(session.phase)} · {session.categoryName}
                     </strong>
                     <p className="m-0 mt-[0.2rem] text-muted-foreground">
-                        Range {session.lowerBound + 1}-{session.upperBound + 1} · {session.comparisonCount} comparisons
+                        {session.phase === "binary"
+                            ? `Range ${session.lowerBound + 1}-${session.upperBound + 1} · ${session.comparisonCount} comparisons`
+                            : `${session.comparisonCount} comparisons`}
                     </p>
                 </div>
                 {session.source === "new_entry" || session.source === "rerank_entry" ? (
@@ -274,6 +274,18 @@ export function BinaryRankPanel({
             </div>
         </section>
     );
+}
+
+function rankPhaseLabel(phase: BinarySessionView["phase"]) {
+    if (phase === "local_repair") {
+        return "Local Repair";
+    }
+
+    if (phase === "placement_check") {
+        return "Placement Check";
+    }
+
+    return "Binary Rank";
 }
 
 function isUnavailableSessionError(error: unknown) {

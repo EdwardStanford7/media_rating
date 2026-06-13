@@ -21,6 +21,7 @@ import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 import { Route as ApiTestStaleRankingRouteImport } from './routes/api/test/stale-ranking'
 import { Route as ApiTestSeedRouteImport } from './routes/api/test/seed'
 import { Route as ApiTestResetRouteImport } from './routes/api/test/reset'
+import { Route as ApiTestRankingDisplayPhaseRouteImport } from './routes/api/test/ranking-display-phase'
 import { Route as ApiTestHealthRouteImport } from './routes/api/test/health'
 import { Route as ApiTestAuthUrlRouteImport } from './routes/api/test/auth-url'
 import { Route as ApiTestAdminAuditRouteImport } from './routes/api/test/admin-audit'
@@ -90,6 +91,12 @@ const ApiTestResetRoute = ApiTestResetRouteImport.update({
   path: '/api/test/reset',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTestRankingDisplayPhaseRoute =
+  ApiTestRankingDisplayPhaseRouteImport.update({
+    id: '/api/test/ranking-display-phase',
+    path: '/api/test/ranking-display-phase',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiTestHealthRoute = ApiTestHealthRouteImport.update({
   id: '/api/test/health',
   path: '/api/test/health',
@@ -151,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/api/test/admin-audit': typeof ApiTestAdminAuditRoute
   '/api/test/auth-url': typeof ApiTestAuthUrlRoute
   '/api/test/health': typeof ApiTestHealthRoute
+  '/api/test/ranking-display-phase': typeof ApiTestRankingDisplayPhaseRoute
   '/api/test/reset': typeof ApiTestResetRoute
   '/api/test/seed': typeof ApiTestSeedRoute
   '/api/test/stale-ranking': typeof ApiTestStaleRankingRoute
@@ -173,6 +181,7 @@ export interface FileRoutesByTo {
   '/api/test/admin-audit': typeof ApiTestAdminAuditRoute
   '/api/test/auth-url': typeof ApiTestAuthUrlRoute
   '/api/test/health': typeof ApiTestHealthRoute
+  '/api/test/ranking-display-phase': typeof ApiTestRankingDisplayPhaseRoute
   '/api/test/reset': typeof ApiTestResetRoute
   '/api/test/seed': typeof ApiTestSeedRoute
   '/api/test/stale-ranking': typeof ApiTestStaleRankingRoute
@@ -196,6 +205,7 @@ export interface FileRoutesById {
   '/api/test/admin-audit': typeof ApiTestAdminAuditRoute
   '/api/test/auth-url': typeof ApiTestAuthUrlRoute
   '/api/test/health': typeof ApiTestHealthRoute
+  '/api/test/ranking-display-phase': typeof ApiTestRankingDisplayPhaseRoute
   '/api/test/reset': typeof ApiTestResetRoute
   '/api/test/seed': typeof ApiTestSeedRoute
   '/api/test/stale-ranking': typeof ApiTestStaleRankingRoute
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/api/test/admin-audit'
     | '/api/test/auth-url'
     | '/api/test/health'
+    | '/api/test/ranking-display-phase'
     | '/api/test/reset'
     | '/api/test/seed'
     | '/api/test/stale-ranking'
@@ -242,6 +253,7 @@ export interface FileRouteTypes {
     | '/api/test/admin-audit'
     | '/api/test/auth-url'
     | '/api/test/health'
+    | '/api/test/ranking-display-phase'
     | '/api/test/reset'
     | '/api/test/seed'
     | '/api/test/stale-ranking'
@@ -264,6 +276,7 @@ export interface FileRouteTypes {
     | '/api/test/admin-audit'
     | '/api/test/auth-url'
     | '/api/test/health'
+    | '/api/test/ranking-display-phase'
     | '/api/test/reset'
     | '/api/test/seed'
     | '/api/test/stale-ranking'
@@ -287,6 +300,7 @@ export interface RootRouteChildren {
   ApiTestAdminAuditRoute: typeof ApiTestAdminAuditRoute
   ApiTestAuthUrlRoute: typeof ApiTestAuthUrlRoute
   ApiTestHealthRoute: typeof ApiTestHealthRoute
+  ApiTestRankingDisplayPhaseRoute: typeof ApiTestRankingDisplayPhaseRoute
   ApiTestResetRoute: typeof ApiTestResetRoute
   ApiTestSeedRoute: typeof ApiTestSeedRoute
   ApiTestStaleRankingRoute: typeof ApiTestStaleRankingRoute
@@ -378,6 +392,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTestResetRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/test/ranking-display-phase': {
+      id: '/api/test/ranking-display-phase'
+      path: '/api/test/ranking-display-phase'
+      fullPath: '/api/test/ranking-display-phase'
+      preLoaderRoute: typeof ApiTestRankingDisplayPhaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/test/health': {
       id: '/api/test/health'
       path: '/api/test/health'
@@ -455,6 +476,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTestAdminAuditRoute: ApiTestAdminAuditRoute,
   ApiTestAuthUrlRoute: ApiTestAuthUrlRoute,
   ApiTestHealthRoute: ApiTestHealthRoute,
+  ApiTestRankingDisplayPhaseRoute: ApiTestRankingDisplayPhaseRoute,
   ApiTestResetRoute: ApiTestResetRoute,
   ApiTestSeedRoute: ApiTestSeedRoute,
   ApiTestStaleRankingRoute: ApiTestStaleRankingRoute,

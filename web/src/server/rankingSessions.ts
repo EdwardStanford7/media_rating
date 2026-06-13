@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import {
     advanceBubbleRepairState,
     chooseBinaryPivot,
+    rankingDisplayPhase,
     startBubbleRepairState
 } from "@/lib/ranking";
 import type {
@@ -93,7 +94,7 @@ export const getBinarySession = createServerFn({ method: "GET" })
             categoryName: category.name,
             source: session.source,
             operationKind: normalizeOperationKind(session.operation_kind),
-            phase: session.phase && session.phase !== "binary" ? "local_repair" : "binary",
+            phase: rankingDisplayPhase(session.phase, operationState.bubbleRepair?.stage ?? null),
             subject,
             opponent,
             lowerBound: session.lower_bound,
