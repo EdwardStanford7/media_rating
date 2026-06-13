@@ -307,11 +307,11 @@ export function EntryCard({
 
 function percentileForPosition(position: number, total: number) {
     if (total <= 0) {
-        return "100th percentile";
+        return "100th";
     }
 
     const percentile = Math.max(1, Math.min(100, Math.ceil(((total - position + 1) / total) * 100)));
-    return `${ordinal(percentile)} percentile`;
+    return `${ordinal(percentile)}`;
 }
 
 function ordinal(value: number) {
