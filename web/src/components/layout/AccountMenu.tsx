@@ -30,7 +30,9 @@ export function AccountMenu({
     onOpenImport,
     onOpenProfile,
     onSaveSettings,
+    onShowEntryPercentileChange,
     onThemeChange,
+    showEntryPercentile,
     themeMode,
     triggerClassName,
     userIsAdmin,
@@ -46,7 +48,9 @@ export function AccountMenu({
     onOpenImport: () => void;
     onOpenProfile: () => void;
     onSaveSettings: (settings: QueueSettings, options?: { quiet?: boolean }) => Promise<void>;
+    onShowEntryPercentileChange: (showEntryPercentile: boolean) => void;
     onThemeChange: (themeMode: ThemeMode) => void;
+    showEntryPercentile: boolean;
     themeMode: ThemeMode;
     triggerClassName?: string;
     userIsAdmin: boolean;
@@ -198,6 +202,14 @@ export function AccountMenu({
                             <DropdownMenuRadioItem value="dark">Dark mode</DropdownMenuRadioItem>
                             <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuCheckboxItem
+                            checked={showEntryPercentile}
+                            onCheckedChange={(value) => onShowEntryPercentileChange(Boolean(value))}
+                            onSelect={(event) => event.preventDefault()}
+                        >
+                            Show entry percentiles
+                        </DropdownMenuCheckboxItem>
                     </DropdownMenuSubContent>
                 </DropdownMenuSub>
                 <DropdownMenuItem disabled={importDisabled} onSelect={onOpenImport}>

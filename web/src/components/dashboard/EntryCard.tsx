@@ -48,6 +48,7 @@ export function EntryCard({
     listLocked,
     listSize,
     selectedCategoryId,
+    showPercentile,
     onDelete,
     onPickImage,
     onRename,
@@ -60,6 +61,7 @@ export function EntryCard({
     listLocked: boolean;
     listSize: number;
     selectedCategoryId: string;
+    showPercentile: boolean;
     onDelete: () => void;
     onPickImage: () => void;
     onRename: (name: string) => Promise<void>;
@@ -219,12 +221,14 @@ export function EntryCard({
                                 >
                                     #{position} {entry.name}
                                 </strong>
-                                <span
-                                    className="shrink-0 whitespace-nowrap rounded-full border border-primary/35 px-[0.36rem] py-[0.08rem] text-[0.62rem] leading-tight text-primary"
-                                    title={`${position} of ${listSize}`}
-                                >
-                                    {percentileLabel}
-                                </span>
+                                {showPercentile ? (
+                                    <span
+                                        className="shrink-0 whitespace-nowrap rounded-full border border-primary/35 px-[0.36rem] py-[0.08rem] text-[0.62rem] leading-tight text-primary"
+                                        title={`${position} of ${listSize}`}
+                                    >
+                                        {percentileLabel}
+                                    </span>
+                                ) : null}
                             </div>
                         )}
                         {moveControlsOpen ? (
@@ -303,11 +307,29 @@ export function EntryCard({
 
 function percentileForPosition(position: number, total: number) {
     if (total <= 0) {
-        return "Top 100%";
+        return "100th percentile";
     }
 
-    const percentile = Math.max(1, Math.min(100, Math.ceil((position / total) * 100)));
-    return `Top ${percentile}%`;
+    const percentile = Math.max(1, Math.min(100, Math.ceil(((total - position + 1) / total) * 100)));
+    return `${ordinal(percentile)} percentile`;
+}
+
+function ordinal(value: number) {
+    const remainder = value % 100;
+    if (remainder >= 11 && remainder <= 13) {
+        return `${value}th`;
+    }
+
+    switch (value % 10) {
+        case 1:
+            return `${value}st`;
+        case 2:
+            return `${value}nd`;
+        case 3:
+            return `${value}rd`;
+        default:
+            return `${value}th`;
+    }
 }
 
 function EntryInfo({

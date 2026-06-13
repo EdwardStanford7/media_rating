@@ -67,6 +67,7 @@ import {
 import { shouldPromptForImage } from "@/lib/images";
 import { parseLegacyWorkbook, writeExportWorkbook } from "@/lib/importExport";
 import type { ImagePickerTarget } from "@/lib/posterImage";
+import { readInitialShowEntryPercentile, saveShowEntryPercentile } from "@/lib/preferences";
 import { orderEntries } from "@/lib/ranking";
 import {
     createCategory,
@@ -211,6 +212,7 @@ export function Dashboard({
     const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
     const [autoImagePromptedIds, setAutoImagePromptedIds] = useState<Set<string>>(() => new Set());
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialThemeMode());
+    const [showEntryPercentile, setShowEntryPercentile] = useState(() => readInitialShowEntryPercentile());
     const [currentUserName, setCurrentUserName] = useState(userName);
     const [currentUserImage, setCurrentUserImage] = useState(userImage);
     const [currentUserImageVersion, setCurrentUserImageVersion] = useState(0);
@@ -300,6 +302,10 @@ export function Dashboard({
         saveThemeMode(themeMode);
         return applyThemeMode(themeMode);
     }, [themeMode]);
+
+    useEffect(() => {
+        saveShowEntryPercentile(showEntryPercentile);
+    }, [showEntryPercentile]);
 
     useEffect(() => {
         busyRef.current = busy;
@@ -1433,7 +1439,9 @@ export function Dashboard({
         onOpenImport: () => setImportToastOpen(true),
         onOpenProfile: handleOpenProfile,
         onSaveSettings: handleQueueSettings,
+        onShowEntryPercentileChange: setShowEntryPercentile,
         onThemeChange: setThemeMode,
+        showEntryPercentile,
         themeMode,
         userIsAdmin,
         userImage: currentUserImage,
@@ -1850,6 +1858,7 @@ export function Dashboard({
                                         listLocked={Boolean(activeSessionId)}
                                         listSize={selectedCategory.entries.length}
                                         selectedCategoryId={selectedCategory.id}
+                                        showPercentile={showEntryPercentile}
                                         onDelete={() => handleDelete(entry)}
                                         onPickImage={() => setImagePickerTarget({
                                             kind: "entry",

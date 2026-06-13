@@ -1,23 +1,15 @@
-export type ThemeMode = "light" | "dark" | "system";
+import {
+    LEGACY_THEME_STORAGE_KEY,
+    THEME_STORAGE_KEY,
+    readClientPreference,
+    saveClientPreference,
+    type ThemeMode
+} from "@/lib/preferences";
 
-const THEME_STORAGE_KEY = "goldshelf-theme";
-const LEGACY_THEME_STORAGE_KEY = "rankly-theme";
+export type { ThemeMode } from "@/lib/preferences";
 
 export function readInitialThemeMode(): ThemeMode {
-    if (typeof window === "undefined") {
-        return "system";
-    }
-
-    const savedTheme =
-        window.localStorage.getItem(THEME_STORAGE_KEY) ??
-        window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
-    if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") {
-        window.localStorage.setItem(THEME_STORAGE_KEY, savedTheme);
-        window.localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
-        return savedTheme;
-    }
-
-    return "system";
+    return readClientPreference("themeMode");
 }
 
 // Blocking script injected into the document <head> so the correct theme class
@@ -30,11 +22,7 @@ export const themeInitScript = `(function(){try{var s=localStorage.getItem(${JSO
 )});if(s!=="light"&&s!=="dark"&&s!=="system")s="system";var d=s==="dark"||(s!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);}catch(e){}})();`;
 
 export function saveThemeMode(themeMode: ThemeMode) {
-    if (typeof window === "undefined") {
-        return;
-    }
-
-    window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    saveClientPreference("themeMode", themeMode);
 }
 
 export function applyThemeMode(themeMode: ThemeMode) {
