@@ -15,9 +15,9 @@ async function openQueueSettings(page: Page) {
         return;
     }
 
-    const settingsItem = page.getByRole("menuitem", { name: "Settings", exact: true });
     for (let attempt = 0; attempt < 3; attempt += 1) {
-        await openAccountMenu(page);
+        const accountMenu = await openAccountMenu(page);
+        const settingsItem = accountMenu.getByRole("menuitem", { name: "Settings", exact: true });
         await expect(settingsItem).toBeVisible();
         await settingsItem.hover();
         if (await queueToggle.waitFor({ state: "visible", timeout: 1_000 }).then(() => true).catch(() => false)) {
@@ -65,8 +65,8 @@ function queueItem(page: Page, name: string) {
 
 async function downloadExport(page: Page) {
     const downloadPromise = page.waitForEvent("download");
-    await openAccountMenu(page);
-    await page.getByRole("menuitem", { name: "Export xlsx" }).click();
+    const accountMenu = await openAccountMenu(page);
+    await accountMenu.getByRole("menuitem", { name: "Export xlsx" }).click();
     const download = await downloadPromise;
     const filePath = await download.path();
     if (!filePath) {
@@ -80,8 +80,8 @@ async function openImportToast(page: Page) {
         return;
     }
 
-    await openAccountMenu(page);
-    await page.getByRole("menuitem", { name: "Import xlsx" }).click();
+    const accountMenu = await openAccountMenu(page);
+    await accountMenu.getByRole("menuitem", { name: "Import xlsx" }).click();
     await expect(page.getByText("Import Spreadsheet")).toBeVisible();
 }
 

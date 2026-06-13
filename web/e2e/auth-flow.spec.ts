@@ -68,8 +68,8 @@ test.describe("Auth flows", () => {
         await gotoApp(page);
         await expect(page.getByText("Create Your First Category")).toBeVisible();
 
-        await openAccountMenu(page);
-        await page.getByRole("menuitem", { name: "Sign Out" }).click();
+        const accountMenu = await openAccountMenu(page);
+        await accountMenu.getByRole("menuitem", { name: "Sign Out" }).click();
 
         await expect(
             page.getByRole("heading", { name: "Rank everything you love." })

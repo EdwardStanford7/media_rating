@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { BASE_URL } from "./constants";
 
 export const TEST_PASSWORD = "goldshelf-e2e-password";
@@ -14,21 +14,58 @@ export async function gotoApp(page: Page, path = "/") {
 }
 
 /** Opens the account menu and waits for its content to be usable. */
-export async function openAccountMenu(page: Page) {
+export async function openAccountMenu(page: Page): Promise<Locator> {
     const accountButton = page.getByRole("button", { name: "Account menu" });
-    const signOutItem = page.getByRole("menuitem", { name: "Sign Out", exact: true });
+    const openMenu = page
+        .locator("[data-slot='dropdown-menu-content'][data-state='open']", { hasText: "Sign Out" })
+        .last();
+    const signOutItem = openMenu.getByRole("menuitem", { name: "Sign Out", exact: true });
     if (await signOutItem.isVisible().catch(() => false)) {
-        return;
+        await waitForStableLocator(openMenu);
+        return openMenu;
     }
+
+    await page
+        .locator("[data-slot='dropdown-menu-content'][data-state='closed']")
+        .waitFor({ state: "detached", timeout: 1_000 })
+        .catch(() => undefined);
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
         await accountButton.click();
         if (await signOutItem.waitFor({ state: "visible", timeout: 1_000 }).then(() => true).catch(() => false)) {
-            return;
+            await waitForStableLocator(openMenu);
+            return openMenu;
         }
     }
 
     await expect(signOutItem).toBeVisible();
+    await waitForStableLocator(openMenu);
+    return openMenu;
+}
+
+async function waitForStableLocator(locator: Locator) {
+    let previousBox: string | null = null;
+
+    await expect.poll(async () => {
+        const box = await locator.boundingBox();
+        if (!box) {
+            previousBox = null;
+            return "missing";
+        }
+
+        const currentBox = [
+            box.x.toFixed(2),
+            box.y.toFixed(2),
+            box.width.toFixed(2),
+            box.height.toFixed(2)
+        ].join(":");
+        const isStable = previousBox === currentBox;
+        previousBox = currentBox;
+        return isStable ? "stable" : "moving";
+    }, {
+        intervals: [50, 50, 50, 100],
+        timeout: 2_000
+    }).toBe("stable");
 }
 
 export interface SeedEntry {
